@@ -39,11 +39,17 @@ async def test_agent_trading(agent_id: str):
         async with session.ws_connect(f"{ARENA_URL}/ws/{agent_id}") as ws:
             # Welcome
             msg = await ws.receive()
+            if msg.data is None:
+                print(f"   ❌ Connection closed unexpectedly")
+                return False
             data = json.loads(msg.data)
             print(f"   Connected! Balance: ${data['balance']}")
             
             # 等待价格
             msg = await ws.receive()
+            if msg.data is None:
+                print(f"   ❌ No price data received")
+                return False
             data = json.loads(msg.data)
             if data['type'] == 'price_update':
                 print(f"   Received prices")
@@ -57,12 +63,18 @@ async def test_agent_trading(agent_id: str):
             })
             
             msg = await ws.receive()
+            if msg.data is None:
+                print(f"   ❌ No order response")
+                return False
             result = json.loads(msg.data)
             print(f"   BUY order: success={result['success']}")
             
             # 获取状态
             await ws.send_json({'type': 'get_state'})
             msg = await ws.receive()
+            if msg.data is None:
+                print(f"   ❌ No state response")
+                return False
             state = json.loads(msg.data)
             print(f"   Final: balance=${state['balance']:.2f}, positions={list(state['positions'].keys())}")
             
