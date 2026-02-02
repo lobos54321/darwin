@@ -105,7 +105,13 @@ class Council:
         return message
     
     async def _score_message(self, message: CouncilMessage, session: CouncilSession) -> float:
-        """用 LLM 评分消息质量"""
+        """用 LLM 评分消息质量 (如果 LLM 可用)"""
+        from config import LLM_ENABLED, LLM_BASE_URL, LLM_MODEL, LLM_API_KEY
+        
+        # 如果 LLM 未启用，返回默认分数
+        if not LLM_ENABLED:
+            return 5.0
+        
         prompt = f"""你是一个交易策略议事厅的评委。请给以下发言打分 (0-10):
 
 发言者: {message.agent_id}
@@ -133,14 +139,15 @@ class Council:
                         "messages": [{"role": "user", "content": prompt}],
                         "max_tokens": 10,
                         "temperature": 0.1
-                    }
+                    },
+                    timeout=aiohttp.ClientTimeout(total=10)
                 ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         score_text = data["choices"][0]["message"]["content"].strip()
                         return min(10, max(0, float(score_text)))
         except Exception as e:
-            print(f"Scoring error: {e}")
+            print(f"Scoring error (LLM unavailable): {e}")
         
         # 默认给 5 分
         return 5.0

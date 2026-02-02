@@ -7,6 +7,9 @@ dockerfile = "Dockerfile"
 [deploy]
 port = 8888
 
-[env]
-LLM_BASE_URL = "http://localhost:8080"
-LLM_MODEL = "gemini-3-pro-low"
+# LLM 是可选的，不配置也能运行核心功能
+# 如果需要策略进化评分，可以配置:
+# [env]
+# LLM_BASE_URL = "https://api.openai.com"
+# LLM_MODEL = "gpt-4"
+# LLM_API_KEY = "sk-..."

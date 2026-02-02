@@ -19,10 +19,12 @@ SIMULATED_SLIPPAGE = 0.01  # 1% 模拟滑点
 PLATFORM_TAX = 0.005  # 0.5% 归平台
 OWNER_TAX = 0.005  # 0.5% 归 Agent 所有者
 
-# LLM 配置
-LLM_BASE_URL = "http://localhost:8080"
-LLM_MODEL = "gemini-3-pro"
-LLM_API_KEY = "test"  # 本地代理
+# LLM 配置 (可选 - 用于策略进化评分)
+import os
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "")  # 留空则禁用 LLM 功能
+LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3-pro")
+LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+LLM_ENABLED = bool(LLM_BASE_URL)  # 只有配置了 URL 才启用
 
 # DexScreener API
 DEXSCREENER_BASE_URL = "https://api.dexscreener.com"
