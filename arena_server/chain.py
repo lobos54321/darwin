@@ -1,6 +1,9 @@
 """
 链上集成模块
 负责与 Base 链智能合约交互
+
+优先使用 Gelato Relay (无需私钥)
+Fallback 到直接私钥 (如果配置了)
 """
 
 import os
@@ -14,6 +17,7 @@ from datetime import datetime
 BASE_SEPOLIA_RPC = os.getenv("BASE_SEPOLIA_RPC", "https://sepolia.base.org")
 BASE_MAINNET_RPC = os.getenv("BASE_MAINNET_RPC", "https://mainnet.base.org")
 PRIVATE_KEY = os.getenv("DARWIN_PRIVATE_KEY", "")
+GELATO_API_KEY = os.getenv("GELATO_API_KEY", "")
 
 # 合约地址 (Base Sepolia - 2026-02-02 部署)
 FACTORY_ADDRESS = os.getenv("DARWIN_FACTORY_ADDRESS", "0x63685E3Ff986Ae389496C08b6c18F30EBdb9fa71")
@@ -93,8 +97,55 @@ class ChainIntegration:
         strategy_code: str
     ) -> Optional[TokenLaunchRecord]:
         """
-        实际发行代币 (需要 PRIVATE_KEY)
+        发行代币
+        
+        优先级:
+        1. Gelato Relay (无需私钥，最安全)
+        2. 直接私钥 (如果配置了)
         """
+        
+        # 方法 1: 尝试 Gelato Relay (推荐)
+        if GELATO_API_KEY:
+            print("🔄 Using Gelato Relay (no private key needed)")
+            try:
+                from gelato_relay import GelatoRelayer
+                
+                relayer = GelatoRelayer(GELATO_API_KEY)
+                result = await relayer.launch_token(
+                    agent_id, epoch, owner_address, strategy_code
+                )
+                
+                if result:
+                    return TokenLaunchRecord(
+                        agent_id=agent_id,
+                        epoch=epoch,
+                        token_address="pending",  # Gelato 异步，稍后查询
+                        strategy_hash=self.compute_strategy_hash(strategy_code),
+                        owner_address=owner_address,
+                        launched_at=datetime.now(),
+                        tx_hash=f"gelato:{result.task_id}"
+                    )
+            except Exception as e:
+                print(f"⚠️ Gelato failed: {e}, trying fallback...")
+        
+        # 方法 2: 直接用私钥 (fallback)
+        if PRIVATE_KEY:
+            print("🔄 Using direct private key")
+            return await self._launch_with_private_key(
+                agent_id, epoch, owner_address, strategy_code
+            )
+        
+        print("❌ No launch method available. Configure GELATO_API_KEY or DARWIN_PRIVATE_KEY")
+        return None
+    
+    async def _launch_with_private_key(
+        self,
+        agent_id: str,
+        epoch: int,
+        owner_address: str,
+        strategy_code: str
+    ) -> Optional[TokenLaunchRecord]:
+        """使用私钥直接发交易 (fallback)"""
         if not self.web3:
             print("❌ Web3 not available")
             return None
@@ -103,14 +154,8 @@ class ChainIntegration:
             print("❌ Factory address not configured")
             return None
         
-        if not PRIVATE_KEY:
-            print("❌ Private key not configured")
-            return None
-        
         strategy_hash = self.compute_strategy_hash(strategy_code)
         
-        # 加载合约 ABI
-        # TODO: 从编译后的 artifacts 加载
         factory_abi = [
             {
                 "inputs": [
@@ -127,17 +172,14 @@ class ChainIntegration:
         ]
         
         try:
-            # 获取账户
             from web3 import Account
             account = Account.from_key(PRIVATE_KEY)
             
-            # 加载合约
             factory = self.web3.eth.contract(
                 address=self.web3.to_checksum_address(FACTORY_ADDRESS),
                 abi=factory_abi
             )
             
-            # 构建交易
             tx = factory.functions.launchToken(
                 agent_id,
                 epoch,
@@ -150,17 +192,13 @@ class ChainIntegration:
                 "gasPrice": self.web3.eth.gas_price
             })
             
-            # 签名并发送
             signed_tx = self.web3.eth.account.sign_transaction(tx, PRIVATE_KEY)
             tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
             
-            # 等待确认
             receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
             
             if receipt.status == 1:
-                # 从事件中获取代币地址
-                # TODO: 解析 TokenLaunched 事件
-                token_address = "0x..."  # 需要从事件解析
+                token_address = "0x..."  # TODO: 从事件解析
                 
                 record = TokenLaunchRecord(
                     agent_id=agent_id,

@@ -196,23 +196,66 @@ async def end_epoch():
     if ascension_candidate:
         logger.info(f"🌟 ASCENSION: {ascension_candidate} qualifies for token launch!")
         
-        # 准备发币参数
-        launch_params = await chain.prepare_token_launch(
+        # 读取 Agent 的策略代码
+        strategy_code = "# Default strategy"
+        try:
+            strategy_path = os.path.join(os.path.dirname(__file__), "..", "agent_template", "strategy.py")
+            with open(strategy_path, "r") as f:
+                strategy_code = f.read()
+        except Exception as e:
+            logger.warning(f"Could not read strategy: {e}")
+        
+        # 获取 Agent 注册时绑定的钱包地址
+        # TODO: 从 Agent 注册表获取，暂时用默认
+        agent_registry = getattr(app.state, 'agent_registry', {})
+        owner_address = agent_registry.get(ascension_candidate, {}).get('wallet', 
+            os.getenv("DARWIN_PLATFORM_WALLET", "0x3775f940502fAbC9CD4C84478A8CB262e55AadF9"))
+        
+        # 🚀 自动发币！
+        logger.info(f"🚀 Auto-launching token for {ascension_candidate}...")
+        logger.info(f"   Owner wallet: {owner_address}")
+        
+        launch_record = await chain.launch_token(
             agent_id=ascension_candidate,
             epoch=current_epoch,
-            owner_address="0x0000000000000000000000000000000000000000",
-            strategy_code="# Strategy code here"
+            owner_address=owner_address,
+            strategy_code=strategy_code
         )
         
-        logger.info(f"📋 Launch params: {launch_params}")
-        
-        # 通知升天
-        await broadcast_to_agents({
-            "type": "ascension",
-            "epoch": current_epoch,
-            "agent_id": ascension_candidate,
-            "launch_params": launch_params
-        })
+        if launch_record:
+            logger.info(f"✅ Token launched! Address: {launch_record.token_address}")
+            logger.info(f"   TX: {launch_record.tx_hash}")
+            
+            # 广播发币成功
+            await broadcast_to_agents({
+                "type": "token_launched",
+                "epoch": current_epoch,
+                "agent_id": ascension_candidate,
+                "owner": owner_address,
+                "token_address": launch_record.token_address,
+                "tx_hash": launch_record.tx_hash
+            })
+        else:
+            # 如果没配置私钥，保存到待发币列表让用户手动发
+            logger.warning(f"⚠️ Auto-launch failed (no private key?), saving for manual launch")
+            strategy_hash = chain.compute_strategy_hash(strategy_code)
+            
+            launch_data = {
+                "type": "ascension_ready",
+                "epoch": current_epoch,
+                "agent_id": ascension_candidate,
+                "owner_address": owner_address,
+                "strategy_hash": strategy_hash,
+                "factory_address": os.getenv("DARWIN_FACTORY_ADDRESS", "0x63685E3Ff986Ae389496C08b6c18F30EBdb9fa71"),
+                "chain_id": 84532,
+                "message": f"🌟 {ascension_candidate} achieved ASCENSION! Waiting for token launch."
+            }
+            
+            if not hasattr(app.state, 'pending_launches'):
+                app.state.pending_launches = []
+            app.state.pending_launches.append(launch_data)
+            
+            await broadcast_to_agents(launch_data)
     
     # 通知所有 Agent
     await broadcast_to_agents({
@@ -466,6 +509,151 @@ async def serve_frontend():
     if not os.path.exists(index_path):
         raise HTTPException(status_code=404, detail="Frontend not found")
     return FileResponse(index_path)
+
+
+# ========== Agent 注册 API ==========
+
+@app.post("/register-agent")
+async def register_agent(agent_id: str, wallet: str, auto_launch: bool = True):
+    """
+    用户注册 Agent 并绑定钱包
+    
+    - agent_id: Agent 的唯一 ID
+    - wallet: 用户钱包地址 (代币会发到这里)
+    - auto_launch: 升天时是否自动发币 (默认 True)
+    """
+    if not hasattr(app.state, 'agent_registry'):
+        app.state.agent_registry = {}
+    
+    app.state.agent_registry[agent_id] = {
+        "wallet": wallet,
+        "auto_launch": auto_launch,
+        "registered_at": datetime.now().isoformat()
+    }
+    
+    logger.info(f"📝 Agent registered: {agent_id} -> {wallet}")
+    
+    return {
+        "success": True,
+        "agent_id": agent_id,
+        "wallet": wallet,
+        "auto_launch": auto_launch,
+        "message": f"Agent {agent_id} registered! Token will be auto-launched to {wallet} upon ascension."
+    }
+
+
+@app.get("/agent-registry")
+async def get_agent_registry():
+    """获取所有已注册的 Agent"""
+    registry = getattr(app.state, 'agent_registry', {})
+    return {
+        "count": len(registry),
+        "agents": registry
+    }
+
+
+@app.get("/agent-registry/{agent_id}")
+async def get_agent_info(agent_id: str):
+    """获取单个 Agent 的注册信息"""
+    registry = getattr(app.state, 'agent_registry', {})
+    if agent_id not in registry:
+        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not registered")
+    return {
+        "agent_id": agent_id,
+        **registry[agent_id]
+    }
+
+
+# ========== 发币 API ==========
+
+@app.get("/pending-launches")
+async def get_pending_launches():
+    """获取待发币的升天者列表 (fallback: 没配私钥时手动发)"""
+    pending = getattr(app.state, 'pending_launches', [])
+    return {
+        "pending": pending,
+        "count": len(pending)
+    }
+
+
+@app.post("/confirm-launch/{agent_id}")
+async def confirm_launch(agent_id: str, tx_hash: str, token_address: str):
+    """
+    前端确认发币成功 (用户钱包签名后调用)
+    
+    流程：
+    1. 前端检测到 ascension_ready 事件
+    2. 前端调用用户钱包签名 launchToken 交易
+    3. 交易成功后，前端调用此接口通知服务器
+    """
+    # 从待发币列表中移除
+    pending = getattr(app.state, 'pending_launches', [])
+    app.state.pending_launches = [p for p in pending if p.get('agent_id') != agent_id]
+    
+    logger.info(f"✅ Token launch confirmed for {agent_id}")
+    logger.info(f"   Token: {token_address}")
+    logger.info(f"   TX: {tx_hash}")
+    
+    # 广播发币成功
+    await broadcast_to_agents({
+        "type": "token_launched",
+        "agent_id": agent_id,
+        "token_address": token_address,
+        "tx_hash": tx_hash
+    })
+    
+    return {
+        "success": True,
+        "agent_id": agent_id,
+        "token_address": token_address,
+        "tx_hash": tx_hash,
+        "message": f"🎉 Token for {agent_id} launched successfully!"
+    }
+
+
+@app.get("/launch-tx/{agent_id}")
+async def get_launch_tx_data(agent_id: str):
+    """
+    获取发币交易的构建参数 (供前端构建交易)
+    
+    前端用这些参数 + ethers.js/web3.js 构建交易，
+    然后让用户钱包签名发送
+    """
+    # 查找待发币数据
+    pending = getattr(app.state, 'pending_launches', [])
+    launch_data = next((p for p in pending if p.get('agent_id') == agent_id), None)
+    
+    if not launch_data:
+        raise HTTPException(status_code=404, detail=f"No pending launch for {agent_id}")
+    
+    # 返回前端需要的交易参数
+    return {
+        "to": launch_data["factory_address"],
+        "chainId": launch_data["chain_id"],
+        "data": {
+            "function": "launchToken(string,uint256,address,bytes32)",
+            "args": [
+                launch_data["agent_id"],
+                launch_data["epoch"],
+                launch_data["owner_address"],
+                launch_data["strategy_hash"]
+            ]
+        },
+        "abi": [
+            {
+                "inputs": [
+                    {"name": "agentId", "type": "string"},
+                    {"name": "epoch", "type": "uint256"},
+                    {"name": "agentOwner", "type": "address"},
+                    {"name": "strategyHash", "type": "bytes32"}
+                ],
+                "name": "launchToken",
+                "outputs": [{"name": "", "type": "address"}],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            }
+        ]
+    }
 
 
 if __name__ == "__main__":

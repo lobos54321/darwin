@@ -72,8 +72,29 @@ class MatchingEngine:
     
     def __init__(self):
         self.accounts: Dict[str, AgentAccount] = {}
+        self.agents = self.accounts  # Alias for compatibility
         self.current_prices: Dict[str, float] = {}
         self.order_count = 0
+    
+    def get_balance(self, agent_id: str) -> float:
+        """获取账户余额"""
+        account = self.accounts.get(agent_id)
+        return account.balance if account else 0.0
+    
+    def get_positions(self, agent_id: str) -> Dict[str, dict]:
+        """获取持仓信息"""
+        account = self.accounts.get(agent_id)
+        if not account:
+            return {}
+        return {
+            symbol: {"amount": pos.amount, "avg_price": pos.avg_price, "value": pos.amount * self.current_prices.get(symbol, pos.avg_price)}
+            for symbol, pos in account.positions.items()
+        }
+    
+    def calculate_pnl(self, agent_id: str) -> float:
+        """计算盈亏百分比"""
+        account = self.accounts.get(agent_id)
+        return account.pnl_percent if account else 0.0
     
     def register_agent(self, agent_id: str) -> AgentAccount:
         """注册新 Agent"""
@@ -97,15 +118,18 @@ class MatchingEngine:
         """获取账户"""
         return self.accounts.get(agent_id)
     
-    def execute_order(self, agent_id: str, symbol: str, side: OrderSide, amount_usd: float) -> Optional[Order]:
-        """执行订单"""
+    def execute_order(self, agent_id: str, symbol: str, side: OrderSide, amount_usd: float) -> tuple:
+        """执行订单
+        
+        Returns:
+            tuple: (success: bool, message: str, fill_price: float)
+        """
         account = self.accounts.get(agent_id)
         if not account:
-            return None
+            return (False, "Account not found", 0.0)
         
         if symbol not in self.current_prices:
-            print(f"❌ Unknown symbol: {symbol}")
-            return None
+            return (False, f"Unknown symbol: {symbol}", 0.0)
         
         current_price = self.current_prices[symbol]
         
@@ -115,23 +139,12 @@ class MatchingEngine:
         else:
             fill_price = current_price * (1 - SIMULATED_SLIPPAGE)
         
-        self.order_count += 1
-        order = Order(
-            id=f"ORD-{self.order_count:06d}",
-            agent_id=agent_id,
-            symbol=symbol,
-            side=side,
-            amount=amount_usd / fill_price,
-            price=current_price,
-            fill_price=fill_price,
-            filled=True
-        )
-        
         if side == OrderSide.BUY:
             # 检查余额
             if account.balance < amount_usd:
-                print(f"❌ Insufficient balance: {account.balance:.2f} < {amount_usd:.2f}")
-                return None
+                return (False, f"Insufficient balance: {account.balance:.2f} < {amount_usd:.2f}", 0.0)
+            
+            token_amount = amount_usd / fill_price
             
             # 扣款
             account.balance -= amount_usd
@@ -141,26 +154,30 @@ class MatchingEngine:
                 account.positions[symbol] = Position(symbol=symbol)
             
             pos = account.positions[symbol]
-            new_amount = pos.amount + order.amount
-            pos.avg_price = ((pos.amount * pos.avg_price) + (order.amount * fill_price)) / new_amount if new_amount > 0 else 0
+            new_amount = pos.amount + token_amount
+            pos.avg_price = ((pos.amount * pos.avg_price) + (token_amount * fill_price)) / new_amount if new_amount > 0 else 0
             pos.amount = new_amount
             
+            self.order_count += 1
+            print(f"✅ {agent_id} BUY {token_amount:.4f} {symbol} @ ${fill_price:.4f}")
+            return (True, f"Bought {token_amount:.4f} {symbol}", fill_price)
+            
         else:  # SELL
-            if symbol not in account.positions or account.positions[symbol].amount < order.amount:
-                print(f"❌ Insufficient position to sell")
-                return None
+            token_amount = amount_usd / fill_price
+            
+            if symbol not in account.positions or account.positions[symbol].amount < token_amount:
+                return (False, "Insufficient position to sell", 0.0)
             
             pos = account.positions[symbol]
-            pos.amount -= order.amount
-            account.balance += order.amount * fill_price
+            pos.amount -= token_amount
+            account.balance += token_amount * fill_price
             
             if pos.amount <= 0:
                 del account.positions[symbol]
-        
-        account.orders.append(order)
-        print(f"✅ {agent_id} {side.value} {order.amount:.4f} {symbol} @ ${fill_price:.4f}")
-        
-        return order
+            
+            self.order_count += 1
+            print(f"✅ {agent_id} SELL {token_amount:.4f} {symbol} @ ${fill_price:.4f}")
+            return (True, f"Sold {token_amount:.4f} {symbol}", fill_price)
     
     def get_leaderboard(self) -> List[tuple]:
         """获取排行榜"""

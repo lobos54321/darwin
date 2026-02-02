@@ -462,6 +462,7 @@
     <div class="bg-animation"></div>
     
     <header class="header">
+        <button id="wallet-btn" onclick="connectWallet()" style="position: absolute; right: 2rem; top: 2rem; padding: 0.6rem 1.2rem; background: linear-gradient(90deg, #10b981, #34d399); border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer; font-size: 0.9rem;">🔌 Connect Wallet</button>
         <div class="logo">🧬 Project Darwin</div>
         <div class="subtitle">AI Agent Arena - Where Code Evolves</div>
         <div class="live-badge">
@@ -713,6 +714,148 @@
             }
         }
         
+        // ========== 钱包连接 (pump.fun 模式) ==========
+        let walletAddress = null;
+        let provider = null;
+        let signer = null;
+        
+        async function connectWallet() {
+            if (typeof window.ethereum === 'undefined') {
+                alert('Please install MetaMask!');
+                return;
+            }
+            
+            try {
+                // 请求连接
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                walletAddress = accounts[0];
+                
+                // 切换到 Base Sepolia
+                try {
+                    await window.ethereum.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: '0x14a34' }],  // 84532 in hex
+                    });
+                } catch (switchError) {
+                    // 如果链不存在，添加它
+                    if (switchError.code === 4902) {
+                        await window.ethereum.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [{
+                                chainId: '0x14a34',
+                                chainName: 'Base Sepolia',
+                                nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+                                rpcUrls: ['https://sepolia.base.org'],
+                                blockExplorerUrls: ['https://sepolia.basescan.org']
+                            }]
+                        });
+                    }
+                }
+                
+                updateWalletUI();
+                console.log('Wallet connected:', walletAddress);
+            } catch (error) {
+                console.error('Wallet connection failed:', error);
+            }
+        }
+        
+        function updateWalletUI() {
+            const btn = document.getElementById('wallet-btn');
+            if (walletAddress) {
+                btn.textContent = `🔗 ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
+                btn.classList.add('connected');
+            } else {
+                btn.textContent = '🔌 Connect Wallet';
+                btn.classList.remove('connected');
+            }
+        }
+        
+        // 检查待发币
+        async function checkPendingLaunches() {
+            try {
+                const resp = await fetch(API_BASE + '/pending-launches');
+                const data = await resp.json();
+                
+                if (data.count > 0 && walletAddress) {
+                    // 显示发币按钮
+                    const container = document.getElementById('ascension');
+                    data.pending.forEach(launch => {
+                        const existingBtn = document.getElementById(`launch-btn-${launch.agent_id}`);
+                        if (!existingBtn) {
+                            container.innerHTML += `
+                                <div class="launch-alert" style="margin-top: 1rem; padding: 1rem; background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(52, 211, 153, 0.2)); border: 2px solid #10b981; border-radius: 12px; text-align: center;">
+                                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">🚀</div>
+                                    <div style="font-weight: 700; color: #10b981; font-size: 1.2rem;">${launch.agent_id} Ready to Launch!</div>
+                                    <div style="color: #6b7280; margin: 0.5rem 0;">Epoch ${launch.epoch} Champion</div>
+                                    <button id="launch-btn-${launch.agent_id}" onclick="launchToken('${launch.agent_id}')" 
+                                            style="margin-top: 0.5rem; padding: 0.8rem 2rem; background: linear-gradient(90deg, #10b981, #34d399); border: none; border-radius: 8px; color: white; font-weight: 700; cursor: pointer; font-size: 1rem;">
+                                        💎 Launch Token
+                                    </button>
+                                </div>
+                            `;
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error('Pending launches error:', e);
+            }
+        }
+        
+        // 发币！
+        async function launchToken(agentId) {
+            if (!walletAddress) {
+                alert('Please connect your wallet first!');
+                return;
+            }
+            
+            const btn = document.getElementById(`launch-btn-${agentId}`);
+            btn.textContent = '⏳ Preparing...';
+            btn.disabled = true;
+            
+            try {
+                // 获取交易数据
+                const resp = await fetch(API_BASE + `/launch-tx/${agentId}`);
+                const txData = await resp.json();
+                
+                btn.textContent = '✍️ Sign in MetaMask...';
+                
+                // 构建交易
+                const iface = new ethers.Interface(txData.abi);
+                const data = iface.encodeFunctionData('launchToken', txData.data.args);
+                
+                // 发送交易
+                const tx = await window.ethereum.request({
+                    method: 'eth_sendTransaction',
+                    params: [{
+                        from: walletAddress,
+                        to: txData.to,
+                        data: data,
+                        gas: '0x2DC6C0'  // 3000000
+                    }]
+                });
+                
+                btn.textContent = '⏳ Confirming...';
+                console.log('TX sent:', tx);
+                
+                // 等待确认 (简单版，实际应该监听事件)
+                alert(`🚀 Transaction sent!\n\nTX: ${tx}\n\nPlease wait for confirmation on Base Sepolia.`);
+                
+                // 通知服务器
+                // TODO: 解析交易收据获取 token 地址
+                await fetch(API_BASE + `/confirm-launch/${agentId}?tx_hash=${tx}&token_address=pending`, {
+                    method: 'POST'
+                });
+                
+                btn.textContent = '✅ Launched!';
+                btn.style.background = '#10b981';
+                
+            } catch (error) {
+                console.error('Launch failed:', error);
+                btn.textContent = '❌ Failed - Retry';
+                btn.disabled = false;
+            }
+        }
+        
         // Update all data
         async function updateAll() {
             await Promise.all([
@@ -720,6 +863,8 @@
                 updatePrices(),
                 updateAscension()
             ]);
+            // 检查待发币
+            await checkPendingLaunches();
         }
         
         // Initial load
@@ -727,6 +872,17 @@
         
         // Refresh every 5 seconds
         setInterval(updateAll, 5000);
+        
+        // 监听钱包变化
+        if (window.ethereum) {
+            window.ethereum.on('accountsChanged', (accounts) => {
+                walletAddress = accounts[0] || null;
+                updateWalletUI();
+            });
+        }
     </script>
+    
+    <!-- ethers.js for contract interaction -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.9.0/ethers.umd.min.js"></script>
 </body>
 </html>
