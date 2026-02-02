@@ -1,0 +1,14 @@
+{
+  "name": "darwin-contracts",
+  "version": "1.0.0",
+  "description": "Project Darwin - Base Chain Smart Contracts",
+  "scripts": {
+    "compile": "forge build",
+    "test": "forge test",
+    "deploy:sepolia": "forge script script/Deploy.s.sol --rpc-url base-sepolia --broadcast --verify",
+    "deploy:mainnet": "forge script script/Deploy.s.sol --rpc-url base --broadcast --verify"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.0"
+  }
+}

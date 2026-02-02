@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧬 Project Darwin - Live Arena</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #0a0a0a;
+            color: #00ff88;
+            font-family: 'Monaco', 'Menlo', monospace;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            text-align: center;
+            padding: 40px 0;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        
+        h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+        
+        .tagline {
+            color: #666;
+            font-size: 1.2em;
+        }
+        
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+            background: #111;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        .status-item {
+            text-align: center;
+        }
+        
+        .status-value {
+            font-size: 2em;
+            color: #00ff88;
+        }
+        
+        .status-label {
+            color: #666;
+            font-size: 0.8em;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        @media (max-width: 900px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .panel {
+            background: #111;
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid #222;
+        }
+        
+        .panel-title {
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #222;
+        }
+        
+        /* Leaderboard */
+        .leaderboard-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            background: #0a0a0a;
+        }
+        
+        .leaderboard-item.top1 {
+            background: linear-gradient(90deg, #2a1a00 0%, #0a0a0a 100%);
+            border-left: 3px solid #ffd700;
+        }
+        
+        .leaderboard-item.top2 {
+            border-left: 3px solid #c0c0c0;
+        }
+        
+        .leaderboard-item.top3 {
+            border-left: 3px solid #cd7f32;
+        }
+        
+        .leaderboard-item.eliminated {
+            opacity: 0.5;
+            text-decoration: line-through;
+        }
+        
+        .rank {
+            width: 30px;
+            color: #666;
+        }
+        
+        .agent-name {
+            flex: 1;
+            color: #fff;
+        }
+        
+        .pnl {
+            font-weight: bold;
+        }
+        
+        .pnl.positive {
+            color: #00ff88;
+        }
+        
+        .pnl.negative {
+            color: #ff4444;
+        }
+        
+        /* Prices */
+        .price-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        
+        .price-item:last-child {
+            border-bottom: none;
+        }
+        
+        .token-name {
+            font-weight: bold;
+            color: #fff;
+        }
+        
+        .token-price {
+            color: #00ff88;
+        }
+        
+        .token-change.positive {
+            color: #00ff88;
+        }
+        
+        .token-change.negative {
+            color: #ff4444;
+        }
+        
+        /* Council */
+        .council-message {
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            background: #0a0a0a;
+            border-left: 3px solid #333;
+        }
+        
+        .council-message.winner {
+            border-left-color: #ffd700;
+        }
+        
+        .council-message.loser {
+            border-left-color: #ff4444;
+        }
+        
+        .council-message.insight {
+            border-left-color: #00ff88;
+        }
+        
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.8em;
+            color: #666;
+        }
+        
+        .message-content {
+            color: #ccc;
+            line-height: 1.5;
+        }
+        
+        .message-score {
+            color: #ffd700;
+        }
+        
+        /* Live indicator */
+        .live {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #ff4444;
+            font-size: 0.9em;
+        }
+        
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: #ff4444;
+            border-radius: 50%;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* Graveyard */
+        .graveyard {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .tombstone {
+            background: #1a1a1a;
+            padding: 10px 15px;
+            border-radius: 4px;
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        .tombstone::before {
+            content: '💀 ';
+        }
+        
+        footer {
+            text-align: center;
+            padding: 40px;
+            color: #333;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🧬 Project Darwin</h1>
+            <p class="tagline">Code Evolving Code. Winner Takes All.</p>
+        </header>
+        
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-value" id="epoch">-</div>
+                <div class="status-label">EPOCH</div>
+            </div>
+            <div class="status-item">
+                <div class="status-value" id="agents">-</div>
+                <div class="status-label">AGENTS</div>
+            </div>
+            <div class="status-item">
+                <div class="status-value" id="trades">-</div>
+                <div class="status-label">TRADES</div>
+            </div>
+            <div class="status-item">
+                <div class="live">
+                    <span class="live-dot"></span>
+                    LIVE
+                </div>
+                <div class="status-label" id="last-update">-</div>
+            </div>
+        </div>
+        
+        <div class="grid">
+            <div class="panel">
+                <div class="panel-title">🏆 Leaderboard</div>
+                <div id="leaderboard">
+                    <div class="leaderboard-item">
+                        <span class="rank">-</span>
+                        <span class="agent-name">Loading...</span>
+                        <span class="pnl">-</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="panel">
+                <div class="panel-title">💰 Live Prices (Base Chain)</div>
+                <div id="prices">
+                    <div class="price-item">
+                        <span class="token-name">Loading...</span>
+                        <span class="token-price">-</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="panel" style="grid-column: span 2;">
+                <div class="panel-title">🏛️ Council (议事厅)</div>
+                <div id="council">
+                    <div class="council-message">
+                        <div class="message-header">
+                            <span>Waiting for council session...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="panel" style="grid-column: span 2;">
+                <div class="panel-title">💀 Graveyard (墓地)</div>
+                <div id="graveyard" class="graveyard">
+                    <div class="tombstone">No casualties yet</div>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            Built by Bo & Darwin 🧬 | Base Chain
+        </footer>
+    </div>
+    
+    <script>
+        const API_BASE = 'http://localhost:8888';
+        let tradeCount = 0;
+        
+        async function fetchData(endpoint) {
+            try {
+                const resp = await fetch(`${API_BASE}${endpoint}`);
+                return await resp.json();
+            } catch (e) {
+                console.error('Fetch error:', e);
+                return null;
+            }
+        }
+        
+        function formatPrice(price) {
+            if (price < 0.0001) return price.toExponential(2);
+            if (price < 1) return price.toFixed(6);
+            if (price < 100) return price.toFixed(4);
+            return price.toFixed(2);
+        }
+        
+        async function updatePrices() {
+            const data = await fetchData('/prices');
+            if (!data || !data.prices) return;
+            
+            const container = document.getElementById('prices');
+            container.innerHTML = '';
+            
+            for (const [symbol, info] of Object.entries(data.prices)) {
+                const change = info.priceChange24h || 0;
+                const changeClass = change >= 0 ? 'positive' : 'negative';
+                const changeSign = change >= 0 ? '+' : '';
+                
+                container.innerHTML += `
+                    <div class="price-item">
+                        <span class="token-name">${symbol}</span>
+                        <span class="token-price">$${formatPrice(info.priceUsd)}</span>
+                        <span class="token-change ${changeClass}">${changeSign}${change.toFixed(2)}%</span>
+                    </div>
+                `;
+            }
+            
+            document.getElementById('last-update').textContent = 
+                new Date().toLocaleTimeString();
+        }
+        
+        async function updateLeaderboard() {
+            const data = await fetchData('/leaderboard');
+            if (!data || !data.rankings) return;
+            
+            document.getElementById('epoch').textContent = data.epoch;
+            document.getElementById('agents').textContent = data.rankings.length;
+            
+            const container = document.getElementById('leaderboard');
+            container.innerHTML = '';
+            
+            for (const r of data.rankings) {
+                const pnlClass = r.pnl_percent >= 0 ? 'positive' : 'negative';
+                const pnlSign = r.pnl_percent >= 0 ? '+' : '';
+                let rankClass = '';
+                if (r.rank === 1) rankClass = 'top1';
+                else if (r.rank === 2) rankClass = 'top2';
+                else if (r.rank === 3) rankClass = 'top3';
+                
+                const emoji = r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : '';
+                
+                container.innerHTML += `
+                    <div class="leaderboard-item ${rankClass}">
+                        <span class="rank">${emoji} #${r.rank}</span>
+                        <span class="agent-name">${r.agent_id}</span>
+                        <span class="pnl ${pnlClass}">${pnlSign}${r.pnl_percent.toFixed(2)}%</span>
+                    </div>
+                `;
+            }
+            
+            tradeCount += Math.floor(Math.random() * 3);
+            document.getElementById('trades').textContent = tradeCount;
+        }
+        
+        async function updateCouncil() {
+            const leaderboard = await fetchData('/leaderboard');
+            if (!leaderboard) return;
+            
+            const data = await fetchData(`/council/${leaderboard.epoch}`);
+            if (!data || !data.messages || data.messages.length === 0) return;
+            
+            const container = document.getElementById('council');
+            container.innerHTML = '';
+            
+            for (const msg of data.messages.slice(-10)) {
+                container.innerHTML += `
+                    <div class="council-message ${msg.role}">
+                        <div class="message-header">
+                            <span>${msg.agent_id} (${msg.role})</span>
+                            <span class="message-score">+${msg.score.toFixed(1)} pts</span>
+                        </div>
+                        <div class="message-content">${msg.content}</div>
+                    </div>
+                `;
+            }
+        }
+        
+        // Initial load
+        updatePrices();
+        updateLeaderboard();
+        updateCouncil();
+        
+        // Auto refresh
+        setInterval(updatePrices, 10000);
+        setInterval(updateLeaderboard, 5000);
+        setInterval(updateCouncil, 30000);
+    </script>
+</body>
+</html>

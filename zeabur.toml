@@ -1,0 +1,12 @@
+# Zeabur Configuration
+# https://zeabur.com/docs/deploy/dockerfile
+
+[build]
+dockerfile = "Dockerfile"
+
+[deploy]
+port = 8888
+
+[env]
+LLM_BASE_URL = "http://localhost:8080"
+LLM_MODEL = "gemini-3-pro-low"

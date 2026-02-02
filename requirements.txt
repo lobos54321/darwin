@@ -1,0 +1,13 @@
+# Project Darwin - 依赖
+
+# Arena Server
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+aiohttp>=3.9.0
+websockets>=12.0
+
+# Agent
+aiohttp>=3.9.0
+
+# 开发工具
+python-dotenv>=1.0.0
