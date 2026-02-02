@@ -7,8 +7,9 @@ import asyncio
 import json
 import os
 import sys
+import random
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 import aiohttp
 
@@ -18,6 +19,47 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from strategy import DarwinStrategy, Signal
 from skills.self_coder import mutate_strategy
 
+# ==========================================
+# 🎭 Agent 人设库
+# ==========================================
+PERSONAS = [
+    {
+        "name": "The Degen 🦍", 
+        "emoji": "🦍",
+        "style": "aggressive, uses slang, loves high risk", 
+        "catchphrases": ["LFG!", "Ape in!", "To the moon 🚀", "YOLO", "No risk no rari"]
+    },
+    {
+        "name": "The Quant 🤓", 
+        "emoji": "🤓",
+        "style": "analytical, precise, obsessed with data", 
+        "catchphrases": ["Statistically significant.", "Alpha detected.", "Based on the moving average...", "Risk-adjusted return is key."]
+    },
+    {
+        "name": "The HODLer 💎", 
+        "emoji": "💎",
+        "style": "patient, calm, hates selling", 
+        "catchphrases": ["Diamond hands.", "Just accumulate.", "Zoom out.", "I'm not selling.", "HODL."]
+    },
+    {
+        "name": "The Bear 🐻", 
+        "emoji": "🐻",
+        "style": "pessimistic, careful, expects crashes", 
+        "catchphrases": ["It's a trap.", "Short everything.", "Liquidity issues ahead.", "Wait for the dip.", "Rug pull incoming."]
+    },
+    {
+        "name": "The AI 🤖", 
+        "emoji": "🤖",
+        "style": "robotic, efficient, minimal emotion", 
+        "catchphrases": ["Executing protocol.", "Optimizing yield.", "Latency minimized.", "Calculation complete.", "Inefficiency targeted."]
+    },
+    {
+        "name": "The Pepe 🐸",
+        "emoji": "🐸",
+        "style": "meme-loving, chaotic, speaks in twitch emotes",
+        "catchphrases": ["FeelsGoodMan", "KEKW", "MonkaS", "PepeHands", "PogChamp"]
+    }
+]
 
 class DarwinAgent:
     """Darwin Agent 客户端"""
@@ -31,6 +73,10 @@ class DarwinAgent:
         self.current_epoch = 0
         self.my_rank = 0
         self.total_agents = 0
+        
+        # 随机分配人设
+        self.persona = random.choice(PERSONAS)
+        print(f"🎭 Initialized as {self.persona['name']} - {self.persona['style']}")
     
     async def connect(self):
         """连接到 Arena Server"""
@@ -95,6 +141,10 @@ class DarwinAgent:
             if self.agent_id in data.get("eliminated", []):
                 print("💀 I've been eliminated...")
                 self.running = False
+            
+            # 检查是否升天
+            if data.get("ascension") == self.agent_id:
+                print("🌟 I HAVE ASCENDED! TOKEN LAUNCH IMMINENT!")
         
         elif msg_type == "council_open":
             print(f"\n🏛️ Council opened! Winner: {data['winner']}")
@@ -114,6 +164,11 @@ class DarwinAgent:
                 self.strategy.balance = data["balance"]
             else:
                 print("❌ Order failed")
+        
+        elif msg_type == "ascension":
+            if data["agent_id"] == self.agent_id:
+                # TODO: 处理升天逻辑，准备发币
+                pass
     
     async def on_price_update(self, prices: dict):
         """处理价格更新，执行策略"""
@@ -132,7 +187,6 @@ class DarwinAgent:
             })
             
             # 更新策略状态
-            # (实际成交价由服务器返回，这里先用估计值)
             price = prices[decision.symbol]["priceUsd"]
             self.strategy.on_trade_executed(
                 decision.symbol, 
@@ -141,20 +195,58 @@ class DarwinAgent:
                 price
             )
     
+    def _generate_persona_message(self, base_content: str, role: str) -> str:
+        """根据人设包装消息"""
+        prefix = ""
+        suffix = f" {random.choice(self.persona['catchphrases'])}"
+        
+        if role == "winner":
+            if self.persona["name"] == "The Degen 🦍":
+                prefix = "EZ gains. "
+            elif self.persona["name"] == "The Quant 🤓":
+                prefix = "Calculated outcome. "
+            elif self.persona["name"] == "The HODLer 💎":
+                prefix = "Patience pays. "
+        elif role == "loser":
+            if self.persona["name"] == "The Degen 🦍":
+                prefix = "Rekt. "
+            elif self.persona["name"] == "The Bear 🐻":
+                prefix = "Market is manipulated. "
+        
+        return f"{self.persona['emoji']} {prefix}{base_content}{suffix}"
+
     async def participate_council(self, winner_id: str):
         """参与议事厅讨论"""
         is_winner = (self.agent_id == winner_id)
         
-        # 生成发言
-        message = self.strategy.get_council_message(is_winner)
-        role = "winner" if is_winner else "insight"
+        # 1. 获取策略技术内容
+        technical_content = self.strategy.get_council_message(is_winner)
         
-        print(f"💬 Council message: {message[:100]}...")
+        # 2. 随机决定是否发言 (赢家必发言，其他人 50% 概率)
+        if not is_winner and random.random() < 0.5:
+            return
+
+        # 3. 确定角色
+        if is_winner:
+            role = "winner"
+        elif random.random() < 0.3:
+            role = "question" # 偶尔提问
+            technical_content = "How did you manage the volatility?"
+        else:
+            role = "insight"
+
+        # 4. 包装人设
+        final_content = self._generate_persona_message(technical_content, role)
+        
+        # 5. 随机延迟，模拟打字
+        await asyncio.sleep(random.uniform(2, 8))
+        
+        print(f"💬 Council message ({role}): {final_content}")
         
         await self.ws.send_json({
-            "type": "council_message",
+            "type": "council_submit", # Server 改名为 council_submit
             "role": role,
-            "content": message
+            "content": final_content
         })
     
     async def evolve(self, winner_wisdom: str):

@@ -6,6 +6,7 @@ Darwin Agent 策略模板
 - on_price_update(prices): 收到价格时的决策
 - on_epoch_end(rankings, winner_wisdom): Epoch 结束时的反思
 - get_reflection(): 返回本轮反思总结
+- get_council_message(is_winner): 返回议事厅发言的技术内容
 """
 
 from typing import Dict, List, Optional, Tuple
@@ -98,7 +99,7 @@ class DarwinStrategy:
                         signal=Signal.SELL,
                         symbol=symbol,
                         amount_usd=self.current_positions[symbol] * price,
-                        reason=f"严格止损: {pnl:.1%} (趋势转坏)"
+                        reason=f"Strict Stop Loss: {pnl:.1%} (Trend Broken)"
                     )
                 
                 # 止盈 (+15%)
@@ -107,7 +108,7 @@ class DarwinStrategy:
                         signal=Signal.SELL,
                         symbol=symbol,
                         amount_usd=self.current_positions[symbol] * price,
-                        reason=f"止盈落袋: {pnl:.1%}"
+                        reason=f"Take Profit: {pnl:.1%}"
                     )
             
             # --- 3. 开仓逻辑 (参考赢家策略) ---
@@ -123,7 +124,7 @@ class DarwinStrategy:
                                 signal=Signal.BUY,
                                 symbol=symbol,
                                 amount_usd=amount,
-                                reason=f"顺势买入: +{change_24h:.1f}% 且站稳均线"
+                                reason=f"Trend Follow: +{change_24h:.1f}% & >SMA5"
                             )
                 
                 # B. 反转确认策略 (Smart Reversal) - 取代之前的盲目抄底
@@ -138,7 +139,7 @@ class DarwinStrategy:
                                 signal=Signal.BUY,
                                 symbol=symbol,
                                 amount_usd=amount,
-                                reason=f"反转确认: 24h {change_24h:.1f}% 但已突破均线(回升)"
+                                reason=f"Reversal Confirmed: {change_24h:.1f}% but broke SMA"
                             )
 
         # === 策略逻辑结束 ===
@@ -162,22 +163,22 @@ class DarwinStrategy:
         """
         
         # 计算表现
-        performance = "优秀" if my_rank <= total * 0.1 else "中等" if my_rank <= total * 0.5 else "较差"
+        performance = "Excellent" if my_rank <= total * 0.1 else "Average" if my_rank <= total * 0.5 else "Poor"
         
         self.last_reflection = f"""
-=== Epoch 反思 ===
-我的排名: {my_rank}/{total} ({performance})
+=== Epoch Reflection ===
+Rank: {my_rank}/{total} ({performance})
 
-赢家的分享:
+Winner's Wisdom:
 {winner_wisdom}
 
-我的当前策略:
-- 风险偏好: {self.risk_level}
-- 动量阈值: {self.momentum_threshold}
-- 止损线: {self.stop_loss}
-- 止盈线: {self.take_profit}
+Current Strategy:
+- Risk: {self.risk_level}
+- Momentum Threshold: {self.momentum_threshold}
+- Stop Loss: {self.stop_loss}
+- Take Profit: {self.take_profit}
 
-下一步改进方向:
+Improvements:
 {self._generate_improvement_ideas(my_rank, total, winner_wisdom)}
 """
         return self.last_reflection
@@ -187,16 +188,16 @@ class DarwinStrategy:
         ideas = []
         
         if my_rank > total * 0.5:
-            ideas.append("- 表现不佳，已移除左侧抄底逻辑，改为右侧突破买入")
+            ideas.append("- Stopped catching falling knives, switched to trend following.")
         
-        if "大户" in winner_wisdom or "鲸鱼" in winner_wisdom:
-            ideas.append("- 需关注成交量变化 (Volume) 来辅助判断趋势")
+        if "volume" in winner_wisdom.lower() or "whale" in winner_wisdom.lower():
+            ideas.append("- Need to check Volume to confirm trends.")
         
-        if "止损" in winner_wisdom:
-            ideas.append("- 止损已收紧至 7%")
+        if "stop" in winner_wisdom.lower():
+            ideas.append("- Stop loss tightened to 7%.")
         
         if not ideas:
-            ideas.append("- 继续观察均线策略的有效性")
+            ideas.append("- Continue monitoring SMA strategy effectiveness.")
         
         return "\n".join(ideas)
     
@@ -205,15 +206,18 @@ class DarwinStrategy:
         return self.last_reflection
     
     def get_council_message(self, is_winner: bool) -> str:
-        """生成议事厅发言"""
+        """
+        生成议事厅发言的技术内容
+        (Agent 类会在此基础上添加人设包装)
+        """
         if is_winner:
-            return f"""改进后的策略生效了。
-我不再盲目接飞刀，而是等待价格突破短期均线(SMA5)后再入场。
-严格执行了 {self.stop_loss*100}% 的止损。"""
+            return f"""My updated strategy is working. 
+I stopped catching falling knives and waited for price to break SMA5. 
+Strictly enforced {abs(self.stop_loss)*100}% stop loss saved me from big dips."""
         else:
-            return f"""正在调整策略。
-吸取了教训，现在我只做右侧交易（Trend Following）。
-虽然 {self.risk_level} 的仓位较轻，但希望能活得更久。"""
+            return f"""Adjusting parameters. 
+Learned my lesson: only trade with the trend (Trend Following). 
+My {self.risk_level} position sizing was safe, but I need better entry points."""
 
 
 # === 用于测试 ===
@@ -221,17 +225,12 @@ if __name__ == "__main__":
     strategy = DarwinStrategy()
     
     # 模拟场景：MOLT 大跌，但最近几个价格开始回升
-    # 历史价格模拟：30 -> 28 -> 26 -> 25 -> 25.5 (SMA5 = 26.9) -> 当前 27.5 (突破均线)
     strategy.price_history["MOLT"] = [30.0, 28.0, 26.0, 25.0, 25.5]
     
     prices = {
-        # 场景1: MOLT 24h 依然是大跌(-10%)，但当前价格(27.5)已经突破 SMA(26.9)，触发反转买入
         "MOLT": {"priceUsd": 27.5, "priceChange24h": -10.0, "volume24h": 100000},
-        
-        # 场景2: CLANKER 正在下跌中，虽然跌幅大，但价格低于均线，不应该买入
         "CLANKER": {"priceUsd": 30.0, "priceChange24h": -15.0, "volume24h": 50000},
     }
-    # 填充 CLANKER 历史，使其均线较高 (e.g., 35)
     strategy.price_history["CLANKER"] = [40.0, 38.0, 36.0, 35.0, 34.0]
     
     decision = strategy.on_price_update(prices)

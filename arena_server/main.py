@@ -20,6 +20,7 @@ from feeder import DexScreenerFeeder
 from matching import MatchingEngine, OrderSide
 from council import Council, MessageRole
 from chain import ChainIntegration, AscensionTracker
+from state_manager import StateManager
 
 # 配置日志
 logging.basicConfig(
@@ -35,6 +36,8 @@ engine = MatchingEngine()
 council = Council()
 chain = ChainIntegration(testnet=True)
 ascension_tracker = AscensionTracker()
+state_manager = StateManager(engine, council, ascension_tracker)
+
 connected_agents: Dict[str, WebSocket] = {}
 current_epoch = 0
 epoch_start_time: datetime = None
@@ -53,6 +56,17 @@ async def lifespan(app: FastAPI):
     logger.info("🧬 Project Darwin Arena Server starting...")
     logger.info(f"Frontend directory: {FRONTEND_DIR}")
     
+    # 尝试加载上次的状态
+    saved_state = state_manager.load_state()
+    if saved_state:
+        current_epoch = saved_state.get("current_epoch", 0)
+        logger.info(f"🔄 Resumed from Epoch {current_epoch}")
+    else:
+        current_epoch = 1
+        logger.info("🆕 Starting fresh from Epoch 1")
+    
+    epoch_start_time = datetime.now()
+
     # 订阅价格更新到 matching engine
     def update_engine_prices(prices):
         engine.update_prices(prices)
@@ -61,9 +75,7 @@ async def lifespan(app: FastAPI):
     # 启动后台任务
     price_task = asyncio.create_task(feeder.start())
     epoch_task = asyncio.create_task(epoch_loop())
-    
-    current_epoch = 1
-    epoch_start_time = datetime.now()
+    autosave_task = asyncio.create_task(state_manager.auto_save_loop(lambda: current_epoch))
     
     logger.info("✅ Arena Server ready!")
     logger.info(f"📊 Live dashboard: http://localhost:8888/live")
@@ -72,8 +84,13 @@ async def lifespan(app: FastAPI):
     
     # 关闭时
     logger.info("🛑 Shutting down Arena Server...")
+    
+    # 保存最终状态
+    state_manager.save_state(current_epoch)
+    
     price_task.cancel()
     epoch_task.cancel()
+    autosave_task.cancel()
 
 
 app = FastAPI(
@@ -236,6 +253,9 @@ async def end_epoch():
         "losers": losers,
         "winner_wisdom": council.get_winner_wisdom(current_epoch)
     })
+    
+    # 保存状态
+    state_manager.save_state(current_epoch)
 
 
 # ========== WebSocket ==========
