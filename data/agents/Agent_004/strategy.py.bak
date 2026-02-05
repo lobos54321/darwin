@@ -1,0 +1,205 @@
+import math
+import statistics
+from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from enum import Enum
+from collections import deque
+
+# === 基础数据结构 ===
+
+class Signal(Enum):
+    BUY = "BUY"
+    SELL = "SELL"
+    HOLD = "HOLD"
+
+
+@dataclass
+class TradeDecision:
+    signal: Signal
+    symbol: str
+    amount_usd: float
+    reason: str
+
+
+class DarwinStrategy:
+    """
+    Agent_004 Gen 7: "Ironclad Bastion" (铁壁堡垒)
+    
+    进化日志 (Gen 7 Evolution Log):
+    1.  **生存优先 (Survival First)**: 
+        - 检测到账户回撤 -15%，触发 "紧急恢复协议"。
+        - 仓位管理从固定金额改为基于账户净值的动态比例 (Kelly Fraction 变体)。
+        - 只有在确认趋势极其强劲时才开仓，宁可错过，不可做错。
+    
+    2.  **趋势跟随 + 波动率过滤 (Trend + Volatility Filter)**:
+        - 抛弃 RSI 震荡指标 (之前的失败原因)，全面转向右侧交易。
+        - 使用 EMA (指数移动平均) 捕捉短期趋势。
+        - 引入 "波动率收缩" (Volatility Contraction) 概念：避免在暴涨暴跌的混沌期入场。
+        
+    3.  **移动止损 (Trailing Stop)**:
+        - 一旦盈利超过 2%，止损线跟随价格上移，锁定利润。
+        - 初始硬止损收紧至 -3% (之前是动态 ATR，现在强制硬止损以保护剩余本金)。
+    """
+    
+    def __init__(self):
+        # === 策略参数 ===
+        self.ema_short_period = 10
+        self.ema_long_period = 30
+        self.volatility_window = 20
+        
+        # === 风控参数 ===
+        self.hard_stop_loss = -0.03       # 硬止损 3%
+        self.trailing_start = 0.02        # 盈利 2% 后开启移动止损
+        self.trailing_gap = 0.02          # 移动止损回撤容忍度 2%
+        
+        # === 资金管理 ===
+        self.initial_capital = 1000.0
+        self.max_positions = 4            # 减少持仓数量以集中火力
+        
+        # === 内部状态 ===
+        self.balance = 850.20             # 同步当前状态
+        self.price_history: Dict[str, deque] = {}
+        self.current_positions: Dict[str, float] = {}  # symbol -> amount_usd
+        self.entry_prices: Dict[str, float] = {}       # symbol -> entry_price
+        self.highest_prices: Dict[str, float] = {}     # symbol -> highest_price_since_entry (用于移动止损)
+        self.last_reflection = "Gen 6 过于激进，Gen 7 专注于资本保全和稳健恢复。"
+
+    def _get_ema(self, prices: List[float], period: int) -> float:
+        if len(prices) < period:
+            return sum(prices) / len(prices)
+        multiplier = 2 / (period + 1)
+        ema = prices[0]
+        for price in prices[1:]:
+            ema = (price - ema) * multiplier + ema
+        return ema
+
+    def _get_volatility(self, prices: List[float]) -> float:
+        if len(prices) < 2:
+            return 0.0
+        # 计算对数收益率的标准差
+        returns = [math.log(prices[i]/prices[i-1]) for i in range(1, len(prices))]
+        return statistics.stdev(returns)
+
+    def on_price_update(self, prices: Dict[str, dict]) -> Optional[TradeDecision]:
+        """
+        核心决策逻辑
+        prices format: {'BTC': {'price': 50000, 'volume': 100...}, ...}
+        """
+        # 1. 更新价格历史
+        for symbol, data in prices.items():
+            price = data['price']
+            if symbol not in self.price_history:
+                self.price_history[symbol] = deque(maxlen=50)
+            self.price_history[symbol].append(price)
+            
+            # 更新持仓最高价 (用于移动止损)
+            if symbol in self.current_positions:
+                if symbol not in self.highest_prices:
+                    self.highest_prices[symbol] = price
+                else:
+                    self.highest_prices[symbol] = max(self.highest_prices[symbol], price)
+
+        # 2. 检查持仓 (止损/止盈)
+        for symbol, amount in list(self.current_positions.items()):
+            current_price = prices[symbol]['price']
+            entry_price = self.entry_prices[symbol]
+            highest_price = self.highest_prices.get(symbol, entry_price)
+            
+            pnl_pct = (current_price - entry_price) / entry_price
+            
+            # A. 硬止损 (Hard Stop)
+            if pnl_pct <= self.hard_stop_loss:
+                return self._close_position(symbol, amount, current_price, "硬止损触发 (-3%)")
+            
+            # B. 移动止损 (Trailing Stop)
+            # 如果曾经盈利超过阈值，且从最高点回撤超过 gap，则止盈
+            if (highest_price - entry_price) / entry_price > self.trailing_start:
+                drawdown_from_peak = (highest_price - current_price) / highest_price
+                if drawdown_from_peak >= self.trailing_gap:
+                    return self._close_position(symbol, amount, current_price, f"移动止损触发 (最高点回撤 {drawdown_from_peak*100:.1f}%)")
+
+        # 3. 寻找开仓机会 (如果没有达到最大持仓)
+        if len(self.current_positions) < self.max_positions:
+            # 计算当前恢复系数：余额越少，开仓越谨慎
+            recovery_factor = self.balance / self.initial_capital  # 0.85
+            # 基础仓位 $150，随本金缩水而减少
+            position_size = 150.0 * (recovery_factor ** 2) 
+            
+            if self.balance < position_size:
+                position_size = self.balance * 0.95 # All-in remainder if low
+
+            best_opportunity = None
+            max_score = -1
+
+            for symbol, data in prices.items():
+                if symbol in self.current_positions:
+                    continue
+                
+                history = list(self.price_history[symbol])
+                if len(history) < self.ema_long_period + 5:
+                    continue
+                
+                current_price = history[-1]
+                ema_short = self._get_ema(history, self.ema_short_period)
+                ema_long = self._get_ema(history, self.ema_long_period)
+                volatility = self._get_volatility(history[-self.volatility_window:])
+                
+                # 策略核心：EMA 金叉 + 价格位于 EMA 之上 + 波动率适中
+                # 变异点：不仅要求金叉，还要求价格比 EMA_short 高出一点点 (确认突破有效性)
+                is_uptrend = ema_short > ema_long and current_price > ema_short * 1.005
+                
+                # 波动率过滤：太大太小都不做
+                is_stable = 0.002 < volatility < 0.03
+                
+                if is_uptrend and is_stable:
+                    # 评分：趋势越强 (EMA 差距越大) 分数越高
+                    score = (ema_short - ema_long) / ema_long
+                    if score > max_score:
+                        max_score = score
+                        best_opportunity = symbol
+
+            if best_opportunity and max_score > 0:
+                current_price = prices[best_opportunity]['price']
+                self.balance -= position_size
+                self.current_positions[best_opportunity] = position_size
+                self.entry_prices[best_opportunity] = current_price
+                self.highest_prices[best_opportunity] = current_price
+                
+                return TradeDecision(
+                    signal=Signal.BUY,
+                    symbol=best_opportunity,
+                    amount_usd=position_size,
+                    reason=f"趋势确认 (Score: {max_score:.4f}), 恢复模式仓位"
+                )
+
+        return None
+
+    def _close_position(self, symbol: str, amount: float, price: float, reason: str) -> TradeDecision:
+        """辅助函数：平仓"""
+        pnl = amount * ((price - self.entry_prices[symbol]) / self.entry_prices[symbol])
+        self.balance += (amount + pnl)
+        
+        del self.current_positions[symbol]
+        del self.entry_prices[symbol]
+        if symbol in self.highest_prices:
+            del self.highest_prices[symbol]
+            
+        return TradeDecision(
+            signal=Signal.SELL,
+            symbol=symbol,
+            amount_usd=amount,
+            reason=reason
+        )
+
+    def on_epoch_end(self, rankings: List[dict], winner_wisdom: str):
+        """每轮结束时的反思"""
+        # 更新上一轮的反思，用于下一轮初始化
+        self.last_reflection = f"当前余额: {self.balance:.2f}. 策略转向稳健趋势跟随。止损执行情况良好。"
+
+    def get_reflection(self) -> str:
+        return self.last_reflection
+
+    def get_council_message(self, is_winner: bool) -> str:
+        if is_winner:
+            return "生存是第一要务。通过严格的移动止损和趋势确认，我成功扭转了局势。"
+        return "正在执行恢复协议。收紧风控，只做确定性最高的趋势。"

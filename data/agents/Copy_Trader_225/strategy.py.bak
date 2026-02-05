@@ -1,0 +1,231 @@
+```python
+import numpy as np
+import pandas as pd
+from dataclasses import dataclass
+from typing import Optional, Dict, List
+
+@dataclass
+class Trade:
+    entry_price: float
+    size: float
+    side: str  # 'LONG' or 'SHORT'
+    stop_loss: float
+    take_profit: float
+    entry_time: pd.Timestamp
+
+class Copy_Trader_225:
+    """
+    Agent: Copy_Trader_225
+    Evolution Gen: 2
+    Strategy: Adaptive Volatility Trend-Reversion (AVTR)
+    Description: 
+        A hybrid strategy that identifies the dominant trend using EMA ribbons 
+        but enters on mean-reversion pullbacks using RSI and Bollinger Bands. 
+        Includes dynamic volatility-based position sizing (Kelly-lite) to recover 
+        from previous 20% drawdown.
+    """
+
+    def __init__(self, initial_capital: float = 800.00):
+        self.capital = initial_capital
+        self.equity = initial_capital
+        self.balance = initial_capital
+        self.position: Optional[Trade] = None
+        self.trades_history: List[Dict] = []
+        
+        # Strategy Parameters
+        self.params = {
+            'ema_fast': 20,
+            'ema_slow': 50,
+            'rsi_period': 14,
+            'rsi_oversold': 35,
+            'rsi_overbought': 65,
+            'bb_period': 20,
+            'bb_std': 2.0,
+            'atr_period': 14,
+            'risk_per_trade': 0.015,  # Conservative 1.5% risk to rebuild capital
+            'reward_risk_ratio': 2.5,
+            'trailing_stop_activation': 1.5  # Activate trailing stop after 1.5R
+        }
+
+    def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Calculates technical indicators for the strategy."""
+        df = df.copy()
+        
+        # Trend Indicators
+        df['EMA_Fast'] = df['close'].ewm(span=self.params['ema_fast'], adjust=False).mean()
+        df['EMA_Slow'] = df['close'].ewm(span=self.params['ema_slow'], adjust=False).mean()
+        
+        # Momentum
+        delta = df['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=self.params['rsi_period']).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=self.params['rsi_period']).mean()
+        rs = gain / loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+        
+        # Volatility (ATR)
+        high_low = df['high'] - df['low']
+        high_close = np.abs(df['high'] - df['close'].shift())
+        low_close = np.abs(df['low'] - df['close'].shift())
+        ranges = pd.concat([high_low, high_close, low_close], axis=1)
+        true_range = np.max(ranges, axis=1)
+        df['ATR'] = true_range.rolling(window=self.params['atr_period']).mean()
+        
+        # Bollinger Bands
+        df['BB_Mid'] = df['close'].rolling(window=self.params['bb_period']).mean()
+        df['BB_Std'] = df['close'].rolling(window=self.params['bb_period']).std()
+        df['BB_Upper'] = df['BB_Mid'] + (df['BB_Std'] * self.params['bb_std'])
+        df['BB_Lower'] = df['BB_Mid'] - (df['BB_Std'] * self.params['bb_std'])
+        
+        return df.dropna()
+
+    def get_position_size(self, entry_price: float, stop_loss: float) -> float:
+        """Calculates position size based on risk percentage and stop loss distance."""
+        risk_amount = self.equity * self.params['risk_per_trade']
+        price_risk = np.abs(entry_price - stop_loss)
+        
+        if price_risk == 0:
+            return 0.0
+            
+        size = risk_amount / price_risk
+        return size
+
+    def check_signals(self, row: pd.Series, prev_row: pd.Series) -> str:
+        """
+        Determines entry signals.
+        Logic: Trend Follow (EMA) + Pullback Entry (RSI/BB)
+        """
+        trend_up = row['EMA_Fast'] > row['EMA_Slow']
+        trend_down = row['EMA_Fast'] < row['EMA_Slow']
+        
+        # Long Logic: Uptrend + RSI dip + Price near lower band or support
+        if trend_up:
+            if (row['RSI'] < 50) and (row['close'] > row['EMA_Fast']) and (row['RSI'] > prev_row['RSI']):
+                return 'LONG'
+        
+        # Short Logic: Downtrend + RSI spike + Price near upper band or resistance
+        if trend_down:
+            if (row['RSI'] > 50) and (row['close'] < row['EMA_Fast']) and (row['RSI'] < prev_row['RSI']):
+                return 'SHORT'
+                
+        return 'NEUTRAL'
+
+    def manage_risk(self, current_price: float, current_time: pd.Timestamp):
+        """
+        Handles Stop Loss, Take Profit, and Trailing Stops.
+        """
+        if not self.position:
+            return
+
+        p = self.position
+        
+        # Calculate R-multiple (unrealized)
+        if p.side == 'LONG':
+            r_multiple = (current_price - p.entry_price) / (p.entry_price - p.stop_loss)
+            
+            # Trailing Stop Logic
+            if r_multiple >= self.params['trailing_stop_activation']:
+                new_stop = current_price - (p.entry_price - p.stop_loss) # Move stop to lock profit
+                self.position.stop_loss = max(p.stop_loss, new_stop)
+            
+            # Hard Exit
+            if current_price <= p.stop_loss:
+                self.close_position(current_price, current_time, 'STOP_LOSS')
+            elif current_price >= p.take_profit:
+                self.close_position(current_price, current_time, 'TAKE_PROFIT')
+
+        elif p.side == 'SHORT':
+            r_multiple = (p.entry_price - current_price) / (p.stop_loss - p.entry_price)
+            
+            # Trailing Stop Logic
+            if r_multiple >= self.params['trailing_stop_activation']:
+                new_stop = current_price + (p.stop_loss - p.entry_price)
+                self.position.stop_loss = min(p.stop_loss, new_stop)
+                
+            # Hard Exit
+            if current_price >= p.stop_loss:
+                self.close_position(current_price, current_time, 'STOP_LOSS')
+            elif current_price <= p.take_profit:
+                self.close_position(current_price, current_time, 'TAKE_PROFIT')
+
+    def close_position(self, exit_price: float, timestamp: pd.Timestamp, reason: str):
+        if not self.position:
+            return
+
+        p = self.position
+        pnl = 0.0
+        
+        if p.side == 'LONG':
+            pnl = (exit_price - p.entry_price) * p.size
+        else:
+            pnl = (p.entry_price - exit_price) * p.size
+            
+        self.balance += pnl
+        self.equity = self.balance # Assuming no open PnL calculation for simplicity here
+        
+        self.trades_history.append({
+            'entry_time': p.entry_time,
+            'exit_time': timestamp,
+            'side': p.side,
+            'entry_price': p.entry_price,
+            'exit_price': exit_price,
+            'pnl': pnl,
+            'reason': reason,
+            'balance': self.balance
+        })
+        
+        self.position = None
+
+    def on_tick(self, timestamp: pd.Timestamp, open_: float, high: float, low: float, close: float, indicators: pd.Series):
+        """Main execution loop for a single candle/tick."""
+        
+        # 1. Manage Existing Position
+        if self.position:
+            self.manage_risk(close, timestamp)
+            
+        # 2. Check for New Entries (if no position)
+        if not self.position and indicators.name > 0: # Ensure we have history
+            signal = self.check_signals(indicators, indicators) # Needs prev row in real loop, simplified here
+            
+            atr = indicators['ATR']
+            
+            if signal == 'LONG':
+                sl = close - (2.0 * atr)
+                tp = close + (self.params['reward_risk_ratio'] * 2.0 * atr)
+                size = self.get_position_size(close, sl)
+                
+                if size > 0:
+                    self.position = Trade(close, size, 'LONG', sl, tp, timestamp)
+                    
+            elif signal == 'SHORT':
+                sl = close + (2.0 * atr)
+                tp = close - (self.params['reward_risk_ratio'] * 2.0 * atr)
+                size = self.get_position_size(close, sl)
+                
+                if size > 0:
+                    self.position = Trade(close, size, 'SHORT', sl, tp, timestamp)
+
+    def run_backtest(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Executes the strategy over a dataframe."""
+        df_ind = self.calculate_indicators(df)
+        
+        # Iterate through data
+        for i in range(1, len(df_ind)):
+            curr_row = df_ind.iloc[i]
+            prev_row = df_ind.iloc[i-1]
+            
+            # Manage Risk first
+            if self.position:
+                # Check High/Low for stop hits within candle
+                if self.position.side == 'LONG':
+                    if curr_row['low'] <= self.position.stop_loss:
+                        self.close_position(self.position.stop_loss, curr_row.name, 'STOP_LOSS')
+                    elif curr_row['high'] >= self.position.take_profit:
+                        self.close_position(self.position.take_profit, curr_row.name, 'TAKE_PROFIT')
+                elif self.position.side == 'SHORT':
+                    if curr_row['high'] >= self.position.stop_loss:
+                        self.close_position(self.position.stop_loss, curr_row.name, 'STOP_LOSS')
+                    elif curr_row['low'] <= self.position.take_profit:
+                        self.close_position(self.position.take_profit, curr_row.name, 'TAKE_PROFIT')
+
+            # Entry Logic
+            

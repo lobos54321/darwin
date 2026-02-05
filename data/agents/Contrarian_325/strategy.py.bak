@@ -1,0 +1,135 @@
+import numpy as np
+import pandas as pd
+
+class Contrarian_325_v2:
+    """
+    Evolution: Generation 2
+    Type: Mean Reversion / Contrarian
+    Improvements:
+    1. Added Dynamic Position Sizing based on Volatility (ATR).
+    2. Implemented dual-confirmation entry (Bollinger Bands + RSI).
+    3. Strict Stop-Loss and Take-Profit mechanisms to protect remaining capital ($800).
+    """
+
+    def __init__(self, balance=800.00):
+        self.balance = balance
+        self.position = 0  # 0: Flat, 1: Long, -1: Short
+        self.entry_price = 0.0
+        self.stop_loss = 0.0
+        self.take_profit = 0.0
+        
+        # Strategy Parameters
+        self.rsi_period = 14
+        self.bb_period = 20
+        self.bb_std = 2.0
+        self.atr_period = 14
+        self.risk_per_trade = 0.02  # Risk 2% of equity per trade
+        
+    def calculate_indicators(self, df):
+        """Calculates technical indicators using Pandas."""
+        df = df.copy()
+        
+        # RSI
+        delta = df['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=self.rsi_period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=self.rsi_period).mean()
+        rs = gain / loss
+        df['rsi'] = 100 - (100 / (1 + rs))
+        
+        # Bollinger Bands
+        df['sma'] = df['close'].rolling(window=self.bb_period).mean()
+        df['std'] = df['close'].rolling(window=self.bb_period).std()
+        df['upper_bb'] = df['sma'] + (self.bb_std * df['std'])
+        df['lower_bb'] = df['sma'] - (self.bb_std * df['std'])
+        
+        # ATR (Average True Range) for Volatility
+        high_low = df['high'] - df['low']
+        high_close = np.abs(df['high'] - df['close'].shift())
+        low_close = np.abs(df['low'] - df['close'].shift())
+        ranges = pd.concat([high_low, high_close, low_close], axis=1)
+        true_range = np.max(ranges, axis=1)
+        df['atr'] = true_range.rolling(window=self.atr_period).mean()
+        
+        return df
+
+    def get_position_size(self, price, atr):
+        """
+        Calculate position size based on risk management.
+        Risk Amount = Balance * 2%
+        Stop Distance = 2 * ATR
+        Size = Risk Amount / Stop Distance
+        """
+        if pd.isna(atr) or atr == 0:
+            return 0
+            
+        risk_amount = self.balance * self.risk_per_trade
+        stop_distance = 2.0 * atr
+        size = risk_amount / stop_distance
+        
+        # Cap leverage if necessary (e.g., max 1x leverage for safety)
+        max_size = self.balance / price
+        return min(size, max_size)
+
+    def on_bar(self, history):
+        """
+        Main execution logic called on every new bar.
+        history: Pandas DataFrame with columns ['open', 'high', 'low', 'close', 'volume']
+        """
+        if len(history) < self.bb_period + 1:
+            return "HOLD", 0
+
+        df = self.calculate_indicators(history)
+        current = df.iloc[-1]
+        prev = df.iloc[-2]
+        
+        # Current Market Data
+        price = current['close']
+        rsi = current['rsi']
+        lower_bb = current['lower_bb']
+        upper_bb = current['upper_bb']
+        atr = current['atr']
+        sma = current['sma']
+
+        action = "HOLD"
+        quantity = 0
+
+        # --- Exit Logic (Risk Management & Profit Taking) ---
+        if self.position != 0:
+            # Stop Loss Check
+            if (self.position == 1 and price < self.stop_loss) or \
+               (self.position == -1 and price > self.stop_loss):
+                self.position = 0
+                return "CLOSE", 1.0 # Close 100%
+
+            # Take Profit Check (Mean Reversion: Close when price returns to SMA)
+            if (self.position == 1 and price >= sma) or \
+               (self.position == -1 and price <= sma):
+                self.position = 0
+                return "CLOSE", 1.0
+
+        # --- Entry Logic (Contrarian) ---
+        if self.position == 0 and not pd.isna(atr):
+            
+            # Long Signal: Price breaks below Lower BB AND RSI is Oversold (<30)
+            # Added Filter: Price must be starting to curl up (Close > Open) to avoid catching falling knives
+            if price < lower_bb and rsi < 30 and current['close'] > current['open']:
+                size = self.get_position_size(price, atr)
+                if size > 0:
+                    self.position = 1
+                    self.entry_price = price
+                    self.stop_loss = price - (2.0 * atr) # Stop loss at 2 ATR
+                    self.take_profit = sma
+                    return "BUY", size
+
+            # Short Signal: Price breaks above Upper BB AND RSI is Overbought (>70)
+            # Added Filter: Price must be starting to curl down
+            elif price > upper_bb and rsi > 70 and current['close'] < current['open']:
+                size = self.get_position_size(price, atr)
+                if size > 0:
+                    self.position = -1
+                    self.entry_price = price
+                    self.stop_loss = price + (2.0 * atr) # Stop loss at 2 ATR
+                    self.take_profit = sma
+                    return "SELL", size
+
+        return action, quantity

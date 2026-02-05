@@ -8,7 +8,8 @@ import aiohttp
 import ssl
 import certifi
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, Optional, List
+from collections import deque
 from config import TARGET_TOKENS, DEXSCREENER_BASE_URL, PRICE_UPDATE_INTERVAL
 
 # 创建 SSL context (解决 macOS 证书问题)
@@ -20,6 +21,9 @@ class DexScreenerFeeder:
     
     def __init__(self):
         self.prices: Dict[str, dict] = {}
+        self.history: Dict[str, deque] = {
+            sym: deque(maxlen=100) for sym in TARGET_TOKENS.keys()
+        }
         self.last_update: Optional[datetime] = None
         self._running = False
         self._subscribers = []
@@ -62,6 +66,11 @@ class DexScreenerFeeder:
             for symbol, result in zip(TARGET_TOKENS.keys(), results):
                 if result:
                     self.prices[symbol] = result
+                    # Append to history
+                    self.history[symbol].append({
+                        "timestamp": datetime.now().timestamp(),
+                        "price": result["priceUsd"]
+                    })
             
             self.last_update = datetime.now()
             return self.prices

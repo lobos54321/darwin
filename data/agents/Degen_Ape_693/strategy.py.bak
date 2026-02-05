@@ -1,0 +1,182 @@
+import numpy as np
+import pandas as pd
+from dataclasses import dataclass
+from typing import Optional, Dict
+
+@dataclass
+class TradeSignal:
+    action: str  # 'BUY', 'SELL', 'HOLD'
+    quantity: float
+    stop_loss: float
+    take_profit: float
+    reason: str
+
+class DegenApeEvolutionStrategy:
+    """
+    Agent: Degen_Ape_693 (Evolved)
+    Strategy: Adaptive Volatility Regime Switcher (AVRS)
+    Mutation: Hybrid Trend/Mean-Reversion with Drawdown Protection
+    """
+
+    def __init__(self, initial_capital: float = 1000.0):
+        self.initial_capital = initial_capital
+        self.roi = -0.463  # Current PnL state
+        
+        # Hyperparameters
+        self.ema_short_period = 13
+        self.ema_long_period = 48
+        self.rsi_period = 14
+        self.atr_period = 14
+        self.bb_period = 20
+        self.bb_std = 2.0
+        
+        # Risk Management Parameters
+        self.base_risk_per_trade = 0.02  # 2% risk
+        self.max_drawdown_limit = 0.15   # 15% threshold for defensive mode
+        self.leverage = 1.0
+
+    def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        
+        # Trend Indicators
+        df['ema_short'] = df['close'].ewm(span=self.ema_short_period, adjust=False).mean()
+        df['ema_long'] = df['close'].ewm(span=self.ema_long_period, adjust=False).mean()
+        
+        # Momentum
+        delta = df['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=self.rsi_period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=self.rsi_period).mean()
+        rs = gain / loss
+        df['rsi'] = 100 - (100 / (1 + rs))
+        
+        # Volatility (ATR)
+        high_low = df['high'] - df['low']
+        high_close = np.abs(df['high'] - df['close'].shift())
+        low_close = np.abs(df['low'] - df['close'].shift())
+        ranges = pd.concat([high_low, high_close, low_close], axis=1)
+        true_range = np.max(ranges, axis=1)
+        df['atr'] = true_range.rolling(window=self.atr_period).mean()
+        
+        # Bollinger Bands
+        df['bb_mid'] = df['close'].rolling(window=self.bb_period).mean()
+        df['bb_std'] = df['close'].rolling(window=self.bb_period).std()
+        df['bb_upper'] = df['bb_mid'] + (df['bb_std'] * self.bb_std)
+        df['bb_lower'] = df['bb_mid'] - (df['bb_std'] * self.bb_std)
+        
+        # Volatility Regime (Normalized ATR)
+        df['natr'] = (df['atr'] / df['close']) * 100
+        
+        return df
+
+    def get_position_size(self, current_balance: float, entry_price: float, stop_loss: float) -> float:
+        """
+        Dynamic position sizing based on account balance and distance to stop loss.
+        Includes defensive scaling for accounts in deep drawdown.
+        """
+        # Defensive Mutation: Reduce risk if account is significantly down
+        current_drawdown = 1 - (current_balance / self.initial_capital)
+        risk_scaling = 0.5 if current_drawdown > 0.40 else 1.0
+        
+        risk_amount = current_balance * self.base_risk_per_trade * risk_scaling
+        price_risk = abs(entry_price - stop_loss)
+        
+        if price_risk == 0:
+            return 0.0
+            
+        qty = risk_amount / price_risk
+        
+        # Cap max position size to 95% of balance (no leverage for recovery)
+        max_qty = (current_balance * 0.95) / entry_price
+        return min(qty, max_qty)
+
+    def analyze(self, market_data: pd.DataFrame, current_balance: float, current_position: Optional[Dict] = None) -> TradeSignal:
+        """
+        Main execution logic
+        """
+        df = self.calculate_indicators(market_data)
+        last_row = df.iloc[-1]
+        prev_row = df.iloc[-2]
+        
+        curr_price = last_row['close']
+        atr = last_row['atr']
+        
+        # Determine Market Regime
+        # High volatility -> Trend Following
+        # Low volatility -> Mean Reversion
+        volatility_threshold = df['natr'].mean()
+        is_high_volatility = last_row['natr'] > volatility_threshold
+        
+        action = 'HOLD'
+        reason = "Wait"
+        stop_loss = 0.0
+        take_profit = 0.0
+        
+        # --- Logic for Open Positions ---
+        if current_position:
+            # Trailing Stop Logic
+            if current_position['side'] == 'LONG':
+                new_stop = curr_price - (2.5 * atr)
+                if new_stop > current_position.get('stop_loss', 0):
+                    # Update SL strictly upwards
+                    return TradeSignal('HOLD', 0, new_stop, current_position.get('take_profit'), "Trailing Stop Update")
+                
+                # Exit conditions
+                if curr_price < current_position['stop_loss']:
+                    return TradeSignal('SELL', current_position['qty'], 0, 0, "Stop Loss Hit")
+                if curr_price > current_position['take_profit']:
+                    return TradeSignal('SELL', current_position['qty'], 0, 0, "Take Profit Hit")
+                if last_row['rsi'] > 80: # Overbought exit
+                    return TradeSignal('SELL', current_position['qty'], 0, 0, "RSI Overbought Exit")
+            
+            return TradeSignal('HOLD', 0, 0, 0, "Holding Position")
+
+        # --- Logic for New Entries ---
+        
+        # Strategy A: Trend Following (High Volatility)
+        if is_high_volatility:
+            # Golden Cross + RSI Confirmation
+            trend_bullish = last_row['ema_short'] > last_row['ema_long']
+            momentum_ok = 50 < last_row['rsi'] < 70
+            
+            if trend_bullish and momentum_ok:
+                action = 'BUY'
+                reason = "Trend Follow: EMA Cross + Volatility"
+                stop_loss = curr_price - (2.0 * atr)
+                take_profit = curr_price + (4.0 * atr) # Higher RR for trends
+
+        # Strategy B: Mean Reversion (Low Volatility)
+        else:
+            # Bollinger Band Bounce
+            bb_oversold = curr_price <= last_row['bb_lower']
+            rsi_oversold = last_row['rsi'] < 35
+            
+            if bb_oversold and rsi_oversold:
+                action = 'BUY'
+                reason = "Mean Reversion: BB Lower + RSI Oversold"
+                stop_loss = curr_price - (1.5 * atr)
+                take_profit = last_row['bb_mid'] # Target mean
+
+        if action == 'BUY':
+            qty = self.get_position_size(current_balance, curr_price, stop_loss)
+            return TradeSignal(action, qty, stop_loss, take_profit, reason)
+
+        return TradeSignal('HOLD', 0, 0, 0, "No Valid Setup")
+
+# Example Usage Mock
+if __name__ == "__main__":
+    # Generate dummy data
+    data = {
+        'open': np.random.normal(100, 1, 100),
+        'high': np.random.normal(102, 1, 100),
+        'low': np.random.normal(98, 1, 100),
+        'close': np.random.normal(100, 1, 100),
+        'volume': np.random.normal(1000, 100, 100)
+    }
+    df = pd.DataFrame(data)
+    
+    # Initialize evolved agent
+    strategy = DegenApeEvolutionStrategy(initial_capital=1000.0)
+    
+    # Run analysis
+    signal = strategy.analyze(df, current_balance=536.69)
+    print(f"Signal: {signal.action} | Qty: {signal.quantity:.4f} | Reason: {signal.reason}")

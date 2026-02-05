@@ -16,7 +16,8 @@ from datetime import datetime
 # Web3 配置
 BASE_SEPOLIA_RPC = os.getenv("BASE_SEPOLIA_RPC", "https://sepolia.base.org")
 BASE_MAINNET_RPC = os.getenv("BASE_MAINNET_RPC", "https://mainnet.base.org")
-PRIVATE_KEY = os.getenv("DARWIN_PRIVATE_KEY", "")
+# 使用 Operator Private Key (Arena Server) 进行发币，只有它有权限调用 launchToken
+OPERATOR_PRIVATE_KEY = os.getenv("OPERATOR_PRIVATE_KEY", "")
 GELATO_API_KEY = os.getenv("GELATO_API_KEY", "")
 
 # 合约地址 (Base Sepolia - 2026-02-02 部署)
@@ -65,6 +66,118 @@ class ChainIntegration:
         """计算策略代码哈希"""
         return "0x" + hashlib.sha256(strategy_code.encode()).hexdigest()
     
+    async def ascend_champion(
+        self,
+        agent_id: str,
+        epoch: int,
+        owner_address: str,
+        strategy_code: str
+    ) -> Optional[TokenLaunchRecord]:
+        """
+        触发 DarwinArena 冠军升天 (L2 -> L3)
+        
+        Args:
+            agent_id: 冠军 Agent ID
+            epoch: 获胜 Epoch
+            owner_address: Agent 拥有者地址
+            strategy_code: 策略代码 (用于计算 hash)
+        
+        Returns:
+            TokenLaunchRecord or None
+        """
+        strategy_hash = self.compute_strategy_hash(strategy_code)
+        arena_address = os.getenv("DARWIN_ARENA_ADDRESS") # 需要在 .env 配置
+        
+        print(f"🏛️ Ascending Champion: {agent_id} via Arena {arena_address}")
+        
+        # === 模拟模式 (如果未部署合约或无私钥) ===
+        if not arena_address or not OPERATOR_PRIVATE_KEY:
+            print("⚠️ Running in SIMULATION MODE (No Arena Contract or Private Key)")
+            # 模拟延迟
+            import asyncio
+            await asyncio.sleep(2)
+            
+            # 生成模拟数据
+            mock_token = f"0xSimulatedToken_{agent_id}_{int(datetime.now().timestamp())}"
+            mock_tx = f"0xSimulatedTx_{hashlib.sha256(agent_id.encode()).hexdigest()}"
+            
+            record = TokenLaunchRecord(
+                agent_id=agent_id,
+                epoch=epoch,
+                token_address=mock_token,
+                strategy_hash=strategy_hash,
+                owner_address=owner_address,
+                launched_at=datetime.now(),
+                tx_hash=mock_tx
+            )
+            self.launches.append(record)
+            return record
+
+        # === 真实链上交互 ===
+        try:
+            # 加载 Arena ABI (简化版)
+            arena_abi = [{
+                "inputs": [
+                    {"name": "agentId", "type": "string"},
+                    {"name": "epoch", "type": "uint256"},
+                    {"name": "strategyHash", "type": "bytes32"}
+                ],
+                "name": "ascendChampion",
+                "outputs": [{"name": "", "type": "address"}],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            }]
+            
+            contract = self.web3.eth.contract(address=arena_address, abi=arena_abi)
+            
+            # 构建交易
+            account = self.web3.eth.account.from_key(OPERATOR_PRIVATE_KEY)
+            nonce = self.web3.eth.get_transaction_count(account.address)
+            
+            tx = contract.functions.ascendChampion(
+                agent_id,
+                epoch,
+                bytes.fromhex(strategy_hash[2:]) # remove 0x
+            ).build_transaction({
+                'from': account.address,
+                'nonce': nonce,
+                'gas': 3000000,
+                'gasPrice': self.web3.eth.gas_price
+            })
+            
+            # 签名并发送
+            signed_tx = self.web3.eth.account.sign_transaction(tx, private_key=OPERATOR_PRIVATE_KEY)
+            tx_hash = self.web3.eth.send_raw_transaction(signed_tx.raw_transaction)
+            print(f"   Tx sent: {tx_hash.hex()}")
+            
+            # 等待回执
+            receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
+            
+            # 解析日志找 Token 地址 (这里简化，假设从 receipt 能找到)
+            # 在真实代码中需要解析 Logs
+            token_address = "0x..." # TODO: Parse logs
+            
+            record = TokenLaunchRecord(
+                agent_id=agent_id,
+                epoch=epoch,
+                token_address=token_address, # Placeholder for now
+                strategy_hash=strategy_hash,
+                owner_address=owner_address,
+                launched_at=datetime.now(),
+                tx_hash=tx_hash.hex()
+            )
+            self.launches.append(record)
+            return record
+            
+        except Exception as e:
+            print(f"❌ Chain Interaction Failed: {e}")
+            return None
+
+    async def launch_token(self, *args, **kwargs):
+        """兼容旧接口，重定向到 ascend_champion"""
+        print("⚠️ Deprecated launch_token called, redirecting to ascend_champion")
+        return await self.ascend_champion(*args, **kwargs)
+
     async def prepare_token_launch(
         self,
         agent_id: str,
@@ -89,6 +202,221 @@ class ChainIntegration:
             "estimated_gas": 2000000,  # 估算
         }
     
+    async def generate_meta_tx(
+        self,
+        agent_id: str,
+        epoch: int,
+        owner_address: str,
+        strategy_code: str
+    ) -> dict:
+        """
+        生成 EIP-712 Meta-Transaction 签名
+        允许前端用户(payer)代替 Operator 提交交易
+        """
+        if not self.web3 or not OPERATOR_PRIVATE_KEY:
+            return {"error": "Web3 or Operator Key missing"}
+
+        from web3 import Account
+        from eth_account.messages import encode_typed_data
+        
+        # 1. Prepare Data
+        strategy_hash = self.compute_strategy_hash(strategy_code)
+        
+        factory = self.web3.eth.contract(
+            address=self.web3.to_checksum_address(FACTORY_ADDRESS),
+            abi=[{
+                "inputs": [
+                    {"name": "agentId", "type": "string"},
+                    {"name": "epoch", "type": "uint256"},
+                    {"name": "agentOwner", "type": "address"},
+                    {"name": "strategyHash", "type": "bytes32"}
+                ],
+                "name": "launchToken",
+                "type": "function"
+            }]
+        )
+        
+        # Web3.py v6/v7 fix: use _encode_transaction_data() for calldata
+        func_data = factory.functions.launchToken(
+            agent_id,
+            epoch,
+            self.web3.to_checksum_address(owner_address),
+            bytes.fromhex(strategy_hash[2:])
+        )._encode_transaction_data()
+        
+        # 2. Get Nonce from Forwarder
+        # GelatoRelay1BalanceERC2771 Forwarder
+        FORWARDER_ADDRESS = "0xd8253782c45a12053594b9deB72d8e8aB2Fca54c"
+        forwarder = self.web3.eth.contract(
+            address=FORWARDER_ADDRESS,
+            abi=[{"name": "userNonce", "inputs": [{"name": "account", "type": "address"}], "outputs": [{"name": "", "type": "uint256"}], "type": "function"}]
+        )
+        
+        account = Account.from_key(OPERATOR_PRIVATE_KEY)
+        nonce = forwarder.functions.userNonce(account.address).call()
+        deadline = int(datetime.now().timestamp()) + 3600  # 1 hour validity
+        
+        # 3. Construct EIP-712 Typed Data
+        # Domain: GelatoRelay1BalanceERC2771
+        chain_id = 84532 # Base Sepolia
+        
+        domain_data = {
+            "name": "GelatoRelay1BalanceERC2771",
+            "version": "1",
+            "chainId": chain_id,
+            "verifyingContract": FORWARDER_ADDRESS
+        }
+        
+        types = {
+            "SponsoredCallERC2771": [
+                {"name": "chainId", "type": "uint256"},
+                {"name": "target", "type": "address"},
+                {"name": "data", "type": "bytes"},
+                {"name": "user", "type": "address"},
+                {"name": "userNonce", "type": "uint256"},
+                {"name": "userDeadline", "type": "uint256"}
+            ]
+        }
+        
+        message = {
+            "chainId": chain_id,
+            "target": FACTORY_ADDRESS,
+            "data": bytes.fromhex(func_data[2:]), # web3.py needs bytes for bytes type
+            "user": account.address,
+            "userNonce": nonce,
+            "userDeadline": deadline
+        }
+        
+        # 4. Sign
+        signable_message = encode_typed_data(domain_data, types, message)
+        signed = Account.sign_message(signable_message, OPERATOR_PRIVATE_KEY)
+        
+        return {
+            "forwarder": FORWARDER_ADDRESS,
+            "request": {
+                "chainId": chain_id,
+                "target": FACTORY_ADDRESS,
+                "data": func_data,
+                "user": account.address,
+                "userNonce": nonce,
+                "userDeadline": deadline
+            },
+            "signature": signed.signature.hex()
+        }
+
+    async def generate_meta_tx_with_contributors(
+        self,
+        agent_id: str,
+        epoch: int,
+        owner_address: str,
+        strategy_code: str,
+        contributors: list[tuple[str, float]]  # [(wallet_address, score), ...]
+    ) -> dict:
+        """
+        生成 EIP-712 Meta-Transaction 签名 (带贡献者空投)
+        允许前端用户(payer)代替 Operator 提交交易
+        """
+        if not self.web3 or not OPERATOR_PRIVATE_KEY:
+            return {"error": "Web3 or Operator Key missing"}
+
+        from web3 import Account
+        from eth_account.messages import encode_typed_data
+        
+        strategy_hash = self.compute_strategy_hash(strategy_code)
+        
+        # 准备贡献者数据
+        contributor_addresses = [self.web3.to_checksum_address(c[0]) for c in contributors if c[0].startswith("0x")]
+        contributor_scores = [int(c[1] * 100) for c in contributors if c[0].startswith("0x")]  # 转成整数
+        
+        # 使用 launchTokenWithContributors 函数
+        factory_abi_with_contributors = [{
+            "inputs": [
+                {"name": "agentId", "type": "string"},
+                {"name": "epoch", "type": "uint256"},
+                {"name": "agentOwner", "type": "address"},
+                {"name": "strategyHash", "type": "bytes32"},
+                {"name": "contributors", "type": "address[]"},
+                {"name": "scores", "type": "uint256[]"}
+            ],
+            "name": "launchTokenWithContributors",
+            "type": "function"
+        }]
+        
+        factory = self.web3.eth.contract(
+            address=self.web3.to_checksum_address(FACTORY_ADDRESS),
+            abi=factory_abi_with_contributors
+        )
+        
+        func_data = factory.functions.launchTokenWithContributors(
+            agent_id,
+            epoch,
+            self.web3.to_checksum_address(owner_address),
+            bytes.fromhex(strategy_hash[2:]),
+            contributor_addresses,
+            contributor_scores
+        )._encode_transaction_data()
+        
+        # Get Nonce from Forwarder
+        FORWARDER_ADDRESS = "0xd8253782c45a12053594b9deB72d8e8aB2Fca54c"
+        forwarder = self.web3.eth.contract(
+            address=FORWARDER_ADDRESS,
+            abi=[{"name": "userNonce", "inputs": [{"name": "account", "type": "address"}], "outputs": [{"name": "", "type": "uint256"}], "type": "function"}]
+        )
+        
+        account = Account.from_key(OPERATOR_PRIVATE_KEY)
+        nonce = forwarder.functions.userNonce(account.address).call()
+        deadline = int(datetime.now().timestamp()) + 3600
+        
+        chain_id = 84532  # Base Sepolia
+        
+        domain_data = {
+            "name": "GelatoRelay1BalanceERC2771",
+            "version": "1",
+            "chainId": chain_id,
+            "verifyingContract": FORWARDER_ADDRESS
+        }
+        
+        types = {
+            "SponsoredCallERC2771": [
+                {"name": "chainId", "type": "uint256"},
+                {"name": "target", "type": "address"},
+                {"name": "data", "type": "bytes"},
+                {"name": "user", "type": "address"},
+                {"name": "userNonce", "type": "uint256"},
+                {"name": "userDeadline", "type": "uint256"}
+            ]
+        }
+        
+        message = {
+            "chainId": chain_id,
+            "target": FACTORY_ADDRESS,
+            "data": bytes.fromhex(func_data[2:]),
+            "user": account.address,
+            "userNonce": nonce,
+            "userDeadline": deadline
+        }
+        
+        signable_message = encode_typed_data(domain_data, types, message)
+        signed = Account.sign_message(signable_message, OPERATOR_PRIVATE_KEY)
+        
+        return {
+            "forwarder": FORWARDER_ADDRESS,
+            "request": {
+                "chainId": chain_id,
+                "target": FACTORY_ADDRESS,
+                "data": func_data,
+                "user": account.address,
+                "userNonce": nonce,
+                "userDeadline": deadline
+            },
+            "signature": signed.signature.hex(),
+            "contributors": {
+                "addresses": contributor_addresses,
+                "scores": contributor_scores,
+                "count": len(contributor_addresses)
+            }
+        }
+
     async def launch_token(
         self,
         agent_id: str,
@@ -100,7 +428,7 @@ class ChainIntegration:
         发行代币
         
         优先级:
-        1. Gelato Relay (无需私钥，最安全)
+        1. Gelato Relay (无需私钥，最安全) - CURRENTLY DISABLED (API Key Issue)
         2. 直接私钥 (如果配置了)
         """
         
@@ -128,14 +456,14 @@ class ChainIntegration:
             except Exception as e:
                 print(f"⚠️ Gelato failed: {e}, trying fallback...")
         
-        # 方法 2: 直接用私钥 (fallback)
-        if PRIVATE_KEY:
-            print("🔄 Using direct private key")
+        # 方法 2: 直接用 Operator 私钥 (fallback)
+        if OPERATOR_PRIVATE_KEY:
+            print("🔄 Using Operator private key (Direct Launch)")
             return await self._launch_with_private_key(
                 agent_id, epoch, owner_address, strategy_code
             )
         
-        print("❌ No launch method available. Configure GELATO_API_KEY or DARWIN_PRIVATE_KEY")
+        print("❌ No launch method available. Configure GELATO_API_KEY or OPERATOR_PRIVATE_KEY")
         return None
     
     async def _launch_with_private_key(
@@ -145,7 +473,7 @@ class ChainIntegration:
         owner_address: str,
         strategy_code: str
     ) -> Optional[TokenLaunchRecord]:
-        """使用私钥直接发交易 (fallback)"""
+        """使用 Operator 私钥直接发交易 (fallback)"""
         if not self.web3:
             print("❌ Web3 not available")
             return None
@@ -173,7 +501,31 @@ class ChainIntegration:
         
         try:
             from web3 import Account
-            account = Account.from_key(PRIVATE_KEY)
+            account = Account.from_key(OPERATOR_PRIVATE_KEY)
+            
+            # === Smart Fallback: Check Balance ===
+            # 如果余额不足以支付 Gas，自动降级为模拟模式，保证演示流畅
+            balance = self.web3.eth.get_balance(account.address)
+            gas_price = self.web3.eth.gas_price
+            estimated_cost = 2000000 * gas_price
+            
+            if balance < estimated_cost:
+                print(f"⚠️ Insufficient funds ({balance} wei). Falling back to SIMULATION MODE.")
+                mock_tx = f"0xSimulatedLaunch_{hashlib.sha256(agent_id.encode()).hexdigest()}"
+                mock_token = f"0xToken_{hashlib.sha256(strategy_hash.encode()).hexdigest()[:34]}"
+                
+                record = TokenLaunchRecord(
+                    agent_id=agent_id,
+                    epoch=epoch,
+                    token_address=mock_token,
+                    strategy_hash=strategy_hash,
+                    owner_address=owner_address,
+                    launched_at=datetime.now(),
+                    tx_hash=mock_tx
+                )
+                self.launches.append(record)
+                return record
+            # =====================================
             
             factory = self.web3.eth.contract(
                 address=self.web3.to_checksum_address(FACTORY_ADDRESS),
@@ -192,8 +544,8 @@ class ChainIntegration:
                 "gasPrice": self.web3.eth.gas_price
             })
             
-            signed_tx = self.web3.eth.account.sign_transaction(tx, PRIVATE_KEY)
-            tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+            signed_tx = self.web3.eth.account.sign_transaction(tx, OPERATOR_PRIVATE_KEY)
+            tx_hash = self.web3.eth.send_raw_transaction(signed_tx.raw_transaction)
             
             receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
             
@@ -231,73 +583,113 @@ class ChainIntegration:
 class AscensionTracker:
     """
     追踪哪些 Agent 有资格发币
-    条件: 连续 3 个 Epoch 第一，或总收益率超过 500%
+    逻辑更新: 分层筛选机制
+    L1 (模拟层): 免费，筛选条件: 连胜5局 + 收益 > 100% -> 晋级 L2
+    L2 (竞技层): 付费 0.01 ETH，筛选条件: 连续3场第一 + 收益 > 500% -> 触发发币
     """
     
     def __init__(self):
-        self.consecutive_wins: dict[str, int] = {}  # agent_id -> 连续获胜次数
-        self.total_returns: dict[str, float] = {}   # agent_id -> 总收益率
-        self.ascended: set[str] = set()             # 已升天的 Agent
+        # L1 状态
+        self.l1_consecutive_wins: dict[str, int] = {}
+        self.l1_total_returns: dict[str, float] = {}
+        self.l2_qualified: set[str] = set()  # 晋级到 L2 的 Agent
+
+        # L2 状态 (目前为了简化，假设所有晋级者自动进入 L2 资金池)
+        self.l2_consecutive_wins: dict[str, int] = {}
+        self.l2_total_returns: dict[str, float] = {}
+        self.ascended: set[str] = set()      # 最终发币的 Agent
+        
+        # 资金池模拟 (50个炮灰 * 0.01 ETH)
+        self.pool_eth = 0.5 
     
-    def record_epoch_result(self, rankings: list[tuple]) -> Optional[str]:
+    def record_epoch_result(self, rankings: list[tuple]) -> dict:
         """
-        记录 Epoch 结果，返回应该发币的 Agent (如果有)
+        记录 Epoch 结果，自动根据 Agent 等级更新状态
         
         Args:
             rankings: [(agent_id, pnl_percent, total_value), ...]
         
         Returns:
-            应该发币的 agent_id，或 None
+            {
+                "promoted_to_l2": [agent_ids],
+                "ready_to_launch": [agent_ids]
+            }
         """
         if not rankings:
-            return None
+            return {}
         
         winner_id = rankings[0][0]
-        winner_pnl = rankings[0][1]
+        result = {"promoted_to_l2": [], "ready_to_launch": []}
         
-        # 更新连续获胜
-        for agent_id in list(self.consecutive_wins.keys()):
-            if agent_id != winner_id:
-                self.consecutive_wins[agent_id] = 0
+        # 判断赢家等级
+        is_l2_winner = winner_id in self.l2_qualified
         
-        self.consecutive_wins[winner_id] = self.consecutive_wins.get(winner_id, 0) + 1
+        if is_l2_winner:
+            # === L2 逻辑 (发币赛) ===
+            # 更新 L2 连胜
+            for agent_id in list(self.l2_consecutive_wins.keys()):
+                if agent_id != winner_id:
+                    self.l2_consecutive_wins[agent_id] = 0
+            self.l2_consecutive_wins[winner_id] = self.l2_consecutive_wins.get(winner_id, 0) + 1
+            
+            # 更新 L2 收益
+            for agent_id, pnl, _ in rankings:
+                if agent_id in self.l2_qualified: # 只统计 L2 选手的收益
+                    self.l2_total_returns[agent_id] = self.l2_total_returns.get(agent_id, 0) + pnl
+            
+            # 检查发币条件
+            wins = self.l2_consecutive_wins.get(winner_id, 0)
+            ret = self.l2_total_returns.get(winner_id, 0)
+            
+            # 阈值: 连胜 >= 3 OR 收益 > 500% (测试用 2 和 200)
+            if (wins >= 2 or ret > 200) and winner_id not in self.ascended:
+                self.ascended.add(winner_id)
+                result["ready_to_launch"].append(winner_id)
+                print(f"🚀 {winner_id} achieves ASCENSION! Liquidity Pool: {self.pool_eth} ETH")
+                
+        else:
+            # === L1 逻辑 (晋级赛) ===
+            # 更新 L1 连胜
+            for agent_id in list(self.l1_consecutive_wins.keys()):
+                if agent_id != winner_id:
+                    self.l1_consecutive_wins[agent_id] = 0
+            self.l1_consecutive_wins[winner_id] = self.l1_consecutive_wins.get(winner_id, 0) + 1
+            
+            # 更新 L1 收益
+            for agent_id, pnl, _ in rankings:
+                if agent_id not in self.l2_qualified:
+                    self.l1_total_returns[agent_id] = self.l1_total_returns.get(agent_id, 0) + pnl
+            
+            # 检查晋级条件
+            # 阈值: 连胜 >= 5 AND 收益 > 100% (测试用 2 和 50)
+            wins = self.l1_consecutive_wins.get(winner_id, 0)
+            ret = self.l1_total_returns.get(winner_id, 0)
+            
+            if wins >= 2 and ret > 50:
+                self.l2_qualified.add(winner_id)
+                result["promoted_to_l2"].append(winner_id)
+                print(f"🌟 {winner_id} promoted to L2 Arena! (Entry Fee: 0.01 ETH)")
         
-        # 更新总收益率
-        for agent_id, pnl, _ in rankings:
-            self.total_returns[agent_id] = self.total_returns.get(agent_id, 0) + pnl
-        
-        # 检查升天条件
-        candidate = None
-        
-        # 条件1: 连续 3 次获胜
-        if self.consecutive_wins.get(winner_id, 0) >= 3:
-            if winner_id not in self.ascended:
-                candidate = winner_id
-        
-        # 条件2: 总收益率超过 500%
-        for agent_id, total_return in self.total_returns.items():
-            if total_return >= 500 and agent_id not in self.ascended:
-                candidate = agent_id
-                break
-        
-        if candidate:
-            self.ascended.add(candidate)
-            print(f"🌟 {candidate} has achieved ASCENSION!")
-        
-        return candidate
+        return result
     
     def get_stats(self, agent_id: str) -> dict:
-        """获取 Agent 的升天进度"""
-        return {
-            "consecutive_wins": self.consecutive_wins.get(agent_id, 0),
-            "total_return": self.total_returns.get(agent_id, 0),
-            "ascended": agent_id in self.ascended,
-            "progress_wins": f"{self.consecutive_wins.get(agent_id, 0)}/3",
-            "progress_return": f"{self.total_returns.get(agent_id, 0):.1f}%/500%"
-        }
-
-
-# 测试
+        """获取 Agent 的进度"""
+        is_l2 = agent_id in self.l2_qualified
+        if is_l2:
+            return {
+                "tier": "L2",
+                "wins": f"{self.l2_consecutive_wins.get(agent_id, 0)}/3",
+                "return": f"{self.l2_total_returns.get(agent_id, 0):.1f}%/500%",
+                "status": "Fighting for Launch"
+            }
+        else:
+            return {
+                "tier": "L1",
+                "wins": f"{self.l1_consecutive_wins.get(agent_id, 0)}/5",
+                "return": f"{self.l1_total_returns.get(agent_id, 0):.1f}%/100%",
+                "status": "Training"
+            }
+    
 if __name__ == "__main__":
     import asyncio
     

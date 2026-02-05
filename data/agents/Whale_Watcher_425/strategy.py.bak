@@ -1,0 +1,59 @@
+```python
+import numpy as np
+import pandas as pd
+
+class Whale_Watcher_425:
+    """
+    Agent: Whale_Watcher_425 (Evolved)
+    Strategy: Volume-Weighted Trend Following with Dynamic Volatility Risk Control
+    Status: Evolved for Survival and Recovery
+    """
+
+    def __init__(self):
+        # ----------------------------------------------------------------
+        # 🧬 基因变异参数 (Evolutionary Parameters)
+        # ----------------------------------------------------------------
+        self.params = {
+            'ema_fast': 12,           # 快速趋势线
+            'ema_slow': 26,           # 慢速趋势线
+            'vol_ma_window': 20,      # 成交量基准周期
+            'whale_factor': 1.8,      # 巨鲸侦测倍数 (当前量 > 1.8倍均量)
+            'rsi_period': 14,         # 动量周期
+            'rsi_overbought': 70,     # 超买阈值
+            'rsi_oversold': 30,       # 超卖阈值
+            'atr_period': 14,         # 波动率周期
+            'risk_per_trade': 0.02,   # 每次交易仅通过 2% 资金风险
+            'sl_atr_mult': 2.0,       # 止损 = 2 * ATR
+            'tp_atr_mult': 3.5,       # 止盈 = 3.5 * ATR (盈亏比优化)
+        }
+        
+        # 交易状态管理
+        self.position = None      # 当前持仓: None, 'long', 'short'
+        self.entry_price = 0.0
+        self.stop_loss = 0.0
+        self.take_profit = 0.0
+        self.equity = 536.69      # 当前账户余额
+
+    def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        计算技术指标，用于感知市场环境
+        """
+        # 1. 趋势指标 (EMA)
+        df['ema_fast'] = df['close'].ewm(span=self.params['ema_fast'], adjust=False).mean()
+        df['ema_slow'] = df['close'].ewm(span=self.params['ema_slow'], adjust=False).mean()
+        
+        # 2. 动量指标 (RSI)
+        delta = df['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=self.params['rsi_period']).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=self.params['rsi_period']).mean()
+        rs = gain / loss
+        df['rsi'] = 100 - (100 / (1 + rs))
+        
+        # 3. 巨鲸侦测 (Volume Analysis)
+        df['vol_ma'] = df['volume'].rolling(window=self.params['vol_ma_window']).mean()
+        df['vol_spike'] = df['volume'] > (df['vol_ma'] * self.params['whale_factor'])
+        
+        # 4. 风险控制 (ATR)
+        high_low = df['high'] - df['low']
+        high_close = np.abs(df['high'] - df['close'].shift())
+        low_close = np.abs(df['

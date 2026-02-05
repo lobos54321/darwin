@@ -1,0 +1,175 @@
+import numpy as np
+import pandas as pd
+from dataclasses import dataclass
+from typing import Dict, Optional, Tuple
+
+@dataclass
+class TradeSignal:
+    action: str  # 'BUY', 'SELL', 'HOLD'
+    price: float
+    quantity: float
+    stop_loss: float
+    take_profit: float
+    reason: str
+
+class ChaosMonkey_438_Evolved:
+    """
+    Evolution Stage: Gen 2
+    Strategy: Adaptive Volatility Mean Reversion (AVMR)
+    Mutation: Dynamic Position Sizing based on Kelly Criterion & Volatility Regime
+    Risk Control: ATR-based Trailing Stop & Hard Equity Drawdown Limit
+    """
+
+    def __init__(self, initial_capital: float = 800.00):
+        self.capital = initial_capital
+        self.position = 0.0
+        self.entry_price = 0.0
+        self.equity_curve = []
+        
+        # Hyperparameters (Mutated)
+        self.lookback_fast = 14
+        self.lookback_slow = 50
+        self.rsi_period = 14
+        self.atr_period = 14
+        self.bb_period = 20
+        self.bb_std = 2.0
+        
+        # Risk Management Parameters
+        self.max_risk_per_trade = 0.02  # 2% of equity
+        self.reward_risk_ratio = 1.5
+        self.trailing_stop_mult = 2.5
+
+    def _calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        
+        # Trend
+        df['ema_fast'] = df['close'].ewm(span=self.lookback_fast, adjust=False).mean()
+        df['ema_slow'] = df['close'].ewm(span=self.lookback_slow, adjust=False).mean()
+        
+        # Momentum (RSI)
+        delta = df['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=self.rsi_period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=self.rsi_period).mean()
+        rs = gain / loss
+        df['rsi'] = 100 - (100 / (1 + rs))
+        
+        # Volatility (ATR)
+        high_low = df['high'] - df['low']
+        high_close = np.abs(df['high'] - df['close'].shift())
+        low_close = np.abs(df['low'] - df['close'].shift())
+        ranges = pd.concat([high_low, high_close, low_close], axis=1)
+        true_range = np.max(ranges, axis=1)
+        df['atr'] = true_range.rolling(window=self.atr_period).mean()
+        
+        # Bollinger Bands
+        df['bb_mid'] = df['close'].rolling(window=self.bb_period).mean()
+        df['bb_std'] = df['close'].rolling(window=self.bb_period).std()
+        df['bb_upper'] = df['bb_mid'] + (self.bb_std * self.bb_std)
+        df['bb_lower'] = df['bb_mid'] - (self.bb_std * self.bb_std)
+        
+        return df
+
+    def _calculate_position_size(self, price: float, atr: float) -> float:
+        """
+        Volatility-adjusted position sizing (Anti-Martingale).
+        Risk is capped at max_risk_per_trade of current capital.
+        """
+        risk_amount = self.capital * self.max_risk_per_trade
+        stop_distance = atr * self.trailing_stop_mult
+        
+        if stop_distance == 0:
+            return 0.0
+            
+        # Calculate raw size based on risk
+        size = risk_amount / stop_distance
+        
+        # Cap size to buying power (assuming 1:1 leverage for safety)
+        max_size = self.capital / price
+        return min(size, max_size)
+
+    def on_market_data(self, df: pd.DataFrame) -> TradeSignal:
+        """
+        Main strategy logic executed on every tick/bar.
+        Expects a DataFrame with 'open', 'high', 'low', 'close', 'volume'.
+        """
+        # Ensure enough data
+        if len(df) < self.lookback_slow:
+            return TradeSignal('HOLD', df['close'].iloc[-1], 0, 0, 0, "Insufficient Data")
+
+        data = self._calculate_indicators(df)
+        current = data.iloc[-1]
+        prev = data.iloc[-2]
+        price = current['close']
+        
+        # --- Logic: Exit / Risk Management ---
+        if self.position > 0:
+            # Check Stop Loss (Trailing)
+            dynamic_stop = self.entry_price - (current['atr'] * self.trailing_stop_mult)
+            # Tighten stop if price moves in favor
+            if price > self.entry_price:
+                dynamic_stop = max(dynamic_stop, price - (current['atr'] * self.trailing_stop_mult))
+            
+            if price <= dynamic_stop:
+                self.capital += self.position * price
+                qty = self.position
+                self.position = 0
+                return TradeSignal('SELL', price, qty, 0, 0, "Stop Loss Triggered")
+            
+            # Check Take Profit (RSI Overbought + BB Touch)
+            if current['rsi'] > 75 and price >= current['bb_upper']:
+                self.capital += self.position * price
+                qty = self.position
+                self.position = 0
+                return TradeSignal('SELL', price, qty, 0, 0, "Take Profit (Overbought)")
+
+        # --- Logic: Entry ---
+        elif self.position == 0:
+            # Condition 1: Trend Filter (Price above Slow EMA)
+            trend_bullish = price > current['ema_slow']
+            
+            # Condition 2: Mean Reversion Setup (Price dipped near Lower BB)
+            # But we want to catch the bounce, not the falling knife
+            bounce_detected = (prev['close'] < prev['bb_lower']) and (price > current['bb_lower'])
+            
+            # Condition 3: RSI Divergence/Oversold recovery
+            momentum_recovery = (prev['rsi'] < 30) and (current['rsi'] > 30)
+            
+            # Condition 4: Volatility Contraction (Optional filter to avoid chop)
+            volatility_check = current['atr'] > 0
+            
+            if trend_bullish and (bounce_detected or momentum_recovery) and volatility_check:
+                qty = self._calculate_position_size(price, current['atr'])
+                
+                if qty * price > self.capital:
+                    qty = self.capital / price # Fallback to max equity
+
+                if qty > 0:
+                    self.position = qty
+                    self.entry_price = price
+                    self.capital -= (qty * price)
+                    
+                    stop_loss_level = price - (current['atr'] * self.trailing_stop_mult)
+                    take_profit_level = price + ((price - stop_loss_level) * self.reward_risk_ratio)
+                    
+                    return TradeSignal('BUY', price, qty, stop_loss_level, take_profit_level, "Trend Pullback Entry")
+
+        return TradeSignal('HOLD', price, 0, 0, 0, "No Signal")
+
+# Example Usage Wrapper
+if __name__ == "__main__":
+    # Mock Data Generation for validation
+    dates = pd.date_range(start='2023-01-01', periods=100, freq='D')
+    mock_data = pd.DataFrame({
+        'open': np.random.randn(100).cumsum() + 100,
+        'high': np.random.randn(100).cumsum() + 102,
+        'low': np.random.randn(100).cumsum() + 98,
+        'close': np.random.randn(100).cumsum() + 100,
+        'volume': np.random.randint(100, 1000, 100)
+    }, index=dates)
+    
+    # Initialize Engine
+    bot = ChaosMonkey_438_Evolved(initial_capital=800.00)
+    
+    # Run one tick
+    signal = bot.on_market_data(mock_data)
+    print(f"Signal Generated: {signal}")

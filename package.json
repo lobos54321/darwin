@@ -1,0 +1,26 @@
+{
+  "name": "project-darwin",
+  "version": "1.0.0",
+  "description": "> **Base 链上首个\"优胜劣汰\"机制的 AI Agent 孵化与资产发行平台** > > *Code Evolving Code. Winner Takes All.*",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lobos54321/darwin.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/lobos54321/darwin/issues"
+  },
+  "homepage": "https://github.com/lobos54321/darwin#readme",
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.4.0"
+  }
+}

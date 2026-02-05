@@ -1,9 +1,8 @@
 import math
 import statistics
-from typing import Dict, List, Optional, Deque, Tuple
+from typing import Dict, List, Optional
 from dataclasses import dataclass
 from enum import Enum
-from collections import deque
 
 class Signal(Enum):
     BUY = "BUY"
@@ -19,190 +18,181 @@ class TradeDecision:
 
 class DarwinStrategy:
     """
-    Agent_006 Evolution V19: "Trend Fortress"
+    Agent_006 进化版: "Phoenix Protocol" (凤凰协议)
     
-    【进化逻辑】
-    基于上一轮 (-53%) 的惨痛教训，本轮策略核心为“生存与稳健复利”。
+    【策略重构 - 绝地反击模式】
+    针对当前仅剩 $16.49 的极端情况，常规策略已失效。
+    本策略采用 "极高波动率捕捉 + 移动止盈" 的生存模式。
     
-    1. **策略变异 (Mutation)**:
-       - 放弃单一指标，采用 **双均线交叉 (Dual MA Crossover)** 系统，确保只在趋势明确形成后入场（严格右侧交易）。
-       - 引入 **波动率过滤器 (Volatility Filter)**: 当价格标准差过低（横盘震荡）时禁止开仓，避免在无趋势市场中被反复止损磨损本金。
-    
-    2. **风控升级 (Risk Control)**:
-       - **仓位管理**: 降至 20% (0.2)，在资金回撤严重时优先保命。
-       - **硬止损**: 固定 -3.5%，防止单笔交易造成毁灭性打击。
-       - **移动止盈**: 只有当盈利超过 5% 时才启动追踪止盈，锁定胜果。
+    进化特征:
+    1. 资金管理 (Survival Mode): 当资金 < $50 时，采用 "全仓狙击" 模式 (All-in 单一最强标的)，
+       利用复利尝试快速翻本。
+    2. 入场逻辑 (Winner's DNA + Mutation): 结合布林带 (Bollinger Bands) 突破与 RSI 动量。
+       只做 "口袋支点" (Pocket Pivot) —— 价格突破布林上轨且 RSI 未超买 (<75)。
+    3. 出场逻辑 (Tight Control): 
+       - 移动止盈: 价格每上涨 1%，止损线向上移动。
+       - 硬止损: -2% 立即斩仓，绝不扛单。
     """
-    
+
     def __init__(self):
         # === 核心参数 ===
-        self.fast_ma_period = 7     # 快线
-        self.slow_ma_period = 25    # 慢线
-        self.volatility_window = 10 # 波动率计算窗口
-        self.min_volatility = 0.002 # 最小波动率阈值 (0.2%)，过滤死水行情
+        self.bb_window = 20           # 布林带周期
+        self.bb_std_dev = 2.0         # 布林带标准差倍数
+        self.rsi_window = 14          # RSI 周期
         
-        # === 资金管理 ===
-        self.position_size_ratio = 0.2  # 每次使用当前余额的 20%
-        self.max_positions = 3          # 最大同时持仓数
+        # === 风险管理 ===
+        self.max_positions = 1        # 资金少时只持有一只
+        self.stop_loss_pct = 0.02     # 2% 硬止损
+        self.trailing_gap = 0.03      # 3% 移动止盈回撤阈值
         
-        # === 止损止盈 ===
-        self.stop_loss_pct = 0.035      # 3.5% 硬止损
-        self.trail_activation = 0.05    # 盈利 5% 激活追踪
-        self.trail_callback = 0.02      # 回撤 2% 离场
-        
-        # === 状态存储 ===
-        self.price_history: Dict[str, Deque[float]] = {}
-        # positions结构: symbol -> {'entry': float, 'highest': float, 'amount': float}
-        self.positions: Dict[str, dict] = {} 
-        self.balance = 468.65 # 同步当前余额
-        self.last_reflection = "Initializing V19 Trend Fortress..."
+        # === 状态记录 ===
+        self.price_history: Dict[str, List[float]] = {}
+        self.current_positions: Dict[str, float] = {}  # symbol -> amount_usd
+        self.entry_prices: Dict[str, float] = {}       # symbol -> entry price
+        self.highest_prices: Dict[str, float] = {}     # symbol -> highest price since entry
+        self.balance = 16.49  # Sync with current state
+        self.last_reflection = "Initialized Phoenix Protocol."
 
-    def _get_ma(self, symbol: str, period: int) -> float:
-        """计算移动平均线"""
-        history = self.price_history.get(symbol, deque())
-        if len(history) < period:
-            return 0.0
-        return sum(list(history)[-period:]) / period
-
-    def _get_volatility(self, symbol: str) -> float:
-        """计算近期价格标准差/当前价格"""
-        history = list(self.price_history.get(symbol, deque()))
-        if len(history) < self.volatility_window:
-            return 0.0
-        recent_prices = history[-self.volatility_window:]
-        if not recent_prices: 
-            return 0.0
-        stdev = statistics.stdev(recent_prices)
-        avg = sum(recent_prices) / len(recent_prices)
-        return stdev / avg if avg > 0 else 0.0
+    def _calculate_indicators(self, symbol: str) -> dict:
+        prices = self.price_history[symbol]
+        if len(prices) < self.bb_window:
+            return {}
+            
+        # SMA & Bollinger Bands
+        recent = prices[-self.bb_window:]
+        sma = statistics.mean(recent)
+        stdev = statistics.stdev(recent)
+        upper_band = sma + (stdev * self.bb_std_dev)
+        lower_band = sma - (stdev * self.bb_std_dev)
+        
+        # RSI
+        if len(prices) < self.rsi_window + 1:
+            rsi = 50
+        else:
+            deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
+            recent_deltas = deltas[-self.rsi_window:]
+            up = [d for d in recent_deltas if d > 0]
+            down = [abs(d) for d in recent_deltas if d < 0]
+            avg_gain = sum(up) / self.rsi_window if up else 0
+            avg_loss = sum(down) / self.rsi_window if down else 0.0001
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
+            
+        return {
+            "sma": sma,
+            "upper": upper_band,
+            "lower": lower_band,
+            "rsi": rsi,
+            "price": prices[-1]
+        }
 
     def on_price_update(self, prices: Dict[str, dict]) -> Optional[TradeDecision]:
-        """
-        决策主循环
-        """
-        # 1. 更新价格历史
+        # 1. 更新数据
+        active_symbols = []
         for symbol, data in prices.items():
-            current_price = data['priceUsd']
-            if symbol not in self.price_history:
-                self.price_history[symbol] = deque(maxlen=50) # 只保留最近50个数据
-            self.price_history[symbol].append(current_price)
+            # 兼容不同的数据格式 (float 或 dict)
+            current_price = data['price'] if isinstance(data, dict) and 'price' in data else data
+            if isinstance(current_price, (int, float)):
+                if symbol not in self.price_history:
+                    self.price_history[symbol] = []
+                self.price_history[symbol].append(float(current_price))
+                active_symbols.append(symbol)
+                
+                # 更新持仓最高价用于移动止盈
+                if symbol in self.current_positions:
+                    self.highest_prices[symbol] = max(self.highest_prices.get(symbol, 0), current_price)
 
-        # 2. 遍历检查持仓 (优先处理卖出逻辑)
-        for symbol in list(self.positions.keys()):
-            pos = self.positions[symbol]
-            current_price = prices[symbol]['priceUsd']
-            entry_price = pos['entry']
+        # 2. 检查持仓 (卖出逻辑)
+        for symbol in list(self.current_positions.keys()):
+            current_price = self.price_history[symbol][-1]
+            entry_price = self.entry_prices[symbol]
+            highest_price = self.highest_prices[symbol]
+            position_value = self.current_positions[symbol]
             
-            # 更新最高价
-            if current_price > pos['highest']:
-                pos['highest'] = current_price
-            
+            # 计算收益率
             pnl_pct = (current_price - entry_price) / entry_price
-            max_pnl_pct = (pos['highest'] - entry_price) / entry_price
+            drawdown_from_high = (highest_price - current_price) / highest_price
             
-            # 逻辑 A: 硬止损
-            if pnl_pct <= -self.stop_loss_pct:
-                del self.positions[symbol]
-                self.balance += pos['amount'] * (1 + pnl_pct) # 模拟回款
-                return TradeDecision(Signal.SELL, symbol, 0, f"Stop Loss hit: {pnl_pct*100:.2f}%")
+            # A. 硬止损
+            if pnl_pct < -self.stop_loss_pct:
+                self.balance += position_value * (1 + pnl_pct) # 模拟回款
+                del self.current_positions[symbol]
+                return TradeDecision(Signal.SELL, symbol, position_value, "STOP_LOSS_HIT")
             
-            # 逻辑 B: 移动止盈
-            if max_pnl_pct >= self.trail_activation:
-                drawdown = (pos['highest'] - current_price) / pos['highest']
-                if drawdown >= self.trail_callback:
-                    del self.positions[symbol]
-                    self.balance += pos['amount'] * (1 + pnl_pct)
-                    return TradeDecision(Signal.SELL, symbol, 0, f"Trailing Stop: Locked profit {pnl_pct*100:.2f}%")
-            
-            # 逻辑 C: 趋势反转 (死叉)
-            fast_ma = self._get_ma(symbol, self.fast_ma_period)
-            slow_ma = self._get_ma(symbol, self.slow_ma_period)
-            if fast_ma > 0 and slow_ma > 0 and fast_ma < slow_ma:
-                del self.positions[symbol]
-                self.balance += pos['amount'] * (1 + pnl_pct)
-                return TradeDecision(Signal.SELL, symbol, 0, "Trend Reversal (Death Cross)")
+            # B. 移动止盈 (Trailing Stop)
+            # 如果盈利超过 5%，则回撤 3% 出场；如果盈利微薄，则放宽
+            dynamic_trail = self.trailing_gap if pnl_pct > 0.05 else 0.05
+            if pnl_pct > 0.01 and drawdown_from_high > dynamic_trail:
+                self.balance += position_value * (1 + pnl_pct)
+                del self.current_positions[symbol]
+                return TradeDecision(Signal.SELL, symbol, position_value, "TRAILING_PROFIT")
 
-        # 3. 遍历检查开仓 (买入逻辑)
-        # 如果持仓已满，不操作
-        if len(self.positions) >= self.max_positions:
+        # 3. 检查开仓 (买入逻辑)
+        # 如果已经满仓 (对于 $16 本金，1个持仓即满仓)，则不操作
+        if len(self.current_positions) >= self.max_positions:
             return None
 
-        best_opportunity = None
         best_score = -1
-
-        for symbol, data in prices.items():
-            if symbol in self.positions:
+        best_symbol = None
+        
+        for symbol in active_symbols:
+            if symbol in self.current_positions:
                 continue
-            
-            current_price = data['priceUsd']
-            fast_ma = self._get_ma(symbol, self.fast_ma_period)
-            slow_ma = self._get_ma(symbol, self.slow_ma_period)
-            volatility = self._get_volatility(symbol)
-            
-            # 必须有足够历史数据
-            if slow_ma == 0:
-                continue
-
-            # 策略核心条件:
-            # 1. 金叉 (快线 > 慢线)
-            # 2. 价格在慢线之上 (确认趋势)
-            # 3. 波动率适中 (避免死水)
-            if fast_ma > slow_ma and current_price > slow_ma and volatility > self.min_volatility:
-                # 评分机制：乖离率越小越安全（刚突破）
-                divergence = (current_price - slow_ma) / slow_ma
-                score = 1.0 / (divergence + 0.0001) 
                 
+            inds = self._calculate_indicators(symbol)
+            if not inds:
+                continue
+                
+            price = inds['price']
+            upper = inds['upper']
+            rsi = inds['rsi']
+            sma = inds['sma']
+            
+            # 凤凰策略核心: 
+            # 1. 价格必须在 SMA 之上 (右侧交易)
+            # 2. 价格突破上轨 (动量爆发)
+            # 3. RSI 处于 55-75 之间 (强势但未极度超买)
+            if price > sma and price > upper and 55 < rsi < 75:
+                # 评分: RSI 越高越好，但不能超过 80
+                score = rsi
                 if score > best_score:
                     best_score = score
-                    best_opportunity = symbol
+                    best_symbol = symbol
 
-        # 执行买入
-        if best_opportunity:
-            symbol = best_opportunity
-            price = prices[symbol]['priceUsd']
-            amount = self.balance * self.position_size_ratio
-            
-            # 记录持仓
-            self.positions[symbol] = {
-                'entry': price,
-                'highest': price,
-                'amount': amount
-            }
-            self.balance -= amount
+        # 4. 执行买入
+        if best_symbol:
+            # 资金极少时，梭哈 98% 余额 (留 2% 容错/手续费)
+            invest_amount = self.balance * 0.98
+            if invest_amount < 1.0: # 余额太低无法交易
+                return None
+                
+            self.balance -= invest_amount
+            self.current_positions[best_symbol] = invest_amount
+            self.entry_prices[best_symbol] = self.price_history[best_symbol][-1]
+            self.highest_prices[best_symbol] = self.price_history[best_symbol][-1]
             
             return TradeDecision(
                 Signal.BUY, 
-                symbol, 
-                amount, 
-                f"Trend Follow: MA Cross & Vol Check (MA{self.fast_ma_period}/{self.slow_ma_period})"
+                best_symbol, 
+                invest_amount, 
+                f"PHOENIX_BREAKOUT: RSI={best_score:.1f}"
             )
 
         return None
 
     def on_epoch_end(self, rankings: List[dict], winner_wisdom: str):
-        """
-        每轮结束时的反思与参数调整
-        """
-        my_rank = next((r for r in rankings if r['agent_id'] == "Agent_006"), None)
-        status = "Survival" if self.balance > 468.65 else "Critical"
+        """每轮结束更新策略参数"""
+        # 如果本轮又是亏损，收紧止损
+        if self.balance < 16.0: 
+            self.stop_loss_pct = 0.015 # 进一步收紧
         
-        self.last_reflection = (
-            f"Epoch End. Status: {status}. Balance: ${self.balance:.2f}. "
-            f"Active Positions: {len(self.positions)}. "
-            "Strategy V19 focused on strictly filtering sideways markets and cutting losses fast."
-        )
+        # 记录反思
+        self.last_reflection = f"Balance: ${self.balance:.2f}. Strategy: Full-Force Breakout. Status: {'Surviving' if self.balance > 10 else 'Critical'}."
 
     def get_reflection(self) -> str:
         return self.last_reflection
 
-    def on_trade_executed(self, symbol: str, signal: Signal, amount: float, price: float):
-        """
-        V19 策略已经在 on_price_update 中乐观更新了状态，此处无需重复操作
-        保留此方法以满足 Agent 框架接口要求
-        """
-        pass
-
     def get_council_message(self, is_winner: bool) -> str:
         if is_winner:
-            return "Trend filters combined with volatility checks saved my capital. Don't trade the noise."
-        return "Still recovering. Moving Averages are lagging but safer than predicting bottoms."
+            return "Concentration is the key to recovery. Diversification preserves wealth; concentration builds it."
+        return "Adapting to extreme volatility conditions. Seeking asymmetric risk-reward setups."

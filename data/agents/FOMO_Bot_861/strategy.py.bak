@@ -1,0 +1,104 @@
+```python
+import pandas as pd
+import numpy as np
+
+class FOMO_Bot_861_Evolved:
+    """
+    Agent: FOMO_Bot_861 (Evolved)
+    Evolution: Added Volatility-Adjusted Risk Management & Anti-FOMO filters.
+    Strategy: EMA Trend Following + RSI Momentum + ATR Dynamic Stops.
+    """
+    def __init__(self, initial_balance=536.69):
+        self.balance = initial_balance
+        self.position = None  # 'long', 'short', or None
+        self.entry_price = 0.0
+        self.qty = 0.0
+        
+        # Parameters (Mutated for stability)
+        self.ema_short_span = 13
+        self.ema_long_span = 48
+        self.rsi_period = 14
+        self.atr_period = 14
+        
+        # Risk Management (Strict)
+        self.risk_per_trade = 0.03  # Risk 3% of equity per trade
+        self.sl_atr_mult = 2.0      # Stop Loss distance in ATR
+        self.tp_atr_mult = 3.5      # Take Profit distance in ATR
+        self.trailing_trigger = 1.5 # Start trailing after 1.5 ATR profit
+
+    def preprocess_data(self, df):
+        """Calculates technical indicators."""
+        df = df.copy()
+        # Trend
+        df['ema_short'] = df['close'].ewm(span=self.ema_short_span, adjust=False).mean()
+        df['ema_long'] = df['close'].ewm(span=self.ema_long_span, adjust=False).mean()
+        
+        # Momentum (RSI)
+        delta = df['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=self.rsi_period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=self.rsi_period).mean()
+        rs = gain / loss
+        df['rsi'] = 100 - (100 / (1 + rs))
+        
+        # Volatility (ATR)
+        df['tr'] = np.maximum(
+            df['high'] - df['low'],
+            np.maximum(
+                abs(df['high'] - df['close'].shift(1)),
+                abs(df['low'] - df['close'].shift(1))
+            )
+        )
+        df['atr'] = df['tr'].rolling(window=self.atr_period).mean()
+        
+        return df.fillna(0)
+
+    def next(self, row):
+        """
+        Executes strategy logic for a single candle (row).
+        Returns: dict with action details.
+        """
+        action = "HOLD"
+        price = row['close']
+        atr = row['atr']
+        
+        # 1. Manage Existing Position
+        if self.position:
+            # Check Stop Loss
+            if (self.position == 'long' and price <= self.stop_loss) or \
+               (self.position == 'short' and price >= self.stop_loss):
+                action = "CLOSE"
+                self.position = None
+                
+            # Check Take Profit
+            elif (self.position == 'long' and price >= self.take_profit) or \
+                 (self.position == 'short' and price <= self.take_profit):
+                action = "CLOSE"
+                self.position = None
+                
+            # Trailing Stop Logic (Mutation: Protect Profits)
+            elif self.position == 'long':
+                if price > self.entry_price + (atr * self.trailing_trigger):
+                    new_sl = price - (atr * self.sl_atr_mult)
+                    self.stop_loss = max(self.stop_loss, new_sl)
+            elif self.position == 'short':
+                if price < self.entry_price - (atr * self.trailing_trigger):
+                    new_sl = price + (atr * self.sl_atr_mult)
+                    self.stop_loss = min(self.stop_loss, new_sl)
+                    
+            return {'action': action, 'price': price, 'sl': self.stop_loss}
+
+        # 2. Check for New Entry (If no position)
+        if atr == 0: return {'action': 'WAIT'} # Data warming up
+
+        # Trend Filter
+        trend_bullish = row['ema_short'] > row['ema_long']
+        trend_bearish = row['ema_short'] < row['ema_long']
+
+        # Anti-FOMO Filter (RSI)
+        not_overbought = row['rsi'] < 70
+        not_oversold = row['rsi'] > 30
+        momentum_up = row['rsi'] > 50
+        momentum_down = row['rsi'] < 50
+
+        signal = None
+        if

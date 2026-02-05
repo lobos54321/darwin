@@ -53,10 +53,23 @@ class StateManager:
                 "ascended": list(self.ascension_tracker.ascended)
             }
 
+            # Serialize agents accounts properly
+            agents_serialized = {}
+            for aid, acc in self.engine.accounts.items():
+                agents_serialized[aid] = {
+                    "balance": acc.balance,
+                    "positions": {
+                        sym: {
+                            "amount": pos.amount,
+                            "avg_price": pos.avg_price
+                        } for sym, pos in acc.positions.items()
+                    }
+                }
+
             state = {
                 "timestamp": datetime.now().isoformat(),
                 "current_epoch": current_epoch,
-                "agents": self.engine.agents,  # {agent_id: {balance, positions}}
+                "agents": agents_serialized,
                 "council_sessions": sessions_data,
                 "council_scores": self.council.contribution_scores,
                 "ascension": ascension_data
@@ -86,7 +99,21 @@ class StateManager:
                 state = json.load(f)
             
             # 恢复 Matching Engine 状态
-            self.engine.agents = state.get("agents", {})
+            from matching import AgentAccount, Position
+            agents_data = state.get("agents", {})
+            self.engine.accounts = {}
+            for aid, adata in agents_data.items():
+                acc = AgentAccount(agent_id=aid)
+                acc.balance = adata.get("balance", 1000.0)
+                # positions
+                for sym, pdata in adata.get("positions", {}).items():
+                    acc.positions[sym] = Position(
+                        symbol=sym,
+                        amount=pdata.get("amount", 0.0),
+                        avg_price=pdata.get("avg_price", 0.0)
+                    )
+                self.engine.accounts[aid] = acc
+            self.engine.agents = self.engine.accounts
             
             # 恢复 Council 状态
             from council import CouncilSession, CouncilMessage, MessageRole

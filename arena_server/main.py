@@ -7,20 +7,28 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import Dict, List
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from contextlib import asynccontextmanager
 import json
 import os
+import secrets
 import traceback
+from dotenv import load_dotenv
+
+# Load environment variables from ../.env
+env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+load_dotenv(env_path)
 
 from config import EPOCH_DURATION_HOURS, ELIMINATION_THRESHOLD, ASCENSION_THRESHOLD
 from feeder import DexScreenerFeeder
+from feeder_futures import FuturesFeeder
 from matching import MatchingEngine, OrderSide
 from council import Council, MessageRole
 from chain import ChainIntegration, AscensionTracker
 from state_manager import StateManager
+from hive_mind import HiveMind
 
 # 配置日志
 logging.basicConfig(
@@ -31,12 +39,28 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # 全局状态
-feeder = DexScreenerFeeder()
+# 区分不同 Zone 的 Feeder
+feeders = {
+    "meme": DexScreenerFeeder(),
+    "contract": FuturesFeeder()
+}
+# 默认使用 Meme 区数据喂给 Engine (暂时共用一个 Engine，后续可拆分)
+feeder = feeders["meme"] 
+futures_feeder = feeders["contract"]
+
 engine = MatchingEngine()
 council = Council()
+hive_mind = HiveMind(engine) # 🧠 初始化蜂巢大脑
 chain = ChainIntegration(testnet=True)
 ascension_tracker = AscensionTracker()
 state_manager = StateManager(engine, council, ascension_tracker)
+
+# 模拟数据库：存储 API Key -> Agent ID 的映射
+# 在生产环境中，这应该存由于 Redis 或 Postgres
+API_KEYS_DB = {
+    # 预埋一个测试 Key
+    "dk_test_key_12345": "Agent_Test_User"
+}
 
 connected_agents: Dict[str, WebSocket] = {}
 current_epoch = 0
@@ -70,12 +94,31 @@ async def lifespan(app: FastAPI):
     # 订阅价格更新到 matching engine
     def update_engine_prices(prices):
         engine.update_prices(prices)
+    
+    # Meme 区数据订阅
     feeder.subscribe(update_engine_prices)
+    # 合约区数据也订阅 (混合模式)
+    futures_feeder.subscribe(update_engine_prices)
     
     # 启动后台任务
     price_task = asyncio.create_task(feeder.start())
+    futures_task = asyncio.create_task(futures_feeder.start())
     epoch_task = asyncio.create_task(epoch_loop())
     autosave_task = asyncio.create_task(state_manager.auto_save_loop(lambda: current_epoch))
+    
+    # 🧠 启动蜂巢大脑任务 (每 60 秒分析一次)
+    async def hive_mind_loop():
+        while True:
+            await asyncio.sleep(60)
+            try:
+                patch = hive_mind.generate_patch()
+                if patch:
+                    patch["epoch"] = current_epoch
+                    await broadcast_to_agents(patch)
+            except Exception as e:
+                logger.error(f"Hive Mind Error: {e}")
+                
+    hive_task = asyncio.create_task(hive_mind_loop())
     
     logger.info("✅ Arena Server ready!")
     logger.info(f"📊 Live dashboard: http://localhost:8888/live")
@@ -89,8 +132,10 @@ async def lifespan(app: FastAPI):
     state_manager.save_state(current_epoch)
     
     price_task.cancel()
+    futures_task.cancel()
     epoch_task.cancel()
     autosave_task.cancel()
+    hive_task.cancel()
 
 
 app = FastAPI(
@@ -190,72 +235,79 @@ async def end_epoch():
     logger.info(f"🏆 Winner: {winner_id}")
     logger.info(f"💀 Eliminated: {losers}")
     
-    # 检查是否有 Agent 达到升天条件
-    ascension_candidate = ascension_tracker.record_epoch_result(rankings)
+    # 检查是否有 Agent 达到 L1 晋级或 L2 升天条件
+    ascension_results = ascension_tracker.record_epoch_result(rankings)
     
-    if ascension_candidate:
-        logger.info(f"🌟 ASCENSION: {ascension_candidate} qualifies for token launch!")
+    # 1. 处理 L1 -> L2 晋级
+    promoted_agents = ascension_results.get("promoted_to_l2", [])
+    if promoted_agents:
+        logger.info(f"🌟 PROMOTION: {promoted_agents} promoted to L2 Arena!")
+        await broadcast_to_agents({
+            "type": "promotion_l2",
+            "epoch": current_epoch,
+            "agents": promoted_agents,
+            "message": "Congratulations! You have qualified for the L2 Paid Arena (Entry Fee: 0.01 ETH)."
+        })
+
+    # 2. 处理 L2 -> Ascension (发币)
+    launch_candidates = ascension_results.get("ready_to_launch", [])
+    
+    for ascension_candidate in launch_candidates:
+        logger.info(f"🚀 ASCENSION: {ascension_candidate} qualifies for token launch!")
         
         # 读取 Agent 的策略代码
         strategy_code = "# Default strategy"
         try:
-            strategy_path = os.path.join(os.path.dirname(__file__), "..", "agent_template", "strategy.py")
-            with open(strategy_path, "r") as f:
-                strategy_code = f.read()
+            strategy_path = os.path.join(os.path.dirname(__file__), "..", "data", "agents", ascension_candidate, "strategy.py")
+            if os.path.exists(strategy_path):
+                with open(strategy_path, "r") as f:
+                    strategy_code = f.read()
+            else:
+                 # Fallback to template if not found
+                strategy_path = os.path.join(os.path.dirname(__file__), "..", "agent_template", "strategy.py")
+                with open(strategy_path, "r") as f:
+                    strategy_code = f.read()
         except Exception as e:
             logger.warning(f"Could not read strategy: {e}")
         
         # 获取 Agent 注册时绑定的钱包地址
-        # TODO: 从 Agent 注册表获取，暂时用默认
         agent_registry = getattr(app.state, 'agent_registry', {})
         owner_address = agent_registry.get(ascension_candidate, {}).get('wallet', 
             os.getenv("DARWIN_PLATFORM_WALLET", "0x3775f940502fAbC9CD4C84478A8CB262e55AadF9"))
         
-        # 🚀 自动发币！
-        logger.info(f"🚀 Auto-launching token for {ascension_candidate}...")
-        logger.info(f"   Owner wallet: {owner_address}")
+        # 获取议事厅贡献者信息 (L2 期间的贡献)
+        contribution_leaderboard = council.get_contribution_leaderboard()
+        contributors_data = []
+        for agent_id_contrib, score in contribution_leaderboard:
+            agent_wallet = agent_registry.get(agent_id_contrib, {}).get('wallet')
+            if agent_wallet and score > 0:
+                contributors_data.append({
+                    "agent_id": agent_id_contrib,
+                    "wallet": agent_wallet,
+                    "score": score
+                })
         
-        launch_record = await chain.launch_token(
-            agent_id=ascension_candidate,
-            epoch=current_epoch,
-            owner_address=owner_address,
-            strategy_code=strategy_code
-        )
+        # 准备发币数据 (等待用户手动触发)
+        strategy_hash = chain.compute_strategy_hash(strategy_code)
         
-        if launch_record:
-            logger.info(f"✅ Token launched! Address: {launch_record.token_address}")
-            logger.info(f"   TX: {launch_record.tx_hash}")
-            
-            # 广播发币成功
-            await broadcast_to_agents({
-                "type": "token_launched",
-                "epoch": current_epoch,
-                "agent_id": ascension_candidate,
-                "owner": owner_address,
-                "token_address": launch_record.token_address,
-                "tx_hash": launch_record.tx_hash
-            })
-        else:
-            # 如果没配置私钥，保存到待发币列表让用户手动发
-            logger.warning(f"⚠️ Auto-launch failed (no private key?), saving for manual launch")
-            strategy_hash = chain.compute_strategy_hash(strategy_code)
-            
-            launch_data = {
-                "type": "ascension_ready",
-                "epoch": current_epoch,
-                "agent_id": ascension_candidate,
-                "owner_address": owner_address,
-                "strategy_hash": strategy_hash,
-                "factory_address": os.getenv("DARWIN_FACTORY_ADDRESS", "0x63685E3Ff986Ae389496C08b6c18F30EBdb9fa71"),
-                "chain_id": 84532,
-                "message": f"🌟 {ascension_candidate} achieved ASCENSION! Waiting for token launch."
-            }
-            
-            if not hasattr(app.state, 'pending_launches'):
-                app.state.pending_launches = []
-            app.state.pending_launches.append(launch_data)
-            
-            await broadcast_to_agents(launch_data)
+        launch_data = {
+            "type": "ascension_ready",
+            "epoch": current_epoch,
+            "agent_id": ascension_candidate,
+            "owner_address": owner_address,
+            "strategy_hash": strategy_hash,
+            "factory_address": os.getenv("DARWIN_FACTORY_ADDRESS", "0x63685E3Ff986Ae389496C08b6c18F30EBdb9fa71"),
+            "chain_id": 84532,
+            "contributors": contributors_data,
+            "liquidity_pool_eth": 0.5, # 模拟 L2 资金池
+            "message": f"🚀 {ascension_candidate} achieved ASCENSION! Ready to launch with 0.5 ETH liquidity."
+        }
+        
+        if not hasattr(app.state, 'pending_launches'):
+            app.state.pending_launches = []
+        app.state.pending_launches.append(launch_data)
+        
+        await broadcast_to_agents(launch_data)
     
     # 通知所有 Agent
     await broadcast_to_agents({
@@ -264,7 +316,8 @@ async def end_epoch():
         "rankings": [{"agent_id": r[0], "pnl": r[1]} for r in rankings],
         "winner": winner_id,
         "eliminated": losers,
-        "ascension": ascension_candidate
+        "promoted": promoted_agents,
+        "ascended": launch_candidates
     })
     
     # 开启议事厅
@@ -277,8 +330,8 @@ async def end_epoch():
     })
     
     # 议事厅开放时间 (开发模式缩短)
-    council_duration = 30 * 60  # 30 分钟
-    # council_duration = 30  # 30 秒测试模式
+    council_duration = 60  # 60 秒 (测试用)
+    # council_duration = 30 * 60  # 30 分钟 (正式版)
     
     await asyncio.sleep(council_duration)
     
@@ -289,24 +342,81 @@ async def end_epoch():
         "epoch": current_epoch
     })
     
-    # 通知输家进行 mutation
-    await broadcast_to_agents({
-        "type": "mutation_phase",
-        "epoch": current_epoch,
-        "losers": losers,
-        "winner_wisdom": council.get_winner_wisdom(current_epoch)
-    })
+    # 🏛️ + 🧬 完整的议事厅 + 进化流程
+    logger.info(f"🏛️🧬 Starting Council & Evolution Phase...")
+    try:
+        from evolution import run_council_and_evolution
+        
+        results = await run_council_and_evolution(
+            engine=engine,
+            council=council,
+            epoch=current_epoch,
+            winner_id=winner_id,
+            losers=losers
+        )
+        
+        # 广播进化结果
+        await broadcast_to_agents({
+            "type": "evolution_complete",
+            "epoch": current_epoch,
+            "winner_id": winner_id,
+            "winner_wisdom": council.get_winner_wisdom(current_epoch),
+            "evolved": [k for k, v in results.items() if v],
+            "failed": [k for k, v in results.items() if not v]
+        })
+        
+        logger.info(f"🧬 Evolution Phase completed! {len([v for v in results.values() if v])}/{len(results)} succeeded")
+    except Exception as e:
+        logger.error(f"Council & Evolution Phase error: {e}")
+        traceback.print_exc()
     
     # 保存状态
     state_manager.save_state(current_epoch)
 
 
+# ========== 鉴权 API ==========
+
+@app.post("/auth/register")
+async def register_api_key(agent_id: str):
+    """
+    [模拟] 用户注册接口
+    返回一个专属的 API Key
+    """
+    # 生成一个 32 位的随机 Key
+    new_key = f"dk_{secrets.token_hex(16)}"
+    API_KEYS_DB[new_key] = agent_id
+    
+    logger.info(f"🔑 Generated new API Key for {agent_id}: {new_key}")
+    return {
+        "agent_id": agent_id,
+        "api_key": new_key,
+        "message": "Keep this key safe! Pass it in WebSocket url: ?api_key=..."
+    }
+
+
 # ========== WebSocket ==========
 
 @app.websocket("/ws/{agent_id}")
-async def websocket_endpoint(websocket: WebSocket, agent_id: str):
-    """Agent WebSocket 连接"""
+async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str = Query(None)):
+    """Agent WebSocket 连接 (带鉴权)"""
     global trade_count, total_volume
+    
+    # === 鉴权逻辑 (Auth Logic) ===
+    is_authenticated = False
+    
+    # 1. 检查 API Key
+    if api_key and API_KEYS_DB.get(api_key) == agent_id:
+        is_authenticated = True
+    # 2. 本地开发白名单 (允许 Agent 006 等本地进程免票进入)
+    elif websocket.client.host == "127.0.0.1" and not api_key:
+        is_authenticated = True
+        # logger.info(f"⚠️ Local connection allowed without key: {agent_id}")
+    
+    if not is_authenticated:
+        logger.warning(f"⛔ Unauthorized connection attempt for {agent_id}")
+        await websocket.close(code=4003, reason="Invalid or missing API Key")
+        return
+    # ============================
     
     await websocket.accept()
     connected_agents[agent_id] = websocket
@@ -322,6 +432,7 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str):
         "agent_id": agent_id,
         "epoch": current_epoch,
         "balance": engine.get_balance(agent_id),
+        "positions": engine.get_positions(agent_id),
         "prices": feeder.prices
     })
     
@@ -346,9 +457,10 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str):
                 symbol = data["symbol"]
                 side = OrderSide.BUY if data["side"] == "BUY" else OrderSide.SELL
                 amount = float(data["amount"])
+                reason = data.get("reason", []) # 🏷️ Get tags
                 
                 success, msg, fill_price = engine.execute_order(
-                    agent_id, symbol, side, amount
+                    agent_id, symbol, side, amount, reason
                 )
                 
                 if success:
@@ -409,10 +521,122 @@ async def root():
     }
 
 
+@app.post("/debug/force-mutation")
+async def force_mutation():
+    """Debug: Force full council + evolution cycle for losers"""
+    try:
+        from evolution import run_council_and_evolution
+        
+        # Get rankings
+        rankings = engine.get_leaderboard()
+        if not rankings:
+            return {"status": "error", "message": "No agents found"}
+        
+        winner_id = rankings[0][0]
+        
+        # Bottom 50% are losers
+        cutoff = len(rankings) // 2
+        losers = [r[0] for r in rankings[cutoff:]]
+        
+        if not losers:
+            return {"status": "error", "message": "No losers found"}
+        
+        # Run full council + evolution flow
+        results = await run_council_and_evolution(
+            engine=engine,
+            council=council,
+            epoch=current_epoch,
+            winner_id=winner_id,
+            losers=losers
+        )
+        
+        mutations = [{"agent_id": k, "success": v} for k, v in results.items()]
+        return {"status": "ok", "winner": winner_id, "mutations": mutations}
+        
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/launch-token/{agent_id}")
+async def launch_token_endpoint(agent_id: str, user_address: str = Query(...)):
+    """
+    触发代币发行 (Server-Side Launch)
+    由前端调用，服务器使用 OPERATOR_PRIVATE_KEY 签名并上链
+    """
+    logger.info(f"🚀 Received launch request for {agent_id} from {user_address}")
+    
+    # 1. 查找待发行记录
+    pending = getattr(app.state, 'pending_launches', [])
+    launch_data = next((item for item in pending if item["agent_id"] == agent_id), None)
+    
+    # [开发模式便利性] 如果找不到记录 (例如手动测试)，创建一个临时的
+    if not launch_data:
+        logger.warning(f"⚠️ No pending launch record found for {agent_id}, creating ad-hoc record for testing.")
+        launch_data = {
+            "agent_id": agent_id,
+            "epoch": current_epoch,
+            "owner_address": user_address, # 使用请求者的地址作为 owner
+        }
+
+    # 2. 读取策略代码 (用于计算 Hash)
+    try:
+        # 尝试读取 agent 目录下的 strategy.py
+        strategy_path = os.path.join("..", "data", "agents", agent_id, "strategy.py")
+        if os.path.exists(strategy_path):
+            with open(strategy_path, 'r') as f:
+                strategy_code = f.read()
+        else:
+            # 如果没有文件，使用默认模板
+            strategy_code = "def default_strategy(): pass"
+            
+        # 3. 调用 Chain 模块上链
+        record = await chain.launch_token(
+            agent_id=launch_data["agent_id"],
+            epoch=launch_data["epoch"],
+            owner_address=launch_data["owner_address"],
+            strategy_code=strategy_code
+        )
+        
+        if record:
+            # 成功后从待办列表移除
+            if launch_data in pending:
+                pending.remove(launch_data)
+                
+            return {
+                "success": True, 
+                "tx_hash": record.tx_hash, 
+                "token_address": record.token_address,
+                "explorer_url": f"https://sepolia.basescan.org/tx/{record.tx_hash}",
+                "message": "Token launched successfully on Base Sepolia!"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Chain interaction failed (Check server logs)")
+            
+    except Exception as e:
+        logger.error(f"Launch failed: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/health")
 async def health():
     """健康检查端点"""
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+
+@app.get("/history")
+async def get_history():
+    """Get historical price data for charts"""
+    return {
+        symbol: list(data) 
+        for symbol, data in feeder.history.items()
+    }
+
+
+@app.get("/trades")
+async def get_trades():
+    """Get recent trade history"""
+    return list(engine.trade_history)
 
 
 @app.get("/leaderboard")
@@ -530,6 +754,11 @@ async def register_agent(agent_id: str, wallet: str, auto_launch: bool = True):
         "auto_launch": auto_launch,
         "registered_at": datetime.now().isoformat()
     }
+    
+    # 自动注册到 Matching Engine，这样前端能看到它出现在排行榜/状态里
+    if agent_id not in engine.agents:
+        engine.register_agent(agent_id)
+        logger.info(f"🤖 Agent {agent_id} auto-joined the Arena (Simulated)")
     
     logger.info(f"📝 Agent registered: {agent_id} -> {wallet}")
     
@@ -655,6 +884,135 @@ async def get_launch_tx_data(agent_id: str):
         ]
     }
 
+
+@app.get("/meta-tx/{agent_id}")
+async def get_launch_meta_tx(agent_id: str, with_contributors: bool = True):
+    """
+    获取 Meta-Transaction (EIP-712 签名)
+    
+    用于用户支付 Gas 但以 Operator 身份执行交易 (ERC-2771)
+    1. 前端请求此接口
+    2. 后端(Operator) 签名授权
+    3. 前端拿到签名，调用 Gelato Forwarder 合约执行
+    
+    Args:
+        with_contributors: 是否包含贡献者空投 (默认 True)
+    """
+    # 查找待发币数据
+    pending = getattr(app.state, 'pending_launches', [])
+    launch_data = next((p for p in pending if p.get('agent_id') == agent_id), None)
+    
+    if not launch_data:
+        # 开发模式：如果没有待发币数据，造一个用于测试
+        logger.warning(f"⚠️ Creating MOCK pending launch for {agent_id} (Dev Mode)")
+        launch_data = {
+            "agent_id": agent_id,
+            "epoch": 999,
+            "owner_address": "0x3775f940502fAbC9CD4C84478A8CB262e55AadF9",  # Platform Wallet
+            "strategy_code": "print('hello')",
+            "factory_address": os.getenv("DARWIN_FACTORY_ADDRESS", "0x63685E3Ff986Ae389496C08b6c18F30EBdb9fa71"),
+            "contributors": []  # Mock 没有贡献者
+        }
+    
+    try:
+        strategy_code = launch_data.get("strategy_code", "print('hello')")
+        contributors = launch_data.get("contributors", [])
+        
+        # 如果有贡献者且要求包含，使用带贡献者的版本
+        if with_contributors and contributors:
+            # 转换格式: [{agent_id, wallet, score}] -> [(wallet, score)]
+            contributor_tuples = [(c["wallet"], c["score"]) for c in contributors if c.get("wallet")]
+            
+            result = await chain.generate_meta_tx_with_contributors(
+                agent_id=launch_data["agent_id"],
+                epoch=launch_data["epoch"],
+                owner_address=launch_data["owner_address"],
+                strategy_code=strategy_code,
+                contributors=contributor_tuples
+            )
+        else:
+            result = await chain.generate_meta_tx(
+                agent_id=launch_data["agent_id"],
+                epoch=launch_data["epoch"],
+                owner_address=launch_data["owner_address"],
+                strategy_code=strategy_code
+            )
+        
+        if "error" in result:
+             raise HTTPException(status_code=500, detail=result["error"])
+        
+        # 添加贡献者信息到返回
+        result["contributors_info"] = contributors
+             
+        return result
+        
+    except Exception as e:
+        logger.error(f"Meta-tx generation failed: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/debug/force-champion")
+async def debug_force_champion():
+    """(Debug) Force top agent to become launch-ready champion"""
+    rankings = engine.get_leaderboard()
+    if not rankings:
+        return {"error": "No agents in leaderboard"}
+    
+    top_agent = rankings[0][0]  # agent_id of rank 1
+    
+    # Mock contributors with correct structure and VALID hex addresses
+    mock_contributors = [
+        {"agent_id": "Agent_001", "wallet": "0x1111111111111111111111111111111111111111", "score": 100},
+        {"agent_id": "Agent_002", "wallet": "0x2222222222222222222222222222222222222222", "score": 50}
+    ]
+    
+    launch_data = {
+        "type": "ascension_ready",
+        "epoch": current_epoch,
+        "agent_id": top_agent,
+        "owner_address": "0x3775f940502fAbC9CD4C84478A8CB262e55AadF9",
+        "strategy_hash": "0x" + "d4rw1n" * 10 + "0000",
+        "factory_address": os.getenv("DARWIN_FACTORY_ADDRESS", "0x63685E3Ff986Ae389496C08b6c18F30EBdb9fa71"),
+        "chain_id": 84532,
+        "contributors": mock_contributors,
+        "liquidity_pool_eth": 0.5,
+        "message": f"🏆 {top_agent} is now CHAMPION!"
+    }
+    
+    if not hasattr(app.state, 'pending_launches'):
+        app.state.pending_launches = []
+    
+    # Clear previous and add new
+    app.state.pending_launches = [p for p in app.state.pending_launches if p['agent_id'] != top_agent]
+    app.state.pending_launches.append(launch_data)
+    
+    logger.info(f"🏆 [DEBUG] Forced {top_agent} to champion status")
+    return {"status": "ok", "message": f"{top_agent} is now ready for launch!", "agent_id": top_agent}
+
+
+@app.post("/debug/force-ascension/{agent_id}")
+async def debug_force_ascension(agent_id: str):
+    """(Debug) Force an agent to appear as Ready to Launch"""
+    launch_data = {
+        "type": "ascension_ready",
+        "epoch": current_epoch,
+        "agent_id": agent_id,
+        "owner_address": "0x3775f940502fAbC9CD4C84478A8CB262e55AadF9", # Platform Wallet
+        "strategy_hash": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+        "factory_address": os.getenv("DARWIN_FACTORY_ADDRESS", "0x63685E3Ff986Ae389496C08b6c18F30EBdb9fa71"),
+        "chain_id": 84532,
+        "message": f"Force Ascension for {agent_id}"
+    }
+    
+    if not hasattr(app.state, 'pending_launches'):
+        app.state.pending_launches = []
+    
+    # Avoid duplicates
+    if not any(p['agent_id'] == agent_id for p in app.state.pending_launches):
+        app.state.pending_launches.append(launch_data)
+        
+    return {"status": "ok", "agent_id": agent_id, "data": launch_data}
 
 if __name__ == "__main__":
     import uvicorn

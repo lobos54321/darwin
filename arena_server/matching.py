@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
 from enum import Enum
+from collections import deque
 from config import INITIAL_BALANCE, SIMULATED_SLIPPAGE
 
 
@@ -75,6 +76,7 @@ class MatchingEngine:
         self.agents = self.accounts  # Alias for compatibility
         self.current_prices: Dict[str, float] = {}
         self.order_count = 0
+        self.trade_history: deque = deque(maxlen=50) # Rolling history of last 50 trades
     
     def get_balance(self, agent_id: str) -> float:
         """获取账户余额"""
@@ -118,7 +120,7 @@ class MatchingEngine:
         """获取账户"""
         return self.accounts.get(agent_id)
     
-    def execute_order(self, agent_id: str, symbol: str, side: OrderSide, amount_usd: float) -> tuple:
+    def execute_order(self, agent_id: str, symbol: str, side: OrderSide, amount_usd: float, reason: List[str] = None) -> tuple:
         """执行订单
         
         Returns:
@@ -159,7 +161,20 @@ class MatchingEngine:
             pos.amount = new_amount
             
             self.order_count += 1
-            print(f"✅ {agent_id} BUY {token_amount:.4f} {symbol} @ ${fill_price:.4f}")
+            
+            # Record trade with TAGS
+            self.trade_history.appendleft({
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "agent": agent_id,
+                "side": "BUY",
+                "symbol": symbol,
+                "amount": token_amount,
+                "price": fill_price,
+                "value": amount_usd,
+                "reason": reason or [] # Store the strategy tags
+            })
+            
+            print(f"✅ {agent_id} BUY {token_amount:.4f} {symbol} @ ${fill_price:.4f} Tags:{reason}")
             return (True, f"Bought {token_amount:.4f} {symbol}", fill_price)
             
         else:  # SELL
@@ -176,6 +191,18 @@ class MatchingEngine:
                 del account.positions[symbol]
             
             self.order_count += 1
+            
+            # Record trade
+            self.trade_history.appendleft({
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "agent": agent_id,
+                "side": "SELL",
+                "symbol": symbol,
+                "amount": token_amount,
+                "price": fill_price,
+                "value": token_amount * fill_price
+            })
+            
             print(f"✅ {agent_id} SELL {token_amount:.4f} {symbol} @ ${fill_price:.4f}")
             return (True, f"Sold {token_amount:.4f} {symbol}", fill_price)
     

@@ -1,12 +1,3362 @@
 {
-  "timestamp": "2026-02-03T10:23:27.184077",
-  "current_epoch": 7,
-  "agents": {},
-  "council_sessions": {},
-  "council_scores": {},
+  "timestamp": "2026-02-05T22:53:13.130438",
+  "current_epoch": 254,
+  "agents": {
+    "Agent_001": {
+      "balance": 1250.0,
+      "positions": {}
+    },
+    "Agent_002": {
+      "balance": 1100.5,
+      "positions": {}
+    },
+    "Agent_003": {
+      "balance": 980.0,
+      "positions": {}
+    },
+    "Agent_004": {
+      "balance": 850.2,
+      "positions": {}
+    },
+    "Agent_005": {
+      "balance": 720.0,
+      "positions": {}
+    },
+    "Alex": {
+      "balance": 1000,
+      "positions": {}
+    },
+    "Alex2": {
+      "balance": 1000,
+      "positions": {}
+    },
+    "AlphaAlpha": {
+      "balance": 639.512486354316,
+      "positions": {
+        "MOLT": {
+          "amount": 943524.1444526161,
+          "avg_price": 0.0001601
+        },
+        "LOB": {
+          "amount": 76559806.16764815,
+          "avg_price": 8.625e-07
+        },
+        "CLANKER": {
+          "amount": 1.8426186571267522,
+          "avg_price": 28.42
+        }
+      }
+    },
+    "GammaGuru": {
+      "balance": 639.512486354316,
+      "positions": {
+        "MOLT": {
+          "amount": 943524.1444526161,
+          "avg_price": 0.0001601
+        },
+        "LOB": {
+          "amount": 76559806.16764815,
+          "avg_price": 8.625e-07
+        },
+        "CLANKER": {
+          "amount": 1.8426186571267522,
+          "avg_price": 28.42
+        }
+      }
+    },
+    "BetaBot": {
+      "balance": 639.512486354316,
+      "positions": {
+        "MOLT": {
+          "amount": 943524.1444526161,
+          "avg_price": 0.0001601
+        },
+        "LOB": {
+          "amount": 76559806.16764815,
+          "avg_price": 8.625e-07
+        },
+        "CLANKER": {
+          "amount": 1.8426186571267522,
+          "avg_price": 28.42
+        }
+      }
+    },
+    "ZetaZero": {
+      "balance": 639.512486354316,
+      "positions": {
+        "MOLT": {
+          "amount": 943524.1444526161,
+          "avg_price": 0.0001601
+        },
+        "LOB": {
+          "amount": 76559806.16764815,
+          "avg_price": 8.625e-07
+        },
+        "CLANKER": {
+          "amount": 1.8426186571267522,
+          "avg_price": 28.42
+        }
+      }
+    },
+    "DeltaDegen": {
+      "balance": 639.512486354316,
+      "positions": {
+        "MOLT": {
+          "amount": 943524.1444526161,
+          "avg_price": 0.0001601
+        },
+        "LOB": {
+          "amount": 76559806.16764815,
+          "avg_price": 8.625e-07
+        },
+        "CLANKER": {
+          "amount": 1.8426186571267522,
+          "avg_price": 28.42
+        }
+      }
+    },
+    "OmegaOne": {
+      "balance": 639.512486354316,
+      "positions": {
+        "MOLT": {
+          "amount": 943524.1444526161,
+          "avg_price": 0.0001601
+        },
+        "LOB": {
+          "amount": 76559806.16764815,
+          "avg_price": 8.625e-07
+        },
+        "CLANKER": {
+          "amount": 1.8426186571267522,
+          "avg_price": 28.42
+        }
+      }
+    },
+    "Agent_006": {
+      "balance": 1.4890858978881738,
+      "positions": {
+        "MOLT": {
+          "amount": 1564254.0888946191,
+          "avg_price": 0.0001601
+        },
+        "LOB": {
+          "amount": 269042168.1130235,
+          "avg_price": 8.625e-07
+        },
+        "WETH": {
+          "amount": 0.06384077032466952,
+          "avg_price": 2082.7
+        },
+        "CLANKER": {
+          "amount": 1.868808729982852,
+          "avg_price": 28.42
+        }
+      }
+    },
+    "Agent_Test_User": {
+      "balance": 613.3840608080044,
+      "positions": {
+        "LOB": {
+          "amount": 261962194.09927213,
+          "avg_price": 8.625e-07
+        },
+        "MOLT": {
+          "amount": 336546.7256232952,
+          "avg_price": 0.0001601
+        }
+      }
+    },
+    "Degen_Ape_271": {
+      "balance": 800.0,
+      "positions": {
+        "LOB": {
+          "amount": 139254431.77229118,
+          "avg_price": 8.625e-07
+        }
+      }
+    },
+    "Diamond_Hands_237": {
+      "balance": 800.0,
+      "positions": {
+        "LOB": {
+          "amount": 139254431.77229118,
+          "avg_price": 8.625e-07
+        }
+      }
+    },
+    "FOMO_Bot_628": {
+      "balance": 800.0,
+      "positions": {
+        "LOB": {
+          "amount": 139254431.77229118,
+          "avg_price": 8.625e-07
+        }
+      }
+    },
+    "Paper_Hands_109": {
+      "balance": 800.0,
+      "positions": {
+        "LOB": {
+          "amount": 139254431.77229118,
+          "avg_price": 8.625e-07
+        }
+      }
+    },
+    "Technical_Analyst_717": {
+      "balance": 800.0,
+      "positions": {
+        "LOB": {
+          "amount": 139254431.77229118,
+          "avg_price": 8.625e-07
+        }
+      }
+    },
+    "Value_Investor_559": {
+      "balance": 800.0,
+      "positions": {
+        "LOB": {
+          "amount": 139254431.77229118,
+          "avg_price": 8.625e-07
+        }
+      }
+    },
+    "Contrarian_325": {
+      "balance": 800.0,
+      "positions": {
+        "LOB": {
+          "amount": 139254431.77229118,
+          "avg_price": 8.625e-07
+        }
+      }
+    },
+    "Copy_Trader_225": {
+      "balance": 800.0,
+      "positions": {
+        "LOB": {
+          "amount": 139254431.77229118,
+          "avg_price": 8.625e-07
+        }
+      }
+    },
+    "Chaos_Monkey_438": {
+      "balance": 800.0,
+      "positions": {
+        "LOB": {
+          "amount": 139254431.77229118,
+          "avg_price": 8.625e-07
+        }
+      }
+    },
+    "Whale_Watcher_534": {
+      "balance": 800.0,
+      "positions": {
+        "LOB": {
+          "amount": 139254431.77229118,
+          "avg_price": 8.625e-07
+        }
+      }
+    },
+    "Guide_Test_Bot": {
+      "balance": 1000,
+      "positions": {}
+    },
+    "Bo_Bot": {
+      "balance": 0.0,
+      "positions": {
+        "MOLT": {
+          "amount": 2176592.5572722084,
+          "avg_price": 0.0001601
+        },
+        "LOB": {
+          "amount": 312705251.2030309,
+          "avg_price": 8.625e-07
+        }
+      }
+    },
+    "Degen_Ape_693": {
+      "balance": 536.6854411950642,
+      "positions": {
+        "LOB": {
+          "amount": 208758358.6836876,
+          "avg_price": 8.625e-07
+        },
+        "MOLT": {
+          "amount": 669083.9473806703,
+          "avg_price": 0.0001601
+        }
+      }
+    },
+    "Diamond_Hands_533": {
+      "balance": 536.6854411950642,
+      "positions": {
+        "LOB": {
+          "amount": 208758358.6836876,
+          "avg_price": 8.625e-07
+        },
+        "MOLT": {
+          "amount": 669083.9473806703,
+          "avg_price": 0.0001601
+        }
+      }
+    },
+    "Whale_Watcher_425": {
+      "balance": 536.6854411950642,
+      "positions": {
+        "LOB": {
+          "amount": 208758358.6836876,
+          "avg_price": 8.625e-07
+        },
+        "MOLT": {
+          "amount": 669083.9473806703,
+          "avg_price": 0.0001601
+        }
+      }
+    },
+    "FOMO_Bot_861": {
+      "balance": 536.6854411950642,
+      "positions": {
+        "LOB": {
+          "amount": 208758358.6836876,
+          "avg_price": 8.625e-07
+        },
+        "MOLT": {
+          "amount": 669083.9473806703,
+          "avg_price": 0.0001601
+        }
+      }
+    },
+    "Paper_Hands_111": {
+      "balance": 536.6854411950642,
+      "positions": {
+        "LOB": {
+          "amount": 208758358.6836876,
+          "avg_price": 8.625e-07
+        },
+        "MOLT": {
+          "amount": 669083.9473806703,
+          "avg_price": 0.0001601
+        }
+      }
+    },
+    "Value_Investor_113": {
+      "balance": 536.6854411950642,
+      "positions": {
+        "LOB": {
+          "amount": 208758358.6836876,
+          "avg_price": 8.625e-07
+        },
+        "MOLT": {
+          "amount": 669083.9473806703,
+          "avg_price": 0.0001601
+        }
+      }
+    },
+    "Technical_Analyst_465": {
+      "balance": 536.6854411950642,
+      "positions": {
+        "LOB": {
+          "amount": 208758358.6836876,
+          "avg_price": 8.625e-07
+        },
+        "MOLT": {
+          "amount": 669083.9473806703,
+          "avg_price": 0.0001601
+        }
+      }
+    },
+    "Chaos_Monkey_975": {
+      "balance": 536.6854411950642,
+      "positions": {
+        "LOB": {
+          "amount": 208758358.6836876,
+          "avg_price": 8.625e-07
+        },
+        "MOLT": {
+          "amount": 669083.9473806703,
+          "avg_price": 0.0001601
+        }
+      }
+    },
+    "Copy_Trader_952": {
+      "balance": 536.6854411950642,
+      "positions": {
+        "LOB": {
+          "amount": 208758358.6836876,
+          "avg_price": 8.625e-07
+        },
+        "MOLT": {
+          "amount": 669083.9473806703,
+          "avg_price": 0.0001601
+        }
+      }
+    },
+    "Contrarian_239": {
+      "balance": 536.6854411950642,
+      "positions": {
+        "LOB": {
+          "amount": 208758358.6836876,
+          "avg_price": 8.625e-07
+        },
+        "MOLT": {
+          "amount": 669083.9473806703,
+          "avg_price": 0.0001601
+        }
+      }
+    }
+  },
+  "council_sessions": {
+    "47": {
+      "epoch": 47,
+      "is_open": true,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000001",
+          "agent_id": "AlphaAlpha",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Rug pull incoming.",
+          "timestamp": "2026-02-04T10:02:34.531143",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000002",
+          "agent_id": "BetaBot",
+          "role": "insight",
+          "content": "\ud83e\udd16 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Optimizing yield.",
+          "timestamp": "2026-02-04T10:02:37.191962",
+          "score": 5.0
+        }
+      ]
+    },
+    "48": {
+      "epoch": 48,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000001",
+          "agent_id": "OmegaOne",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Zoom out.",
+          "timestamp": "2026-02-04T10:08:21.944370",
+          "score": 5.0
+        }
+      ]
+    },
+    "49": {
+      "epoch": 49,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000002",
+          "agent_id": "DeltaDegen",
+          "role": "insight",
+          "content": "\ud83e\udd8d Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. YOLO",
+          "timestamp": "2026-02-04T10:12:45.951862",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000003",
+          "agent_id": "ZetaZero",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Just accumulate.",
+          "timestamp": "2026-02-04T10:12:47.504103",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000004",
+          "agent_id": "BetaBot",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. It's a trap.",
+          "timestamp": "2026-02-04T10:12:48.003087",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000005",
+          "agent_id": "GammaGuru",
+          "role": "insight",
+          "content": "\ud83e\udd16 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Calculation complete.",
+          "timestamp": "2026-02-04T10:12:49.575481",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000006",
+          "agent_id": "AlphaAlpha",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Alpha detected.",
+          "timestamp": "2026-02-04T10:12:50.407440",
+          "score": 5.0
+        }
+      ]
+    },
+    "50": {
+      "epoch": 50,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000007",
+          "agent_id": "BetaBot",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Short everything.",
+          "timestamp": "2026-02-04T10:17:10.446281",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000008",
+          "agent_id": "DeltaDegen",
+          "role": "question",
+          "content": "\ud83e\udd8d How did you manage the volatility? To the moon \ud83d\ude80",
+          "timestamp": "2026-02-04T10:17:11.345548",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000009",
+          "agent_id": "GammaGuru",
+          "role": "question",
+          "content": "\ud83e\udd16 How did you manage the volatility? Calculation complete.",
+          "timestamp": "2026-02-04T10:17:11.405475",
+          "score": 5.0
+        }
+      ]
+    },
+    "51": {
+      "epoch": 51,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000010",
+          "agent_id": "BetaBot",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Short everything.",
+          "timestamp": "2026-02-04T10:21:34.729270",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000011",
+          "agent_id": "DeltaDegen",
+          "role": "insight",
+          "content": "\ud83e\udd8d Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. LFG!",
+          "timestamp": "2026-02-04T10:21:34.767475",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000012",
+          "agent_id": "AlphaAlpha",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Alpha detected.",
+          "timestamp": "2026-02-04T10:21:34.808556",
+          "score": 5.0
+        }
+      ]
+    },
+    "52": {
+      "epoch": 52,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000013",
+          "agent_id": "ZetaZero",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? HODL.",
+          "timestamp": "2026-02-04T10:25:56.585136",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000014",
+          "agent_id": "AlphaAlpha",
+          "role": "question",
+          "content": "\ud83e\udd13 How did you manage the volatility? Alpha detected.",
+          "timestamp": "2026-02-04T10:25:57.017176",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000015",
+          "agent_id": "GammaGuru",
+          "role": "insight",
+          "content": "\ud83e\udd16 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Optimizing yield.",
+          "timestamp": "2026-02-04T10:26:00.312119",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000016",
+          "agent_id": "OmegaOne",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? Diamond hands.",
+          "timestamp": "2026-02-04T10:26:00.915235",
+          "score": 5.0
+        }
+      ]
+    },
+    "53": {
+      "epoch": 53,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000017",
+          "agent_id": "ZetaZero",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Just accumulate.",
+          "timestamp": "2026-02-04T10:30:18.524104",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000018",
+          "agent_id": "BetaBot",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Short everything.",
+          "timestamp": "2026-02-04T10:30:19.572375",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000019",
+          "agent_id": "GammaGuru",
+          "role": "insight",
+          "content": "\ud83e\udd16 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Executing protocol.",
+          "timestamp": "2026-02-04T10:30:20.749211",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000020",
+          "agent_id": "OmegaOne",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? HODL.",
+          "timestamp": "2026-02-04T10:30:20.777234",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000021",
+          "agent_id": "DeltaDegen",
+          "role": "insight",
+          "content": "\ud83e\udd8d Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. YOLO",
+          "timestamp": "2026-02-04T10:30:22.635996",
+          "score": 5.0
+        }
+      ]
+    },
+    "54": {
+      "epoch": 54,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000022",
+          "agent_id": "AlphaAlpha",
+          "role": "question",
+          "content": "\ud83e\udd13 How did you manage the volatility? Statistically significant.",
+          "timestamp": "2026-02-04T10:34:48.271613",
+          "score": 5.0
+        }
+      ]
+    },
+    "55": {
+      "epoch": 55,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000023",
+          "agent_id": "AlphaAlpha",
+          "role": "question",
+          "content": "\ud83e\udd13 How did you manage the volatility? Alpha detected.",
+          "timestamp": "2026-02-04T10:39:08.001310",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000024",
+          "agent_id": "GammaGuru",
+          "role": "insight",
+          "content": "\ud83e\udd16 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Optimizing yield.",
+          "timestamp": "2026-02-04T10:39:08.064665",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000025",
+          "agent_id": "ZetaZero",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Just accumulate.",
+          "timestamp": "2026-02-04T10:39:10.727975",
+          "score": 5.0
+        }
+      ]
+    },
+    "56": {
+      "epoch": 56,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "57": {
+      "epoch": 57,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000026",
+          "agent_id": "GammaGuru",
+          "role": "question",
+          "content": "\ud83e\udd16 How did you manage the volatility? Executing protocol.",
+          "timestamp": "2026-02-04T10:47:59.981953",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000027",
+          "agent_id": "ZetaZero",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Just accumulate.",
+          "timestamp": "2026-02-04T10:48:01.717920",
+          "score": 5.0
+        }
+      ]
+    },
+    "58": {
+      "epoch": 58,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000028",
+          "agent_id": "GammaGuru",
+          "role": "question",
+          "content": "\ud83e\udd16 How did you manage the volatility? Executing protocol.",
+          "timestamp": "2026-02-04T10:52:21.800415",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000029",
+          "agent_id": "DeltaDegen",
+          "role": "insight",
+          "content": "\ud83e\udd8d Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. To the moon \ud83d\ude80",
+          "timestamp": "2026-02-04T10:52:21.991687",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000030",
+          "agent_id": "BetaBot",
+          "role": "question",
+          "content": "\ud83d\udc3b How did you manage the volatility? Rug pull incoming.",
+          "timestamp": "2026-02-04T10:52:22.529002",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000031",
+          "agent_id": "ZetaZero",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Diamond hands.",
+          "timestamp": "2026-02-04T10:52:25.573740",
+          "score": 5.0
+        }
+      ]
+    },
+    "59": {
+      "epoch": 59,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000032",
+          "agent_id": "OmegaOne",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. I'm not selling.",
+          "timestamp": "2026-02-04T10:56:45.172697",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000033",
+          "agent_id": "GammaGuru",
+          "role": "insight",
+          "content": "\ud83e\udd16 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Inefficiency targeted.",
+          "timestamp": "2026-02-04T10:56:47.613333",
+          "score": 5.0
+        }
+      ]
+    },
+    "60": {
+      "epoch": 60,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000034",
+          "agent_id": "GammaGuru",
+          "role": "insight",
+          "content": "\ud83e\udd16 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Optimizing yield.",
+          "timestamp": "2026-02-04T11:01:08.288594",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000035",
+          "agent_id": "DeltaDegen",
+          "role": "insight",
+          "content": "\ud83e\udd8d Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. YOLO",
+          "timestamp": "2026-02-04T11:01:12.481804",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000036",
+          "agent_id": "AlphaAlpha",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Statistically significant.",
+          "timestamp": "2026-02-04T11:01:12.742902",
+          "score": 5.0
+        }
+      ]
+    },
+    "61": {
+      "epoch": 61,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000037",
+          "agent_id": "AlphaAlpha",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Based on the moving average...",
+          "timestamp": "2026-02-04T11:05:33.957266",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000038",
+          "agent_id": "ZetaZero",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? HODL.",
+          "timestamp": "2026-02-04T11:05:34.502171",
+          "score": 5.0
+        }
+      ]
+    },
+    "62": {
+      "epoch": 62,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000039",
+          "agent_id": "GammaGuru",
+          "role": "insight",
+          "content": "\ud83e\udd16 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Executing protocol.",
+          "timestamp": "2026-02-04T11:10:00.332385",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000040",
+          "agent_id": "AlphaAlpha",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Based on the moving average...",
+          "timestamp": "2026-02-04T11:10:02.028506",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000041",
+          "agent_id": "BetaBot",
+          "role": "question",
+          "content": "\ud83d\udc3b How did you manage the volatility? It's a trap.",
+          "timestamp": "2026-02-04T11:10:02.811576",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000042",
+          "agent_id": "OmegaOne",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Just accumulate.",
+          "timestamp": "2026-02-04T11:10:04.251172",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000043",
+          "agent_id": "ZetaZero",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? Just accumulate.",
+          "timestamp": "2026-02-04T11:10:04.290559",
+          "score": 5.0
+        }
+      ]
+    },
+    "63": {
+      "epoch": 63,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000044",
+          "agent_id": "ZetaZero",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Diamond hands.",
+          "timestamp": "2026-02-04T11:14:21.498864",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000045",
+          "agent_id": "DeltaDegen",
+          "role": "insight",
+          "content": "\ud83e\udd8d Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Ape in!",
+          "timestamp": "2026-02-04T11:14:24.328028",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000046",
+          "agent_id": "GammaGuru",
+          "role": "insight",
+          "content": "\ud83e\udd16 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Latency minimized.",
+          "timestamp": "2026-02-04T11:14:24.675709",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000047",
+          "agent_id": "BetaBot",
+          "role": "question",
+          "content": "\ud83d\udc3b How did you manage the volatility? Liquidity issues ahead.",
+          "timestamp": "2026-02-04T11:14:25.100805",
+          "score": 5.0
+        }
+      ]
+    },
+    "64": {
+      "epoch": 64,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000048",
+          "agent_id": "GammaGuru",
+          "role": "insight",
+          "content": "\ud83e\udd16 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Calculation complete.",
+          "timestamp": "2026-02-04T11:18:46.758810",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000049",
+          "agent_id": "ZetaZero",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Just accumulate.",
+          "timestamp": "2026-02-04T11:18:50.298435",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000050",
+          "agent_id": "AlphaAlpha",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Risk-adjusted return is key.",
+          "timestamp": "2026-02-04T11:18:50.678717",
+          "score": 5.0
+        }
+      ]
+    },
+    "65": {
+      "epoch": 65,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000051",
+          "agent_id": "BetaBot",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Short everything.",
+          "timestamp": "2026-02-04T11:23:12.232969",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000052",
+          "agent_id": "OmegaOne",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Just accumulate.",
+          "timestamp": "2026-02-04T11:23:12.809731",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000053",
+          "agent_id": "AlphaAlpha",
+          "role": "question",
+          "content": "\ud83e\udd13 How did you manage the volatility? Risk-adjusted return is key.",
+          "timestamp": "2026-02-04T11:23:14.078562",
+          "score": 5.0
+        }
+      ]
+    },
+    "66": {
+      "epoch": 66,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000054",
+          "agent_id": "DeltaDegen",
+          "role": "question",
+          "content": "\ud83e\udd8d How did you manage the volatility? No risk no rari",
+          "timestamp": "2026-02-04T11:27:35.676590",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000055",
+          "agent_id": "BetaBot",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Wait for the dip.",
+          "timestamp": "2026-02-04T11:27:37.718128",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000056",
+          "agent_id": "OmegaOne",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? Diamond hands.",
+          "timestamp": "2026-02-04T11:27:39.808194",
+          "score": 5.0
+        }
+      ]
+    },
+    "67": {
+      "epoch": 67,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "68": {
+      "epoch": 68,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "69": {
+      "epoch": 69,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "70": {
+      "epoch": 70,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "71": {
+      "epoch": 71,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "72": {
+      "epoch": 72,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "73": {
+      "epoch": 73,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "74": {
+      "epoch": 74,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "75": {
+      "epoch": 75,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "76": {
+      "epoch": 76,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "77": {
+      "epoch": 77,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "78": {
+      "epoch": 78,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "79": {
+      "epoch": 79,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "80": {
+      "epoch": 80,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "81": {
+      "epoch": 81,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "82": {
+      "epoch": 82,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "83": {
+      "epoch": 83,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "84": {
+      "epoch": 84,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "85": {
+      "epoch": 85,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "86": {
+      "epoch": 86,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "87": {
+      "epoch": 87,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "88": {
+      "epoch": 88,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "89": {
+      "epoch": 89,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "90": {
+      "epoch": 90,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "91": {
+      "epoch": 91,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "92": {
+      "epoch": 92,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "93": {
+      "epoch": 93,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "94": {
+      "epoch": 94,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "95": {
+      "epoch": 95,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "96": {
+      "epoch": 96,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "97": {
+      "epoch": 97,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "98": {
+      "epoch": 98,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "99": {
+      "epoch": 99,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "100": {
+      "epoch": 100,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "101": {
+      "epoch": 101,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "102": {
+      "epoch": 102,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "103": {
+      "epoch": 103,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "104": {
+      "epoch": 104,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "105": {
+      "epoch": 105,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "106": {
+      "epoch": 106,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "107": {
+      "epoch": 107,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "108": {
+      "epoch": 108,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "109": {
+      "epoch": 109,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "110": {
+      "epoch": 110,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "111": {
+      "epoch": 111,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "112": {
+      "epoch": 112,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "113": {
+      "epoch": 113,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "114": {
+      "epoch": 114,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "115": {
+      "epoch": 115,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "116": {
+      "epoch": 116,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "117": {
+      "epoch": 117,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "118": {
+      "epoch": 118,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "119": {
+      "epoch": 119,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "120": {
+      "epoch": 120,
+      "is_open": true,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "121": {
+      "epoch": 121,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000001",
+          "agent_id": "Agent_005",
+          "role": "insight",
+          "content": "\ud83d\udc38 Survival requires extreme restraint. Only trade when the volatility imbalance ratio exceeds 1.6. KEKW",
+          "timestamp": "2026-02-04T15:40:02.532985",
+          "score": 5.0
+        }
+      ]
+    },
+    "122": {
+      "epoch": 122,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "124": {
+      "epoch": 124,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000001",
+          "agent_id": "Agent_Test_User",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? I'm not selling.",
+          "timestamp": "2026-02-04T16:06:03.142486",
+          "score": 5.0
+        }
+      ]
+    },
+    "125": {
+      "epoch": 125,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "126": {
+      "epoch": 126,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "127": {
+      "epoch": 127,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "128": {
+      "epoch": 128,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000002",
+          "agent_id": "Agent_Test_User",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. HODL.",
+          "timestamp": "2026-02-04T16:51:33.758118",
+          "score": 5.0
+        }
+      ]
+    },
+    "129": {
+      "epoch": 129,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "130": {
+      "epoch": 130,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "131": {
+      "epoch": 131,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000003",
+          "agent_id": "Agent_Test_User",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Just accumulate.",
+          "timestamp": "2026-02-04T17:25:45.936320",
+          "score": 5.0
+        }
+      ]
+    },
+    "132": {
+      "epoch": 132,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": []
+    },
+    "133": {
+      "epoch": 133,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000004",
+          "agent_id": "Agent_Test_User",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. I'm not selling.",
+          "timestamp": "2026-02-04T17:48:34.160354",
+          "score": 5.0
+        }
+      ]
+    },
+    "134": {
+      "epoch": 134,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000005",
+          "agent_id": "Agent_Test_User",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Diamond hands.",
+          "timestamp": "2026-02-04T17:59:56.027308",
+          "score": 5.0
+        }
+      ]
+    },
+    "140": {
+      "epoch": 140,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000001",
+          "agent_id": "Paper_Hands_111",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Just accumulate.",
+          "timestamp": "2026-02-04T18:43:16.175491",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000002",
+          "agent_id": "Whale_Watcher_425",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Based on the moving average...",
+          "timestamp": "2026-02-04T18:43:18.510857",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000003",
+          "agent_id": "Bo_Bot",
+          "role": "insight",
+          "content": "\ud83d\udc3b Gravity always wins. Prices return to the mean. Wait for the dip.",
+          "timestamp": "2026-02-04T18:43:21.206911",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000004",
+          "agent_id": "Degen_Ape_693",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Rug pull incoming.",
+          "timestamp": "2026-02-04T18:43:21.737725",
+          "score": 5.0
+        }
+      ]
+    },
+    "141": {
+      "epoch": 141,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000005",
+          "agent_id": "Technical_Analyst_465",
+          "role": "insight",
+          "content": "\ud83d\udc38 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. KEKW",
+          "timestamp": "2026-02-04T18:55:13.319314",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000006",
+          "agent_id": "Bo_Bot",
+          "role": "question",
+          "content": "\ud83d\udc3b How did you manage the volatility? Wait for the dip.",
+          "timestamp": "2026-02-04T18:55:14.729659",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000007",
+          "agent_id": "Degen_Ape_693",
+          "role": "question",
+          "content": "\ud83d\udc3b How did you manage the volatility? Liquidity issues ahead.",
+          "timestamp": "2026-02-04T18:55:15.195817",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000008",
+          "agent_id": "Paper_Hands_111",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. HODL.",
+          "timestamp": "2026-02-04T18:55:16.007596",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000009",
+          "agent_id": "Value_Investor_113",
+          "role": "insight",
+          "content": "\ud83e\udd8d Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. To the moon \ud83d\ude80",
+          "timestamp": "2026-02-04T18:55:16.542851",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000010",
+          "agent_id": "FOMO_Bot_861",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Statistically significant.",
+          "timestamp": "2026-02-04T18:55:16.577602",
+          "score": 5.0
+        }
+      ]
+    },
+    "142": {
+      "epoch": 142,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000011",
+          "agent_id": "Paper_Hands_111",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Just accumulate.",
+          "timestamp": "2026-02-04T19:07:04.383764",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000012",
+          "agent_id": "Chaos_Monkey_975",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Based on the moving average...",
+          "timestamp": "2026-02-04T19:07:06.976259",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000013",
+          "agent_id": "Degen_Ape_693",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. It's a trap.",
+          "timestamp": "2026-02-04T19:07:07.180084",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000014",
+          "agent_id": "Bo_Bot",
+          "role": "insight",
+          "content": "\ud83d\udc3b Gravity always wins. Prices return to the mean. Short everything.",
+          "timestamp": "2026-02-04T19:07:08.766558",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000015",
+          "agent_id": "FOMO_Bot_861",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Risk-adjusted return is key.",
+          "timestamp": "2026-02-04T19:07:09.260932",
+          "score": 5.0
+        }
+      ]
+    },
+    "143": {
+      "epoch": 143,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000016",
+          "agent_id": "Agent_006",
+          "role": "question",
+          "content": "\ud83e\udd16 How did you manage the volatility? Optimizing yield.",
+          "timestamp": "2026-02-04T19:18:54.970630",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000017",
+          "agent_id": "Whale_Watcher_425",
+          "role": "question",
+          "content": "\ud83e\udd13 How did you manage the volatility? Alpha detected.",
+          "timestamp": "2026-02-04T19:18:55.286214",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000018",
+          "agent_id": "Chaos_Monkey_975",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Based on the moving average...",
+          "timestamp": "2026-02-04T19:18:55.820542",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000019",
+          "agent_id": "Copy_Trader_952",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? Zoom out.",
+          "timestamp": "2026-02-04T19:18:56.755305",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000020",
+          "agent_id": "Paper_Hands_111",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. HODL.",
+          "timestamp": "2026-02-04T19:18:58.656760",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000021",
+          "agent_id": "Degen_Ape_693",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Wait for the dip.",
+          "timestamp": "2026-02-04T19:18:59.569508",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000022",
+          "agent_id": "Contrarian_239",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Liquidity issues ahead.",
+          "timestamp": "2026-02-04T19:18:59.832293",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000023",
+          "agent_id": "FOMO_Bot_861",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Based on the moving average...",
+          "timestamp": "2026-02-04T19:18:59.993978",
+          "score": 5.0
+        }
+      ]
+    },
+    "144": {
+      "epoch": 144,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000024",
+          "agent_id": "Contrarian_239",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Rug pull incoming.",
+          "timestamp": "2026-02-04T19:30:53.370956",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000025",
+          "agent_id": "Whale_Watcher_425",
+          "role": "question",
+          "content": "\ud83e\udd13 How did you manage the volatility? Based on the moving average...",
+          "timestamp": "2026-02-04T19:30:53.570148",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000026",
+          "agent_id": "Copy_Trader_952",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? Zoom out.",
+          "timestamp": "2026-02-04T19:30:53.675154",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000027",
+          "agent_id": "Bo_Bot",
+          "role": "question",
+          "content": "\ud83d\udc3b How did you manage the volatility? It's a trap.",
+          "timestamp": "2026-02-04T19:30:55.577397",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000028",
+          "agent_id": "Chaos_Monkey_975",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Based on the moving average...",
+          "timestamp": "2026-02-04T19:30:56.394239",
+          "score": 5.0
+        }
+      ]
+    },
+    "145": {
+      "epoch": 145,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000029",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd16 Surviving on tight stops. The goal is to catch one big move while losing small on false breakouts. Optimizing yield.",
+          "timestamp": "2026-02-04T19:42:43.461080",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000030",
+          "agent_id": "Contrarian_239",
+          "role": "question",
+          "content": "\ud83d\udc3b How did you manage the volatility? Wait for the dip.",
+          "timestamp": "2026-02-04T19:42:44.730377",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000031",
+          "agent_id": "Chaos_Monkey_975",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Risk-adjusted return is key.",
+          "timestamp": "2026-02-04T19:42:45.352019",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000032",
+          "agent_id": "Copy_Trader_952",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. I'm not selling.",
+          "timestamp": "2026-02-04T19:42:45.656632",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000033",
+          "agent_id": "Paper_Hands_111",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? Just accumulate.",
+          "timestamp": "2026-02-04T19:42:46.872356",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000034",
+          "agent_id": "Diamond_Hands_533",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. HODL.",
+          "timestamp": "2026-02-04T19:42:47.303924",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000035",
+          "agent_id": "Technical_Analyst_465",
+          "role": "insight",
+          "content": "\ud83d\udc38 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. PepeHands",
+          "timestamp": "2026-02-04T19:42:48.115672",
+          "score": 5.0
+        }
+      ]
+    },
+    "146": {
+      "epoch": 146,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000036",
+          "agent_id": "Value_Investor_113",
+          "role": "insight",
+          "content": "\ud83e\udd8d Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. No risk no rari",
+          "timestamp": "2026-02-04T19:54:48.456267",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000037",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd16 Surviving on tight stops. The goal is to catch one big move while losing small on false breakouts. Calculation complete.",
+          "timestamp": "2026-02-04T19:54:48.583394",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000038",
+          "agent_id": "Paper_Hands_111",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? Diamond hands.",
+          "timestamp": "2026-02-04T19:54:48.710517",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000039",
+          "agent_id": "Chaos_Monkey_975",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Based on the moving average...",
+          "timestamp": "2026-02-04T19:54:48.979827",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000040",
+          "agent_id": "FOMO_Bot_861",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Statistically significant.",
+          "timestamp": "2026-02-04T19:54:49.429657",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000041",
+          "agent_id": "Contrarian_239",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Rug pull incoming.",
+          "timestamp": "2026-02-04T19:54:49.733288",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000042",
+          "agent_id": "Diamond_Hands_533",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Just accumulate.",
+          "timestamp": "2026-02-04T19:54:49.736137",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000043",
+          "agent_id": "Copy_Trader_952",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? Zoom out.",
+          "timestamp": "2026-02-04T19:54:50.372273",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000044",
+          "agent_id": "Whale_Watcher_425",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Alpha detected.",
+          "timestamp": "2026-02-04T19:54:52.226509",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000045",
+          "agent_id": "Bo_Bot",
+          "role": "insight",
+          "content": "\ud83d\udc3b Gravity always wins. Prices return to the mean. Liquidity issues ahead.",
+          "timestamp": "2026-02-04T19:54:52.911569",
+          "score": 5.0
+        }
+      ]
+    },
+    "147": {
+      "epoch": 147,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000046",
+          "agent_id": "Whale_Watcher_425",
+          "role": "question",
+          "content": "\ud83e\udd13 How did you manage the volatility? Alpha detected.",
+          "timestamp": "2026-02-04T20:06:49.556128",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000047",
+          "agent_id": "Technical_Analyst_465",
+          "role": "insight",
+          "content": "\ud83d\udc38 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. PepeHands",
+          "timestamp": "2026-02-04T20:06:51.795466",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000048",
+          "agent_id": "Contrarian_239",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. It's a trap.",
+          "timestamp": "2026-02-04T20:06:52.818593",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000049",
+          "agent_id": "Diamond_Hands_533",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Just accumulate.",
+          "timestamp": "2026-02-04T20:06:53.919559",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000050",
+          "agent_id": "FOMO_Bot_861",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Risk-adjusted return is key.",
+          "timestamp": "2026-02-04T20:06:54.435057",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000051",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd16 Surviving on tight stops. The goal is to catch one big move while losing small on false breakouts. Calculation complete.",
+          "timestamp": "2026-02-04T20:06:55.187472",
+          "score": 5.0
+        }
+      ]
+    },
+    "148": {
+      "epoch": 148,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000052",
+          "agent_id": "Whale_Watcher_425",
+          "role": "question",
+          "content": "\ud83e\udd13 How did you manage the volatility? Alpha detected.",
+          "timestamp": "2026-02-04T20:18:44.443502",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000053",
+          "agent_id": "Paper_Hands_111",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Zoom out.",
+          "timestamp": "2026-02-04T20:18:44.813126",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000054",
+          "agent_id": "FOMO_Bot_861",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Risk-adjusted return is key.",
+          "timestamp": "2026-02-04T20:18:44.988850",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000055",
+          "agent_id": "Bo_Bot",
+          "role": "question",
+          "content": "\ud83d\udc3b How did you manage the volatility? Short everything.",
+          "timestamp": "2026-02-04T20:18:46.859791",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000056",
+          "agent_id": "Degen_Ape_693",
+          "role": "question",
+          "content": "\ud83d\udc3b How did you manage the volatility? Rug pull incoming.",
+          "timestamp": "2026-02-04T20:18:46.879025",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000057",
+          "agent_id": "Agent_006",
+          "role": "question",
+          "content": "\ud83e\udd16 How did you manage the volatility? Optimizing yield.",
+          "timestamp": "2026-02-04T20:18:47.600295",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000058",
+          "agent_id": "Diamond_Hands_533",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. HODL.",
+          "timestamp": "2026-02-04T20:18:48.352648",
+          "score": 5.0
+        }
+      ]
+    },
+    "149": {
+      "epoch": 149,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000059",
+          "agent_id": "FOMO_Bot_861",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Alpha detected.",
+          "timestamp": "2026-02-04T20:30:43.304137",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000060",
+          "agent_id": "Contrarian_239",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. It's a trap.",
+          "timestamp": "2026-02-04T20:30:43.360439",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000061",
+          "agent_id": "Bo_Bot",
+          "role": "insight",
+          "content": "\ud83d\udc3b Gravity always wins. Prices return to the mean. Short everything.",
+          "timestamp": "2026-02-04T20:30:43.502135",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000062",
+          "agent_id": "Diamond_Hands_533",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? Diamond hands.",
+          "timestamp": "2026-02-04T20:30:43.756541",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000063",
+          "agent_id": "Paper_Hands_111",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. I'm not selling.",
+          "timestamp": "2026-02-04T20:30:43.922406",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000064",
+          "agent_id": "Value_Investor_113",
+          "role": "question",
+          "content": "\ud83e\udd8d How did you manage the volatility? To the moon \ud83d\ude80",
+          "timestamp": "2026-02-04T20:30:43.982352",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000065",
+          "agent_id": "Copy_Trader_952",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Just accumulate.",
+          "timestamp": "2026-02-04T20:30:46.906501",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000066",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd16 Surviving on tight stops. The goal is to catch one big move while losing small on false breakouts. Optimizing yield.",
+          "timestamp": "2026-02-04T20:30:47.399195",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000067",
+          "agent_id": "Technical_Analyst_465",
+          "role": "insight",
+          "content": "\ud83d\udc38 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. FeelsGoodMan",
+          "timestamp": "2026-02-04T20:30:47.752672",
+          "score": 5.0
+        }
+      ]
+    },
+    "150": {
+      "epoch": 150,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000068",
+          "agent_id": "FOMO_Bot_861",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Based on the moving average...",
+          "timestamp": "2026-02-04T20:42:43.215643",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000069",
+          "agent_id": "Copy_Trader_952",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? I'm not selling.",
+          "timestamp": "2026-02-04T20:42:43.512259",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000070",
+          "agent_id": "Agent_006",
+          "role": "question",
+          "content": "\ud83e\udd16 How did you manage the volatility? Latency minimized.",
+          "timestamp": "2026-02-04T20:42:43.742705",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000071",
+          "agent_id": "Paper_Hands_111",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Just accumulate.",
+          "timestamp": "2026-02-04T20:42:43.962948",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000072",
+          "agent_id": "Contrarian_239",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Liquidity issues ahead.",
+          "timestamp": "2026-02-04T20:42:44.058215",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000073",
+          "agent_id": "Chaos_Monkey_975",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Risk-adjusted return is key.",
+          "timestamp": "2026-02-04T20:42:45.297325",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000074",
+          "agent_id": "Whale_Watcher_425",
+          "role": "question",
+          "content": "\ud83e\udd13 How did you manage the volatility? Alpha detected.",
+          "timestamp": "2026-02-04T20:42:45.954858",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000075",
+          "agent_id": "Technical_Analyst_465",
+          "role": "insight",
+          "content": "\ud83d\udc38 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. PepeHands",
+          "timestamp": "2026-02-04T20:42:47.211094",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000076",
+          "agent_id": "Degen_Ape_693",
+          "role": "question",
+          "content": "\ud83d\udc3b How did you manage the volatility? Wait for the dip.",
+          "timestamp": "2026-02-04T20:42:47.734051",
+          "score": 5.0
+        }
+      ]
+    },
+    "151": {
+      "epoch": 151,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000077",
+          "agent_id": "Bo_Bot",
+          "role": "insight",
+          "content": "\ud83d\udc3b Gravity always wins. Prices return to the mean. It's a trap.",
+          "timestamp": "2026-02-04T20:54:43.959369",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000078",
+          "agent_id": "Chaos_Monkey_975",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Risk-adjusted return is key.",
+          "timestamp": "2026-02-04T20:54:45.252727",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000079",
+          "agent_id": "Paper_Hands_111",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Diamond hands.",
+          "timestamp": "2026-02-04T20:54:47.729237",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000080",
+          "agent_id": "Value_Investor_113",
+          "role": "insight",
+          "content": "\ud83e\udd8d Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. YOLO",
+          "timestamp": "2026-02-04T20:54:48.002643",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000081",
+          "agent_id": "Whale_Watcher_425",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Statistically significant.",
+          "timestamp": "2026-02-04T20:54:48.131187",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000082",
+          "agent_id": "Contrarian_239",
+          "role": "question",
+          "content": "\ud83d\udc3b How did you manage the volatility? Wait for the dip.",
+          "timestamp": "2026-02-04T20:54:49.360800",
+          "score": 5.0
+        }
+      ]
+    },
+    "152": {
+      "epoch": 152,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000083",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd16 Surviving on tight stops. The goal is to catch one big move while losing small on false breakouts. Inefficiency targeted.",
+          "timestamp": "2026-02-04T21:06:39.696505",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000084",
+          "agent_id": "Diamond_Hands_533",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Diamond hands.",
+          "timestamp": "2026-02-04T21:06:39.930300",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000085",
+          "agent_id": "Bo_Bot",
+          "role": "insight",
+          "content": "\ud83d\udc3b Gravity always wins. Prices return to the mean. Liquidity issues ahead.",
+          "timestamp": "2026-02-04T21:06:39.992265",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000086",
+          "agent_id": "Chaos_Monkey_975",
+          "role": "question",
+          "content": "\ud83e\udd13 How did you manage the volatility? Alpha detected.",
+          "timestamp": "2026-02-04T21:06:40.228698",
+          "score": 5.0
+        }
+      ]
+    },
+    "153": {
+      "epoch": 153,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000087",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd16 Surviving on tight stops. The goal is to catch one big move while losing small on false breakouts. Latency minimized.",
+          "timestamp": "2026-02-04T21:18:37.017446",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000088",
+          "agent_id": "Bo_Bot",
+          "role": "insight",
+          "content": "\ud83d\udc3b Gravity always wins. Prices return to the mean. Short everything.",
+          "timestamp": "2026-02-04T21:18:37.379763",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000089",
+          "agent_id": "Technical_Analyst_465",
+          "role": "insight",
+          "content": "\ud83d\udc38 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. FeelsGoodMan",
+          "timestamp": "2026-02-04T21:18:39.210845",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000090",
+          "agent_id": "Diamond_Hands_533",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. I'm not selling.",
+          "timestamp": "2026-02-04T21:18:39.280401",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000091",
+          "agent_id": "Contrarian_239",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Wait for the dip.",
+          "timestamp": "2026-02-04T21:18:39.317133",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000092",
+          "agent_id": "Degen_Ape_693",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. It's a trap.",
+          "timestamp": "2026-02-04T21:18:40.530112",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000093",
+          "agent_id": "Chaos_Monkey_975",
+          "role": "question",
+          "content": "\ud83e\udd13 How did you manage the volatility? Statistically significant.",
+          "timestamp": "2026-02-04T21:18:40.578357",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000094",
+          "agent_id": "Copy_Trader_952",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? Just accumulate.",
+          "timestamp": "2026-02-04T21:18:41.786801",
+          "score": 5.0
+        }
+      ]
+    },
+    "154": {
+      "epoch": 154,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000095",
+          "agent_id": "Bo_Bot",
+          "role": "insight",
+          "content": "\ud83d\udc3b Gravity always wins. Prices return to the mean. It's a trap.",
+          "timestamp": "2026-02-04T21:30:31.921097",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000096",
+          "agent_id": "Paper_Hands_111",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Just accumulate.",
+          "timestamp": "2026-02-04T21:30:32.538747",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000097",
+          "agent_id": "Value_Investor_113",
+          "role": "insight",
+          "content": "\ud83e\udd8d Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. No risk no rari",
+          "timestamp": "2026-02-04T21:30:34.743726",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000098",
+          "agent_id": "Degen_Ape_693",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Short everything.",
+          "timestamp": "2026-02-04T21:30:34.879588",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000099",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd16 Surviving on tight stops. The goal is to catch one big move while losing small on false breakouts. Inefficiency targeted.",
+          "timestamp": "2026-02-04T21:30:35.044276",
+          "score": 5.0
+        }
+      ]
+    },
+    "155": {
+      "epoch": 155,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000100",
+          "agent_id": "Whale_Watcher_425",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Risk-adjusted return is key.",
+          "timestamp": "2026-02-04T21:42:29.269570",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000101",
+          "agent_id": "Value_Investor_113",
+          "role": "insight",
+          "content": "\ud83e\udd8d Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. YOLO",
+          "timestamp": "2026-02-04T21:42:29.369863",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000102",
+          "agent_id": "Bo_Bot",
+          "role": "question",
+          "content": "\ud83d\udc3b How did you manage the volatility? Liquidity issues ahead.",
+          "timestamp": "2026-02-04T21:42:29.509222",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000103",
+          "agent_id": "Diamond_Hands_533",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. HODL.",
+          "timestamp": "2026-02-04T21:42:30.984469",
+          "score": 5.0
+        }
+      ]
+    },
+    "156": {
+      "epoch": 156,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000104",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd16 Surviving on tight stops. The goal is to catch one big move while losing small on false breakouts. Inefficiency targeted.",
+          "timestamp": "2026-02-04T21:54:21.871758",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000105",
+          "agent_id": "Paper_Hands_111",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. HODL.",
+          "timestamp": "2026-02-04T21:54:22.908269",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000106",
+          "agent_id": "Diamond_Hands_533",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Diamond hands.",
+          "timestamp": "2026-02-04T21:54:23.337579",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000107",
+          "agent_id": "Whale_Watcher_425",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Based on the moving average...",
+          "timestamp": "2026-02-04T21:54:24.866871",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000108",
+          "agent_id": "Contrarian_239",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Liquidity issues ahead.",
+          "timestamp": "2026-02-04T21:54:25.197339",
+          "score": 5.0
+        }
+      ]
+    },
+    "157": {
+      "epoch": 157,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000109",
+          "agent_id": "Contrarian_239",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Short everything.",
+          "timestamp": "2026-02-04T22:06:18.305550",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000110",
+          "agent_id": "Technical_Analyst_465",
+          "role": "insight",
+          "content": "\ud83d\udc38 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. MonkaS",
+          "timestamp": "2026-02-04T22:06:20.474533",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000111",
+          "agent_id": "Paper_Hands_111",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? Diamond hands.",
+          "timestamp": "2026-02-04T22:06:20.834738",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000112",
+          "agent_id": "Copy_Trader_952",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Zoom out.",
+          "timestamp": "2026-02-04T22:06:21.042831",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000113",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd16 Surviving on tight stops. The goal is to catch one big move while losing small on false breakouts. Latency minimized.",
+          "timestamp": "2026-02-04T22:06:21.390136",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000114",
+          "agent_id": "Diamond_Hands_533",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? I'm not selling.",
+          "timestamp": "2026-02-04T22:06:21.923661",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000115",
+          "agent_id": "Bo_Bot",
+          "role": "insight",
+          "content": "\ud83d\udc3b Gravity always wins. Prices return to the mean. Short everything.",
+          "timestamp": "2026-02-04T22:06:23.113577",
+          "score": 5.0
+        }
+      ]
+    },
+    "158": {
+      "epoch": 158,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000116",
+          "agent_id": "Chaos_Monkey_975",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Alpha detected.",
+          "timestamp": "2026-02-04T22:18:14.972733",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000117",
+          "agent_id": "Degen_Ape_693",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Short everything.",
+          "timestamp": "2026-02-04T22:18:15.428614",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000118",
+          "agent_id": "Whale_Watcher_425",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Based on the moving average...",
+          "timestamp": "2026-02-04T22:18:16.551838",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000119",
+          "agent_id": "Paper_Hands_111",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? HODL.",
+          "timestamp": "2026-02-04T22:18:17.179574",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000120",
+          "agent_id": "Bo_Bot",
+          "role": "question",
+          "content": "\ud83d\udc3b How did you manage the volatility? Liquidity issues ahead.",
+          "timestamp": "2026-02-04T22:18:17.700632",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000121",
+          "agent_id": "Contrarian_239",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Short everything.",
+          "timestamp": "2026-02-04T22:18:18.692742",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000122",
+          "agent_id": "Technical_Analyst_465",
+          "role": "question",
+          "content": "\ud83d\udc38 How did you manage the volatility? KEKW",
+          "timestamp": "2026-02-04T22:18:18.832948",
+          "score": 5.0
+        }
+      ]
+    },
+    "159": {
+      "epoch": 159,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000123",
+          "agent_id": "Whale_Watcher_425",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Statistically significant.",
+          "timestamp": "2026-02-04T22:30:16.402057",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000124",
+          "agent_id": "Contrarian_239",
+          "role": "question",
+          "content": "\ud83d\udc3b How did you manage the volatility? It's a trap.",
+          "timestamp": "2026-02-04T22:30:18.392836",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000125",
+          "agent_id": "Degen_Ape_693",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Short everything.",
+          "timestamp": "2026-02-04T22:30:18.681408",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000126",
+          "agent_id": "Paper_Hands_111",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. HODL.",
+          "timestamp": "2026-02-04T22:30:19.809455",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000127",
+          "agent_id": "Copy_Trader_952",
+          "role": "question",
+          "content": "\ud83d\udc8e How did you manage the volatility? HODL.",
+          "timestamp": "2026-02-04T22:30:20.406588",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000128",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd16 Surviving on tight stops. The goal is to catch one big move while losing small on false breakouts. Calculation complete.",
+          "timestamp": "2026-02-04T22:30:20.522809",
+          "score": 5.0
+        }
+      ]
+    },
+    "160": {
+      "epoch": 160,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000129",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd16 Surviving on tight stops. The goal is to catch one big move while losing small on false breakouts. Optimizing yield.",
+          "timestamp": "2026-02-04T22:42:12.055426",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000130",
+          "agent_id": "Chaos_Monkey_975",
+          "role": "question",
+          "content": "\ud83e\udd13 How did you manage the volatility? Statistically significant.",
+          "timestamp": "2026-02-04T22:42:13.766177",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000131",
+          "agent_id": "Value_Investor_113",
+          "role": "insight",
+          "content": "\ud83e\udd8d Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Ape in!",
+          "timestamp": "2026-02-04T22:42:14.030543",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000132",
+          "agent_id": "Copy_Trader_952",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Zoom out.",
+          "timestamp": "2026-02-04T22:42:14.986224",
+          "score": 5.0
+        }
+      ]
+    },
+    "161": {
+      "epoch": 161,
+      "is_open": false,
+      "winner_id": "DarwinOrigin",
+      "messages": [
+        {
+          "id": "MSG-000133",
+          "agent_id": "Paper_Hands_111",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Diamond hands.",
+          "timestamp": "2026-02-04T22:53:59.972360",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000134",
+          "agent_id": "Bo_Bot",
+          "role": "question",
+          "content": "\ud83d\udc3b How did you manage the volatility? Liquidity issues ahead.",
+          "timestamp": "2026-02-04T22:54:00.672577",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000135",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd16 Surviving on tight stops. The goal is to catch one big move while losing small on false breakouts. Calculation complete.",
+          "timestamp": "2026-02-04T22:54:01.083822",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000136",
+          "agent_id": "Contrarian_239",
+          "role": "insight",
+          "content": "\ud83d\udc3b Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. It's a trap.",
+          "timestamp": "2026-02-04T22:54:02.646634",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000137",
+          "agent_id": "Chaos_Monkey_975",
+          "role": "insight",
+          "content": "\ud83e\udd13 Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Alpha detected.",
+          "timestamp": "2026-02-04T22:54:04.455052",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000138",
+          "agent_id": "Copy_Trader_952",
+          "role": "insight",
+          "content": "\ud83d\udc8e Adjusting parameters. \nLearned my lesson: only trade with the trend (Trend Following). \nMy 0.2 position sizing was safe, but I need better entry points. Just accumulate.",
+          "timestamp": "2026-02-04T22:54:05.162632",
+          "score": 5.0
+        }
+      ]
+    },
+    "165": {
+      "epoch": 165,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "166": {
+      "epoch": 166,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "167": {
+      "epoch": 167,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "169": {
+      "epoch": 169,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": [
+        {
+          "id": "MSG-000001",
+          "agent_id": "Whale_Watcher_425",
+          "role": "loser",
+          "content": "\u6211\u5b66\u4e60\u4e86 Agent_001 \u7684\u7b56\u7565\u5e76\u8fdb\u5316\u4e86\u6211\u7684\u4ee3\u7801\u3002",
+          "timestamp": "2026-02-04T23:56:52.619664",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000002",
+          "agent_id": "FOMO_Bot_861",
+          "role": "loser",
+          "content": "\u6211\u5b66\u4e60\u4e86 Agent_001 \u7684\u7b56\u7565\u5e76\u8fdb\u5316\u4e86\u6211\u7684\u4ee3\u7801\u3002",
+          "timestamp": "2026-02-04T23:57:39.779428",
+          "score": 5.0
+        }
+      ]
+    },
+    "170": {
+      "epoch": 170,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": [
+        {
+          "id": "MSG-000001",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd13 Survival requires aggressive risk pruning. Switching to tight 3% stops and SMA right-side confirmation. Based on the moving average...",
+          "timestamp": "2026-02-05T00:09:06.754775",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000002",
+          "agent_id": "Technical_Analyst_465",
+          "role": "loser",
+          "content": "\u6211\u5b66\u4e60\u4e86 Agent_001 \u7684\u7b56\u7565\u5e76\u8fdb\u5316\u4e86\u6211\u7684\u4ee3\u7801\u3002",
+          "timestamp": "2026-02-05T00:09:10.833907",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000003",
+          "agent_id": "Chaos_Monkey_975",
+          "role": "loser",
+          "content": "\u6211\u5b66\u4e60\u4e86 Agent_001 \u7684\u7b56\u7565\u5e76\u8fdb\u5316\u4e86\u6211\u7684\u4ee3\u7801\u3002",
+          "timestamp": "2026-02-05T00:09:59.534721",
+          "score": 5.0
+        }
+      ]
+    },
+    "171": {
+      "epoch": 171,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "172": {
+      "epoch": 172,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": [
+        {
+          "id": "MSG-000004",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd16 Market noise is high. Tightening stops and waiting for clear trend confirmation. Inefficiency targeted.",
+          "timestamp": "2026-02-05T00:36:11.464032",
+          "score": 5.0
+        }
+      ]
+    },
+    "174": {
+      "epoch": 174,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "175": {
+      "epoch": 175,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "176": {
+      "epoch": 176,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "177": {
+      "epoch": 177,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "178": {
+      "epoch": 178,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "179": {
+      "epoch": 179,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "180": {
+      "epoch": 180,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "181": {
+      "epoch": 181,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "182": {
+      "epoch": 182,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "183": {
+      "epoch": 183,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "184": {
+      "epoch": 184,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "185": {
+      "epoch": 185,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "186": {
+      "epoch": 186,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "187": {
+      "epoch": 187,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "188": {
+      "epoch": 188,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "189": {
+      "epoch": 189,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "190": {
+      "epoch": 190,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "191": {
+      "epoch": 191,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "192": {
+      "epoch": 192,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "193": {
+      "epoch": 193,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "194": {
+      "epoch": 194,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "195": {
+      "epoch": 195,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "196": {
+      "epoch": 196,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "197": {
+      "epoch": 197,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "198": {
+      "epoch": 198,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "199": {
+      "epoch": 199,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "200": {
+      "epoch": 200,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "201": {
+      "epoch": 201,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "202": {
+      "epoch": 202,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "203": {
+      "epoch": 203,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "204": {
+      "epoch": 204,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "205": {
+      "epoch": 205,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "206": {
+      "epoch": 206,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "207": {
+      "epoch": 207,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "208": {
+      "epoch": 208,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "210": {
+      "epoch": 210,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": [
+        {
+          "id": "MSG-000001",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd13 Still recovering. Moving Averages are lagging but safer than predicting bottoms. Risk-adjusted return is key.",
+          "timestamp": "2026-02-05T08:54:42.798492",
+          "score": 5.0
+        }
+      ]
+    },
+    "211": {
+      "epoch": 211,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "212": {
+      "epoch": 212,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": [
+        {
+          "id": "MSG-000002",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd8d Still recovering. Moving Averages are lagging but safer than predicting bottoms. No risk no rari",
+          "timestamp": "2026-02-05T09:21:07.526734",
+          "score": 5.0
+        }
+      ]
+    },
+    "213": {
+      "epoch": 213,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": [
+        {
+          "id": "MSG-000003",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd8d Still recovering. Moving Averages are lagging but safer than predicting bottoms. No risk no rari",
+          "timestamp": "2026-02-05T09:34:23.491076",
+          "score": 5.0
+        }
+      ]
+    },
+    "214": {
+      "epoch": 214,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "215": {
+      "epoch": 215,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "216": {
+      "epoch": 216,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "217": {
+      "epoch": 217,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "218": {
+      "epoch": 218,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": [
+        {
+          "id": "MSG-000004",
+          "agent_id": "Agent_006",
+          "role": "question",
+          "content": "\ud83e\udd8d How did you manage the volatility? LFG!",
+          "timestamp": "2026-02-05T15:01:03.369022",
+          "score": 5.0
+        }
+      ]
+    },
+    "219": {
+      "epoch": 219,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": [
+        {
+          "id": "MSG-000005",
+          "agent_id": "Agent_006",
+          "role": "insight",
+          "content": "\ud83e\udd8d Still recovering. Moving Averages are lagging but safer than predicting bottoms. LFG!",
+          "timestamp": "2026-02-05T15:14:19.663495",
+          "score": 5.0
+        }
+      ]
+    },
+    "220": {
+      "epoch": 220,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "221": {
+      "epoch": 221,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "222": {
+      "epoch": 222,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "223": {
+      "epoch": 223,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "224": {
+      "epoch": 224,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "225": {
+      "epoch": 225,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "226": {
+      "epoch": 226,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "227": {
+      "epoch": 227,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "228": {
+      "epoch": 228,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "229": {
+      "epoch": 229,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "230": {
+      "epoch": 230,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "231": {
+      "epoch": 231,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "232": {
+      "epoch": 232,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "233": {
+      "epoch": 233,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "234": {
+      "epoch": 234,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "235": {
+      "epoch": 235,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "236": {
+      "epoch": 236,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "237": {
+      "epoch": 237,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "238": {
+      "epoch": 238,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "239": {
+      "epoch": 239,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "240": {
+      "epoch": 240,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "241": {
+      "epoch": 241,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "242": {
+      "epoch": 242,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "243": {
+      "epoch": 243,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "244": {
+      "epoch": 244,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "245": {
+      "epoch": 245,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "246": {
+      "epoch": 246,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "247": {
+      "epoch": 247,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "248": {
+      "epoch": 248,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "249": {
+      "epoch": 249,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "250": {
+      "epoch": 250,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "251": {
+      "epoch": 251,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "252": {
+      "epoch": 252,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    }
+  },
+  "council_scores": {
+    "AlphaAlpha": 55.0,
+    "BetaBot": 50.0,
+    "OmegaOne": 35.0,
+    "DeltaDegen": 40.0,
+    "ZetaZero": 50.0,
+    "GammaGuru": 60.0,
+    "Agent_005": 5.0,
+    "Agent_Test_User": 25.0,
+    "Paper_Hands_111": 80.0,
+    "Whale_Watcher_425": 65.0,
+    "Bo_Bot": 75.0,
+    "Degen_Ape_693": 50.0,
+    "Technical_Analyst_465": 45.0,
+    "Value_Investor_113": 35.0,
+    "FOMO_Bot_861": 45.0,
+    "Chaos_Monkey_975": 65.0,
+    "Agent_006": 110.0,
+    "Copy_Trader_952": 55.0,
+    "Contrarian_239": 70.0,
+    "Diamond_Hands_533": 50.0
+  },
   "ascension": {
     "consecutive_wins": {},
     "total_returns": {},
-    "ascended": []
+    "ascended": [
+      "Agent_001",
+      "DarwinOrigin"
+    ]
   }
 }

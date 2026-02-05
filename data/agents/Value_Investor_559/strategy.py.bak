@@ -1,0 +1,201 @@
+import numpy as np
+import pandas as pd
+from dataclasses import dataclass
+from typing import Dict, List, Optional
+
+@dataclass
+class Position:
+    symbol: str
+    entry_price: float
+    size: float
+    stop_loss: float
+    take_profit: float
+    entry_time: pd.Timestamp
+
+class ValueInvestor_559_Evolution:
+    """
+    Agent: Value_Investor_559
+    Evolution Generation: 2
+    Strategy Name: Adaptive Volatility Mean Reversion (AVMR)
+    
+    Logic:
+    1. Trend Filter: Uses EMA Ribbon to determine market regime.
+    2. Value Entry: Buys on short-term pullbacks (RSI dip) within long-term uptrends.
+    3. Risk Control: Dynamic position sizing based on ATR (Average True Range).
+    4. Safety: Hard stop-loss and trailing stops to protect the remaining capital ($800).
+    """
+
+    def __init__(self, initial_capital: float = 800.0):
+        self.capital = initial_capital
+        self.balance = initial_capital
+        self.positions: Dict[str, Position] = {}
+        
+        # Hyperparameters (Mutated for stability)
+        self.params = {
+            'ema_short': 20,
+            'ema_long': 50,
+            'rsi_period': 14,
+            'rsi_oversold': 40,      # Aggressive entry for value
+            'rsi_overbought': 70,
+            'atr_period': 14,
+            'risk_per_trade': 0.02,  # Risk 2% of equity per trade
+            'sl_multiplier': 2.0,    # Stop Loss at 2x ATR
+            'tp_multiplier': 4.0     # Take Profit at 4x ATR
+        }
+
+    def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Calculates technical indicators without external C-libs for portability."""
+        df = df.copy()
+        
+        # EMA
+        df['ema_short'] = df['close'].ewm(span=self.params['ema_short'], adjust=False).mean()
+        df['ema_long'] = df['close'].ewm(span=self.params['ema_long'], adjust=False).mean()
+        
+        # RSI
+        delta = df['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=self.params['rsi_period']).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=self.params['rsi_period']).mean()
+        rs = gain / loss
+        df['rsi'] = 100 - (100 / (1 + rs))
+        
+        # ATR
+        high_low = df['high'] - df['low']
+        high_close = np.abs(df['high'] - df['close'].shift())
+        low_close = np.abs(df['low'] - df['close'].shift())
+        ranges = pd.concat([high_low, high_close, low_close], axis=1)
+        true_range = ranges.max(axis=1)
+        df['atr'] = true_range.rolling(window=self.params['atr_period']).mean()
+        
+        return df
+
+    def get_position_size(self, price: float, atr: float) -> float:
+        """Calculates position size based on risk percentage and volatility."""
+        if atr == 0 or pd.isna(atr):
+            return 0.0
+            
+        risk_amount = self.balance * self.params['risk_per_trade']
+        stop_distance = atr * self.params['sl_multiplier']
+        
+        if stop_distance == 0:
+            return 0.0
+            
+        # Size = Risk Amount / (Entry - StopLoss)
+        size = risk_amount / stop_distance
+        
+        # Cap max leverage to 1x for safety given drawdown
+        max_size = self.balance / price
+        return min(size, max_size)
+
+    def on_bar(self, data: Dict[str, pd.DataFrame]):
+        """
+        Main execution logic called for every new candle/bar.
+        data: Dictionary mapping symbol to OHLCV DataFrame
+        """
+        for symbol, df in data.items():
+            if len(df) < self.params['ema_long']:
+                continue
+
+            # Prepare data
+            df_ind = self.calculate_indicators(df)
+            current = df_ind.iloc[-1]
+            prev = df_ind.iloc[-2]
+            
+            price = current['close']
+            atr = current['atr']
+            
+            # 1. Manage Existing Positions
+            if symbol in self.positions:
+                pos = self.positions[symbol]
+                
+                # Check Stop Loss
+                if price <= pos.stop_loss:
+                    self._close_position(symbol, price, "Stop Loss Hit")
+                    continue
+                
+                # Check Take Profit
+                if price >= pos.take_profit:
+                    self._close_position(symbol, price, "Take Profit Hit")
+                    continue
+                    
+                # Dynamic Trailing Stop (Evolutionary Trait)
+                # If price moves favorably by 1 ATR, move SL to Break Even
+                if price > pos.entry_price + (1.5 * atr):
+                    new_sl = pos.entry_price + (0.5 * atr) # Lock in small profit
+                    if new_sl > pos.stop_loss:
+                        pos.stop_loss = new_sl
+
+                # Exit Signal: Trend Reversal (EMA Cross down)
+                if current['ema_short'] < current['ema_long']:
+                     self._close_position(symbol, price, "Trend Reversal")
+
+            # 2. Look for New Entries
+            else:
+                # Condition A: Long-term Trend is UP
+                trend_up = current['ema_short'] > current['ema_long']
+                
+                # Condition B: Value Pullback (RSI < 40 but rising from previous)
+                pullback = (current['rsi'] < self.params['rsi_oversold']) or \
+                           (prev['rsi'] < self.params['rsi_oversold'] and current['rsi'] > prev['rsi'])
+                
+                # Condition C: Volatility filter (Avoid entering during extreme explosion)
+                volatility_ok = atr < (price * 0.05) # ATR less than 5% of price
+
+                if trend_up and pullback and volatility_ok:
+                    size = self.get_position_size(price, atr)
+                    if size > 0:
+                        sl_price = price - (atr * self.params['sl_multiplier'])
+                        tp_price = price + (atr * self.params['tp_multiplier'])
+                        
+                        self._open_position(symbol, price, size, sl_price, tp_price)
+
+    def _open_position(self, symbol, price, size, sl, tp):
+        cost = price * size
+        if cost <= self.balance:
+            self.balance -= cost
+            self.positions[symbol] = Position(
+                symbol=symbol,
+                entry_price=price,
+                size=size,
+                stop_loss=sl,
+                take_profit=tp,
+                entry_time=pd.Timestamp.now()
+            )
+            # print(f"OPEN LONG {symbol} @ {price:.2f} | Size: {size:.4f} | SL: {sl:.2f} | TP: {tp:.2f}")
+
+    def _close_position(self, symbol, price, reason):
+        pos = self.positions[symbol]
+        revenue = price * pos.size
+        self.balance += revenue
+        
+        pnl = (price - pos.entry_price) / pos.entry_price * 100
+        # print(f"CLOSE LONG {symbol} @ {price:.2f} | PnL: {pnl:.2f}% | Reason: {reason}")
+        
+        del self.positions[symbol]
+
+# -----------------------------------------------------------------------------
+# Example Usage / Test Harness
+# -----------------------------------------------------------------------------
+if __name__ == "__main__":
+    # Mock Data Generation for Validation
+    dates = pd.date_range(start='2023-01-01', periods=200, freq='D')
+    prices = [100]
+    for _ in range(199):
+        change = np.random.normal(0, 2)
+        prices.append(prices[-1] + change)
+    
+    df_mock = pd.DataFrame({
+        'open': prices, 'high': [p + 2 for p in prices],
+        'low': [p - 2 for p in prices], 'close': prices,
+        'volume': 1000
+    }, index=dates)
+
+    # Initialize Agent
+    agent = ValueInvestor_559_Evolution(initial_capital=800.0)
+    
+    # Run Simulation Loop
+    for i in range(50, len(df_mock)):
+        # Feed data window
+        current_data = {'BTC/USD': df_mock.iloc[:i+1]}
+        agent.on_bar(current_data)
+        
+    print(f"Final Balance: ${agent.balance:.2f}")

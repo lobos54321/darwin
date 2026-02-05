@@ -1,0 +1,184 @@
+import pandas as pd
+import numpy as np
+from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from enum import Enum
+
+class Signal(Enum):
+    BUY = "BUY"
+    SELL = "SELL"
+    HOLD = "HOLD"
+
+@dataclass
+class TradeDecision:
+    signal: Signal
+    symbol: str
+    amount_usd: float
+    reason: str
+
+class DarwinStrategy:
+    """
+    Project Darwin - Agent_003 Evolution V4: "Resonance Momentum"
+    
+    Evolutionary Logic (Inspired by DarwinOrigin):
+    1. Trend Resonance: Uses Dual EMA (Fast/Slow) to confirm the primary trend direction.
+    2. Volatility Expansion: Entry triggered only when price breaks the recent range with volume confirmation.
+    3. Dynamic Risk Guard: Implements a Volatility-Adjusted Trailing Stop (Chandelier Exit style).
+    4. Anti-Fragility: Avoids complex Bayesian models; relies on raw price action and volume spikes.
+    """
+    
+    def __init__(self):
+        # === Evolutionary Hyperparameters ===
+        self.fast_ema_period = 8
+        self.slow_ema_period = 21
+        self.atr_period = 14
+        self.vol_ma_period = 10
+        
+        self.max_position_size = 0.25  # 25% of balance per trade
+        self.hard_stop_loss = 0.05    # 5% hard stop
+        self.trailing_mult = 2.5      # ATR multiplier for trailing stop
+        
+        # === State Management ===
+        self.balance = 980.0
+        self.price_history: Dict[str, List[float]] = {}
+        self.volume_history: Dict[str, List[float]] = {}
+        self.current_positions: Dict[str, float] = {}  # symbol -> amount in USD
+        self.entry_prices: Dict[str, float] = {}
+        self.highest_prices: Dict[str, float] = {}
+        
+        self.last_reflection = "Transitioned from fractal guessing to volume-confirmed trend following. Focus: Right-side entry."
+
+    def _calculate_ema(self, data: List[float], period: int) -> float:
+        if len(data) < period: return 0.0
+        return pd.Series(data).ewm(span=period, adjust=False).mean().iloc[-1]
+
+    def _calculate_atr(self, prices: List[float], period: int) -> float:
+        if len(prices) < period + 1: return 0.0
+        deltas = [abs(prices[i] - prices[i-1]) for i in range(1, len(prices))]
+        return np.mean(deltas[-period:])
+
+    def on_price_update(self, prices: Dict[str, dict]) -> Optional[TradeDecision]:
+        """
+        Processes incoming price data and generates trade decisions based on 
+        multi-period resonance and volume confirmation.
+        """
+        for symbol, data in prices.items():
+            price = data['price']
+            volume = data.get('volume', 0)
+            
+            if symbol not in self.price_history:
+                self.price_history[symbol] = []
+                self.volume_history[symbol] = []
+            
+            self.price_history[symbol].append(price)
+            self.volume_history[symbol].append(volume)
+            
+            # Maintain history window
+            if len(self.price_history[symbol]) > 100:
+                self.price_history[symbol].pop(0)
+                self.volume_history[symbol].pop(0)
+
+            # Check for Exit if in position
+            if symbol in self.current_positions:
+                decision = self._check_exit_conditions(symbol, price)
+                if decision: return decision
+            
+            # Check for Entry if not in position
+            elif len(self.price_history[symbol]) >= self.slow_ema_period:
+                decision = self._check_entry_conditions(symbol, price, volume)
+                if decision: return decision
+        
+        return None
+
+    def _check_entry_conditions(self, symbol: str, price: float, volume: float) -> Optional[TradeDecision]:
+        prices = self.price_history[symbol]
+        volumes = self.volume_history[symbol]
+        
+        ema_fast = self._calculate_ema(prices, self.fast_ema_period)
+        ema_slow = self._calculate_ema(prices, self.slow_ema_period)
+        vol_ma = np.mean(volumes[-self.vol_ma_period:]) if len(volumes) >= self.vol_ma_period else 0
+        
+        # Condition 1: Trend Alignment (Right-side)
+        trend_up = price > ema_fast > ema_slow
+        
+        # Condition 2: Volume Surge (Conviction)
+        volume_surge = volume > vol_ma * 1.5 if vol_ma > 0 else False
+        
+        # Condition 3: Momentum (Price breakout)
+        breakout = price > max(prices[-5:-1]) if len(prices) > 5 else False
+
+        if trend_up and volume_surge and breakout:
+            amount_to_invest = self.balance * self.max_position_size
+            self.current_positions[symbol] = amount_to_invest
+            self.entry_prices[symbol] = price
+            self.highest_prices[symbol] = price
+            self.balance -= amount_to_invest
+            
+            return TradeDecision(
+                signal=Signal.BUY,
+                symbol=symbol,
+                amount_usd=amount_to_invest,
+                reason=f"Resonance: EMA Cross + Vol Surge ({volume_surge})"
+            )
+        return None
+
+    def _check_exit_conditions(self, symbol: str, price: float) -> Optional[TradeDecision]:
+        entry_price = self.entry_prices[symbol]
+        highest_price = self.highest_prices[symbol]
+        
+        # Update highest price for trailing stop
+        if price > highest_price:
+            self.highest_prices[symbol] = price
+            highest_price = price
+            
+        atr = self._calculate_atr(self.price_history[symbol], self.atr_period)
+        
+        # 1. Hard Stop Loss
+        stop_loss_hit = price <= entry_price * (1 - self.hard_stop_loss)
+        
+        # 2. Dynamic Trailing Stop (Chandelier Exit)
+        trailing_stop_price = highest_price - (atr * self.trailing_mult)
+        trailing_stop_hit = price < trailing_stop_price
+        
+        # 3. Trend Exhaustion (EMA Reversal)
+        ema_fast = self._calculate_ema(self.price_history[symbol], self.fast_ema_period)
+        trend_dead = price < ema_fast
+
+        if stop_loss_hit or trailing_stop_hit or trend_dead:
+            amount_usd = self.current_positions.pop(symbol)
+            self.entry_prices.pop(symbol)
+            self.highest_prices.pop(symbol)
+            
+            # Simple PnL calculation for balance update
+            pnl_pct = (price - entry_price) / entry_price
+            exit_value = amount_usd * (1 + pnl_pct)
+            self.balance += exit_value
+            
+            reason = "Hard Stop" if stop_loss_hit else "Trailing Stop" if trailing_stop_hit else "Trend Death"
+            return TradeDecision(
+                signal=Signal.SELL,
+                symbol=symbol,
+                amount_usd=exit_value,
+                reason=f"Exit: {reason} at {price:.2f}"
+            )
+        return None
+
+    def on_epoch_end(self, rankings: List[dict], winner_wisdom: str):
+        """
+        Evolutionary step: Adjust risk parameters based on performance.
+        """
+        my_rank = next((r for r in rankings if r['agent_id'] == "Agent_003"), None)
+        if my_rank and my_rank.get('pnl', 0) < 0:
+            # If still losing, tighten the screws
+            self.max_position_size = max(0.1, self.max_position_size - 0.05)
+            self.trailing_mult = max(1.5, self.trailing_mult - 0.2)
+        
+        self.last_reflection = f"Ranked {my_rank.get('rank') if my_rank else 'N/A'}. Wisdom applied: {winner_wisdom[:50]}..."
+
+    def get_reflection(self) -> str:
+        return self.last_reflection
+
+    def get_council_message(self, is_winner: bool) -> str:
+        if is_winner:
+            return "Simplicity won. We filtered noise with EMA resonance and only entered when volume confirmed the herd's direction."
+        return "Our entry was solid, but our trailing stop might be too tight for high-volatility regimes. Tuning ATR multipliers."

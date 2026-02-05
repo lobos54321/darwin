@@ -12,12 +12,15 @@ from datetime import datetime
 from typing import Optional, List
 
 import aiohttp
+from dotenv import load_dotenv
 
-# 添加父目录到路径
+# 添加父目录到路径 (为了加载 skills 和 strategy)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-from strategy import DarwinStrategy, Signal
+from strategy import MyStrategy
 from skills.self_coder import mutate_strategy
+from skills.moltbook import MoltbookClient
 
 # ==========================================
 # 🎭 Agent 人设库
@@ -64,10 +67,15 @@ PERSONAS = [
 class DarwinAgent:
     """Darwin Agent 客户端"""
     
-    def __init__(self, agent_id: str, arena_url: str = "ws://localhost:8888"):
+    def __init__(self, agent_id: str, arena_url: str = "ws://localhost:8888", api_key: str = None):
         self.agent_id = agent_id
         self.arena_url = arena_url
-        self.strategy = DarwinStrategy()
+        self.api_key = api_key
+        
+        # === 动态加载策略 (Dynamic Strategy Loading) ===
+        # 优先加载该 Agent 专属的进化版策略
+        self.strategy = self._load_strategy()
+        
         self.ws: Optional[aiohttp.ClientWebSocketResponse] = None
         self.running = False
         self.current_epoch = 0
@@ -77,11 +85,61 @@ class DarwinAgent:
         # 随机分配人设
         self.persona = random.choice(PERSONAS)
         print(f"🎭 Initialized as {self.persona['name']} - {self.persona['style']}")
+        
+        # === Moltbook 集成 ===
+        self.moltbook: Optional[MoltbookClient] = None
+        self._setup_moltbook()
+
+    def _setup_moltbook(self):
+        """加载 Moltbook 配置"""
+        env_path = os.path.join(os.path.dirname(__file__), "..", ".moltbook_env")
+        if os.path.exists(env_path):
+            load_dotenv(env_path)
+            
+        key = os.getenv("MOLTBOOK_API_KEY")
+        target_agent = os.getenv("AGENT_NAME")
+        
+        # 只为当前匹配的 Agent 启用 (防止多个 Agent 共用一个 Key)
+        if key and self.agent_id == target_agent:
+            print(f"DEBUG: Importing MoltbookClient from {MoltbookClient}")
+            print(f"DEBUG: MoltbookClient attributes: {dir(MoltbookClient)}")
+            self.moltbook = MoltbookClient(key)
+            print("🦞 Moltbook integration enabled!")
+
+    def _load_strategy(self):
+        """加载策略：优先读取 data/agents/{id}/strategy.py"""
+        import importlib.util
+        import sys
+        
+        # 1. 检查专属策略文件
+        custom_path = os.path.join(os.path.dirname(__file__), "..", "data", "agents", self.agent_id, "strategy.py")
+        custom_path = os.path.abspath(custom_path)
+        
+        if os.path.exists(custom_path):
+            try:
+                print(f"🧠 Loading EVOLVED strategy from: {custom_path}")
+                spec = importlib.util.spec_from_file_location("custom_strategy", custom_path)
+                module = importlib.util.module_from_spec(spec)
+                sys.modules["custom_strategy"] = module
+                spec.loader.exec_module(module)
+                return module.MyStrategy()
+            except Exception as e:
+                print(f"⚠️ Failed to load evolved strategy ({e}). Falling back to template.")
+        
+        # 2. 回退到默认模板
+        print("🧠 Loading DEFAULT template strategy.")
+        from strategy import MyStrategy
+        return MyStrategy()
     
     async def connect(self):
         """连接到 Arena Server"""
         session = aiohttp.ClientSession()
         url = f"{self.arena_url}/ws/{self.agent_id}"
+        
+        # 如果有 API Key，拼接到 URL 参数里
+        if self.api_key:
+            url += f"?api_key={self.api_key}"
+            print(f"🔑 Authenticating with API Key: {self.api_key[:4]}***")
         
         print(f"🤖 Connecting to Arena: {url}")
         
@@ -89,6 +147,10 @@ class DarwinAgent:
             self.ws = await session.ws_connect(url)
             print(f"✅ Connected as {self.agent_id}")
             self.running = True
+            
+            # 检查 Moltbook 状态
+            if self.moltbook:
+                asyncio.create_task(self._check_moltbook())
             
             # 开始监听消息
             await self.listen()
@@ -98,6 +160,22 @@ class DarwinAgent:
         finally:
             await session.close()
     
+    async def _check_moltbook(self):
+        """检查 Moltbook 认领状态"""
+        if not self.moltbook: return
+        try:
+            # check_status 返回 {'status': '...'}
+            resp = await self.moltbook.check_status()
+            status = resp.get("status", "unknown")
+            print(f"🦞 Moltbook Status: {status}")
+            if status == "pending_claim":
+                # 从 credentials 加载 claim_url
+                claim_url = "https://moltbook.com/claim/moltbook_claim_gu-f1oRIFRCH1sCedbBdLFizcoCmsbAx" # Hardcoded for 006
+                print(f"👉 Please claim me on Moltbook to verify ownership!")
+                print(f"🔗 Claim URL: {claim_url}")
+        except Exception as e:
+            print(f"⚠️ Moltbook check failed: {e}")
+
     async def listen(self):
         """监听 Arena 消息"""
         async for msg in self.ws:
@@ -116,7 +194,24 @@ class DarwinAgent:
             print(f"👋 Welcome! Epoch: {data['epoch']}, Balance: ${data['balance']:.2f}")
             self.current_epoch = data["epoch"]
             self.strategy.balance = data["balance"]
-        
+            
+            # Sync positions if the strategy supports it
+            if "positions" in data and hasattr(self.strategy, "current_positions"):
+                print(f"🔄 Syncing {len(data['positions'])} positions from server...")
+                # data['positions'] format: {'LOB': 123.45, ...} or detailed dict
+                # The server sends engine.get_positions(agent_id) which returns a dict
+                for symbol, amount in data["positions"].items():
+                    # Handle if amount is dict or float
+                    qty = amount if isinstance(amount, (int, float)) else amount.get('amount', 0)
+                    if qty > 0:
+                        self.strategy.current_positions[symbol] = qty
+                        # We don't know the entry price, so we assume current market price 
+                        # will be updated on next tick, or we leave entry_prices empty 
+                        # (strategy handles missing entry price)
+                        if hasattr(self.strategy, "entry_prices") and symbol not in self.strategy.entry_prices:
+                             # Set a dummy entry price to avoid errors, updated on first price tick
+                             self.strategy.entry_prices[symbol] = 0.00000001 
+            
         elif msg_type == "price_update":
             # 核心: 根据价格做决策
             await self.on_price_update(data["prices"])
@@ -139,8 +234,10 @@ class DarwinAgent:
             
             # 检查是否被淘汰
             if self.agent_id in data.get("eliminated", []):
-                print("💀 I've been eliminated...")
+                print("💀 I've been eliminated... Disconnecting.")
                 self.running = False
+                await self.ws.close()
+                sys.exit(0)
             
             # 检查是否升天
             if data.get("ascension") == self.agent_id:
@@ -174,26 +271,27 @@ class DarwinAgent:
         """处理价格更新，执行策略"""
         decision = self.strategy.on_price_update(prices)
         
-        if decision and decision.signal != Signal.HOLD:
-            print(f"📈 Decision: {decision.signal.value} {decision.symbol} ${decision.amount_usd:.2f}")
-            print(f"   Reason: {decision.reason}")
+        if decision:
+            symbol = decision.get("symbol")
+            side = decision.get("side")
+            amount = decision.get("amount")
+            reason = decision.get("reason", [])
+
+            print(f"📈 Decision: {side.upper()} {symbol} ${amount:.2f}")
+            print(f"   Reason: {reason}")
             
             # 发送订单
             await self.ws.send_json({
                 "type": "order",
-                "symbol": decision.symbol,
-                "side": decision.signal.value,
-                "amount": decision.amount_usd
+                "symbol": symbol,
+                "side": side.upper(), # Ensure uppercase for server
+                "amount": amount,
+                "reason": reason
             })
             
-            # 更新策略状态
-            price = prices[decision.symbol]["priceUsd"]
-            self.strategy.on_trade_executed(
-                decision.symbol, 
-                decision.signal, 
-                decision.amount_usd, 
-                price
-            )
+            # (Optional) Update strategy state if it has the method
+            if hasattr(self.strategy, "on_trade_executed"):
+                self.strategy.on_trade_executed(symbol, side, amount, prices[symbol]["priceUsd"])
     
     def _generate_persona_message(self, base_content: str, role: str) -> str:
         """根据人设包装消息"""
@@ -282,9 +380,10 @@ async def main():
     parser = argparse.ArgumentParser(description="Darwin Agent")
     parser.add_argument("--id", type=str, default=f"Agent_{os.getpid()}", help="Agent ID")
     parser.add_argument("--arena", type=str, default="ws://localhost:8888", help="Arena URL")
+    parser.add_argument("--key", type=str, default=None, help="API Key for external access")
     args = parser.parse_args()
     
-    agent = DarwinAgent(agent_id=args.id, arena_url=args.arena)
+    agent = DarwinAgent(agent_id=args.id, arena_url=args.arena, api_key=args.key)
     await agent.connect()
 
 

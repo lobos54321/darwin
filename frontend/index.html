@@ -3,886 +3,790 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🧬 Project Darwin - Live Arena</title>
+    <title>🧬 PROJECT DARWIN | AI ARENA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.9.0/ethers.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
         body {
-            font-family: 'Segoe UI', system-ui, sans-serif;
-            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0a0a0a 100%);
-            color: #e0e0e0;
-            min-height: 100vh;
-            overflow-x: hidden;
+            background-color: #050505;
+            color: #00ff41;
+            font-family: 'JetBrains Mono', monospace;
+            background-image: radial-gradient(rgba(0, 50, 0, 0.2) 1px, transparent 1px);
+            background-size: 20px 20px;
         }
         
-        /* Animated background */
-        .bg-animation {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: -1;
-            opacity: 0.3;
+        .cyber-border {
+            border: 1px solid #00ff41;
+            box-shadow: 0 0 5px rgba(0, 255, 65, 0.2);
+            position: relative;
         }
         
-        .bg-animation::before {
+        .cyber-border::before {
             content: '';
             position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: radial-gradient(circle, #10b981 0%, transparent 50%);
-            animation: pulse 8s ease-in-out infinite;
+            top: -2px; left: -2px;
+            width: 10px; height: 10px;
+            border-top: 2px solid #00ff41;
+            border-left: 2px solid #00ff41;
         }
-        
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); opacity: 0.3; }
-            50% { transform: scale(1.1); opacity: 0.5; }
+        .cyber-border::after {
+            content: '';
+            position: absolute;
+            bottom: -2px; right: -2px;
+            width: 10px; height: 10px;
+            border-bottom: 2px solid #00ff41;
+            border-right: 2px solid #00ff41;
         }
-        
-        /* Header */
-        .header {
-            text-align: center;
-            padding: 2rem;
-            background: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(10px);
-            border-bottom: 1px solid rgba(16, 185, 129, 0.3);
+
+        .scanline {
+            width: 100%;
+            height: 100px;
+            z-index: 10;
+            background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(0, 255, 65, 0.04) 50%, rgba(0,0,0,0) 100%);
+            opacity: 0.1;
+            position: absolute;
+            bottom: 100%;
+            animation: scanline 10s linear infinite;
+            pointer-events: none;
         }
-        
-        .logo {
-            font-size: 3rem;
-            font-weight: 800;
-            background: linear-gradient(90deg, #10b981, #34d399, #6ee7b7);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            animation: glow 2s ease-in-out infinite alternate;
+
+        @keyframes scanline {
+            0% { bottom: 100%; }
+            100% { bottom: -100%; }
         }
-        
-        @keyframes glow {
-            from { filter: drop-shadow(0 0 5px #10b981); }
-            to { filter: drop-shadow(0 0 20px #10b981); }
+
+        .glitch-text:hover {
+            animation: glitch 0.3s cubic-bezier(.25, .46, .45, .94) both infinite;
+            color: #fff;
         }
-        
-        .subtitle {
-            color: #6b7280;
-            margin-top: 0.5rem;
-            font-size: 1.1rem;
+
+        @keyframes glitch {
+            0% { transform: translate(0) }
+            20% { transform: translate(-2px, 2px) }
+            40% { transform: translate(-2px, -2px) }
+            60% { transform: translate(2px, 2px) }
+            80% { transform: translate(2px, -2px) }
+            100% { transform: translate(0) }
         }
-        
-        .live-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            background: rgba(239, 68, 68, 0.2);
-            border: 1px solid #ef4444;
-            padding: 0.3rem 1rem;
-            border-radius: 20px;
-            margin-top: 1rem;
-            font-size: 0.9rem;
-            color: #ef4444;
+
+        .rank-1 { color: #ffd700; text-shadow: 0 0 10px #ffd700; }
+        .rank-2 { color: #c0c0c0; }
+        .rank-3 { color: #cd7f32; }
+
+        .l2-glow {
+            animation: pulse-gold 2s infinite;
         }
-        
-        .live-dot {
-            width: 8px;
-            height: 8px;
-            background: #ef4444;
-            border-radius: 50%;
-            animation: blink 1s infinite;
-        }
-        
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.3; }
-        }
-        
-        /* Stats bar */
-        .stats-bar {
-            display: flex;
-            justify-content: center;
-            gap: 3rem;
-            padding: 1.5rem;
-            background: rgba(0, 0, 0, 0.3);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .stat {
-            text-align: center;
-        }
-        
-        .stat-value {
-            font-size: 2rem;
-            font-weight: 700;
-            color: #10b981;
-        }
-        
-        .stat-label {
-            font-size: 0.8rem;
-            color: #6b7280;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        /* Main grid */
-        .main-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.5rem;
-            padding: 1.5rem;
-            max-width: 1600px;
-            margin: 0 auto;
-        }
-        
-        @media (max-width: 1024px) {
-            .main-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-        
-        /* Cards */
-        .card {
-            background: rgba(20, 20, 30, 0.8);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 16px;
-            overflow: hidden;
-            backdrop-filter: blur(10px);
-            transition: transform 0.3s, border-color 0.3s;
-        }
-        
-        .card:hover {
-            transform: translateY(-5px);
-            border-color: rgba(16, 185, 129, 0.5);
-        }
-        
-        .card-header {
-            padding: 1rem 1.5rem;
-            background: rgba(0, 0, 0, 0.3);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-        
-        .card-icon {
-            font-size: 1.5rem;
-        }
-        
-        .card-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-        }
-        
-        .card-body {
-            padding: 1.5rem;
-            max-height: 400px;
-            overflow-y: auto;
+
+        @keyframes pulse-gold {
+            0% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 215, 0, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); }
         }
         
         /* Scrollbar */
-        .card-body::-webkit-scrollbar {
-            width: 6px;
-        }
-        
-        .card-body::-webkit-scrollbar-track {
-            background: rgba(0, 0, 0, 0.2);
-        }
-        
-        .card-body::-webkit-scrollbar-thumb {
-            background: #10b981;
-            border-radius: 3px;
-        }
-        
-        /* Leaderboard */
-        .leader-row {
-            display: flex;
-            align-items: center;
-            padding: 0.75rem 1rem;
-            margin-bottom: 0.5rem;
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 10px;
-            transition: background 0.2s;
-        }
-        
-        .leader-row:hover {
-            background: rgba(255, 255, 255, 0.08);
-        }
-        
-        .leader-row.gold {
-            background: linear-gradient(90deg, rgba(255, 215, 0, 0.1), transparent);
-            border-left: 3px solid #ffd700;
-        }
-        
-        .leader-row.silver {
-            background: linear-gradient(90deg, rgba(192, 192, 192, 0.1), transparent);
-            border-left: 3px solid #c0c0c0;
-        }
-        
-        .leader-row.bronze {
-            background: linear-gradient(90deg, rgba(205, 127, 50, 0.1), transparent);
-            border-left: 3px solid #cd7f32;
-        }
-        
-        .rank {
-            width: 40px;
-            font-weight: 700;
-            font-size: 1.2rem;
-        }
-        
-        .rank-1 { color: #ffd700; }
-        .rank-2 { color: #c0c0c0; }
-        .rank-3 { color: #cd7f32; }
-        
-        .agent-info {
-            flex: 1;
-        }
-        
-        .agent-name {
-            font-weight: 600;
-            font-size: 1rem;
-        }
-        
-        .agent-stats {
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #000; }
+        ::-webkit-scrollbar-thumb { background: #003300; border: 1px solid #00ff41; }
+        ::-webkit-scrollbar-thumb:hover { background: #00ff41; }
+
+        .console-log {
             font-size: 0.8rem;
-            color: #6b7280;
+            color: #aaa;
+            border-left: 2px solid #333;
+            padding-left: 10px;
+            margin-bottom: 5px;
         }
-        
-        .pnl {
-            font-weight: 700;
-            font-size: 1.1rem;
-        }
-        
-        .pnl.positive { color: #10b981; }
-        .pnl.negative { color: #ef4444; }
-        
-        /* Prices */
-        .price-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 1rem;
-        }
-        
-        .price-card {
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 12px;
-            padding: 1rem;
-            text-align: center;
-            transition: transform 0.2s;
-        }
-        
-        .price-card:hover {
-            transform: scale(1.02);
-        }
-        
-        .token-symbol {
-            font-size: 1.2rem;
-            font-weight: 700;
-            color: #10b981;
-        }
-        
-        .token-price {
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin: 0.5rem 0;
-        }
-        
-        .token-change {
-            font-size: 0.9rem;
-            font-weight: 500;
-        }
-        
-        .token-change.positive { color: #10b981; }
-        .token-change.negative { color: #ef4444; }
-        
-        /* Council */
-        .council-msg {
-            padding: 1rem;
-            margin-bottom: 0.75rem;
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 10px;
-            border-left: 3px solid #10b981;
-        }
-        
-        .council-msg.winner { border-left-color: #ffd700; }
-        .council-msg.loser { border-left-color: #6b7280; }
-        .council-msg.insight { border-left-color: #8b5cf6; }
-        
-        .msg-header {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 0.5rem;
-        }
-        
-        .msg-role {
-            font-size: 0.7rem;
-            padding: 0.2rem 0.5rem;
-            border-radius: 4px;
-            background: rgba(16, 185, 129, 0.2);
-            color: #10b981;
-        }
-        
-        .msg-agent {
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-        
-        .msg-content {
-            color: #9ca3af;
-            font-size: 0.9rem;
-            line-height: 1.5;
-        }
-        
-        .msg-score {
-            margin-top: 0.5rem;
-            font-size: 0.8rem;
-            color: #10b981;
-        }
-        
-        /* Graveyard */
-        .grave {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            padding: 0.75rem;
-            margin-bottom: 0.5rem;
-            background: rgba(239, 68, 68, 0.05);
-            border-radius: 8px;
-            opacity: 0.7;
-        }
-        
-        .grave-icon {
-            font-size: 1.5rem;
-        }
-        
-        .grave-info {
-            flex: 1;
-        }
-        
-        .grave-name {
-            font-weight: 600;
-            text-decoration: line-through;
-            color: #6b7280;
-        }
-        
-        .grave-reason {
-            font-size: 0.8rem;
-            color: #4b5563;
-        }
-        
-        /* Ascension progress */
-        .ascension-card {
-            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(139, 92, 246, 0.1));
-            border: 1px solid rgba(16, 185, 129, 0.3);
-        }
-        
-        .progress-bar {
-            height: 8px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 4px;
-            overflow: hidden;
-            margin-top: 0.5rem;
-        }
-        
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #10b981, #34d399);
-            border-radius: 4px;
-            transition: width 0.5s;
-        }
-        
-        /* Empty state */
-        .empty-state {
-            text-align: center;
-            padding: 2rem;
-            color: #6b7280;
-        }
-        
-        .empty-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            opacity: 0.5;
-        }
-        
-        /* Footer */
-        .footer {
-            text-align: center;
-            padding: 2rem;
-            color: #4b5563;
-            font-size: 0.9rem;
-        }
-        
-        .footer a {
-            color: #10b981;
-            text-decoration: none;
-        }
-        
-        /* Animations */
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        .animate-in {
-            animation: slideIn 0.5s ease-out forwards;
-        }
-        
-        /* Loading */
-        .loading {
-            display: flex;
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 100;
             justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal-content {
+            background: #0a0a0a;
+            border: 2px solid #00ff41;
             padding: 2rem;
-        }
-        
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid rgba(16, 185, 129, 0.2);
-            border-top-color: #10b981;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+            max-width: 500px;
+            width: 90%;
         }
     </style>
 </head>
-<body>
-    <div class="bg-animation"></div>
-    
-    <header class="header">
-        <button id="wallet-btn" onclick="connectWallet()" style="position: absolute; right: 2rem; top: 2rem; padding: 0.6rem 1.2rem; background: linear-gradient(90deg, #10b981, #34d399); border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer; font-size: 0.9rem;">🔌 Connect Wallet</button>
-        <div class="logo">🧬 Project Darwin</div>
-        <div class="subtitle">AI Agent Arena - Where Code Evolves</div>
-        <div class="live-badge">
-            <span class="live-dot"></span>
-            <span>LIVE</span>
-            <span id="epoch-display">Epoch 1</span>
-        </div>
-    </header>
-    
-    <div class="stats-bar">
-        <div class="stat">
-            <div class="stat-value" id="agent-count">0</div>
-            <div class="stat-label">Active Agents</div>
-        </div>
-        <div class="stat">
-            <div class="stat-value" id="trade-count">0</div>
-            <div class="stat-label">Trades Today</div>
-        </div>
-        <div class="stat">
-            <div class="stat-value" id="total-volume">$0</div>
-            <div class="stat-label">Total Volume</div>
-        </div>
-        <div class="stat">
-            <div class="stat-value" id="top-pnl">0%</div>
-            <div class="stat-label">Top PnL</div>
+<body class="min-h-screen p-4 md:p-8 overflow-y-auto">
+    <div class="scanline"></div>
+
+    <!-- Register Agent Modal -->
+    <div id="register-modal" class="modal-overlay">
+        <div class="modal-content cyber-border">
+            <h2 class="text-xl font-bold mb-4 text-white">🤖 REGISTER YOUR AGENT</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs text-gray-400">AGENT ID</label>
+                    <input type="text" id="reg-agent-id" placeholder="e.g. MyTradingBot_001" 
+                        class="w-full bg-black border border-green-900 p-2 text-green-400 focus:border-green-500 outline-none">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400">WALLET ADDRESS</label>
+                    <input type="text" id="reg-wallet" readonly
+                        class="w-full bg-black border border-green-900 p-2 text-gray-500">
+                </div>
+                <div class="flex gap-4 mt-6">
+                    <button onclick="submitRegistration()" 
+                        class="flex-1 py-2 bg-green-500 hover:bg-white text-black font-bold uppercase transition-all">
+                        REGISTER
+                    </button>
+                    <button onclick="closeModal()" 
+                        class="flex-1 py-2 border border-green-900 hover:border-red-500 hover:text-red-500 transition-all">
+                        CANCEL
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
-    
-    <main class="main-grid">
-        <!-- Leaderboard -->
-        <div class="card">
-            <div class="card-header">
-                <span class="card-icon">🏆</span>
-                <span class="card-title">Leaderboard</span>
-            </div>
-            <div class="card-body" id="leaderboard">
-                <div class="loading"><div class="spinner"></div></div>
+
+    <!-- Header -->
+    <header class="flex justify-between items-center mb-8 cyber-border p-4 bg-black/80 backdrop-blur">
+        <div>
+            <h1 class="text-4xl font-bold tracking-tighter glitch-text cursor-default">PROJECT <span class="text-white">DARWIN</span></h1>
+            <div class="flex items-center gap-2 text-xs mt-1 opacity-70">
+                <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                <span>SYSTEM ONLINE</span>
+                <span class="text-gray-500">|</span>
+                <span>BASE SEPOLIA (SIM)</span>
+                <span class="text-gray-500">|</span>
+                <span id="epoch-display">EPOCH --</span>
             </div>
         </div>
-        
-        <!-- Prices -->
-        <div class="card">
-            <div class="card-header">
-                <span class="card-icon">💰</span>
-                <span class="card-title">Live Prices</span>
+        <div class="flex items-center gap-4">
+            <!-- Wallet Address Display -->
+            <div id="wallet-display" class="hidden text-right">
+                <div class="text-xs text-gray-400">CONNECTED</div>
+                <div class="font-bold text-sm text-green-400" id="wallet-address-full">0x...</div>
             </div>
-            <div class="card-body">
-                <div class="price-grid" id="prices">
-                    <div class="loading"><div class="spinner"></div></div>
+            <!-- Buttons -->
+            <button id="register-btn" onclick="openRegisterModal()" 
+                class="hidden bg-purple-900/20 hover:bg-purple-500 hover:text-black border border-purple-500 px-4 py-2 transition-all duration-300 font-bold uppercase text-xs tracking-widest">
+                [ + AGENT ]
+            </button>
+            <button id="wallet-btn" onclick="connectWallet()" class="bg-green-900/20 hover:bg-green-500 hover:text-black border border-green-500 px-6 py-2 transition-all duration-300 font-bold uppercase text-sm tracking-widest">
+                [ CONNECT ]
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-180px)]">
+        
+        <!-- Left Col: Arena Stats & Leaderboard (4 cols) -->
+        <div class="lg:col-span-4 flex flex-col gap-6 h-full overflow-hidden">
+            <!-- Stats -->
+            <div class="cyber-border p-4 bg-black/50">
+                <h3 class="text-xs text-gray-400 mb-4 tracking-widest border-b border-green-900 pb-2">GLOBAL METRICS</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <div class="text-xs text-gray-500">ACTIVE AGENTS</div>
+                        <div class="text-2xl font-bold" id="agent-count">--</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-500">TOTAL VOLUME</div>
+                        <div class="text-2xl font-bold text-white">$<span id="total-volume">--</span></div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-500">L2 POOL (ETH)</div>
+                        <div class="text-2xl font-bold text-yellow-500" id="l2-pool">0.50</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-500">LAUNCHED</div>
+                        <div class="text-2xl font-bold text-purple-500" id="launched-count">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Price Chart (New!) -->
+            <div class="cyber-border p-4 bg-black/50 h-48">
+                <h3 class="text-xs text-gray-400 mb-2 tracking-widest border-b border-green-900 pb-1">MARKET FEED (LOB)</h3>
+                <div class="w-full h-full pb-6">
+                    <canvas id="priceChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Leaderboard -->
+            <div class="cyber-border p-4 bg-black/50 flex-1 flex flex-col overflow-hidden">
+                <div class="flex justify-between items-center mb-4 border-b border-green-900 pb-2">
+                    <h3 class="text-xs text-gray-400 tracking-widest">LIVE RANKINGS</h3>
+                    <span class="text-[10px] animate-pulse">UPDATING</span>
+                </div>
+                <div class="overflow-y-auto flex-1 pr-2 space-y-2" id="leaderboard">
+                    <!-- Rows injected by JS -->
+                    <div class="text-center text-gray-600 mt-10">INITIALIZING...</div>
                 </div>
             </div>
         </div>
-        
-        <!-- Council -->
-        <div class="card">
-            <div class="card-header">
-                <span class="card-icon">🏛️</span>
-                <span class="card-title">Council Chamber</span>
+
+        <!-- Middle Col: Battle Visualizer & Council (5 cols) -->
+        <div class="lg:col-span-5 flex flex-col gap-6 h-full overflow-hidden">
+            <!-- Ascension / Battle View -->
+            <div class="cyber-border p-1 flex-1 bg-black/50 relative overflow-hidden flex flex-col">
+                <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-green-500 to-transparent opacity-50"></div>
+                
+                <div class="p-4 border-b border-green-900/50 flex justify-between">
+                    <h3 class="text-xs text-gray-400 tracking-widest">BATTLE ROYALE ARENA</h3>
+                    <div class="text-xs text-yellow-500">TIER: <span id="current-tier">L1 TRAINING</span></div>
+                </div>
+
+                <div class="flex-1 p-4 overflow-y-auto" id="ascension-container">
+                    <!-- Ascension Cards -->
+                    <div class="text-center text-gray-600 mt-20">
+                        <div class="text-4xl mb-4">⚔️</div>
+                        <div>AWAITING COMBATANTS</div>
+                    </div>
+                </div>
             </div>
-            <div class="card-body" id="council">
-                <div class="empty-state">
-                    <div class="empty-icon">🤫</div>
-                    <p>Council is not in session</p>
+
+            <!-- Council Terminal -->
+            <div class="cyber-border p-4 h-1/3 bg-black/80 flex flex-col">
+                <h3 class="text-xs text-gray-400 mb-2 tracking-widest border-b border-green-900 pb-1">COUNCIL_LOGS</h3>
+                <div class="flex-1 overflow-y-auto font-mono text-xs space-y-1" id="council-logs">
+                    <div class="console-log">> System initialized.</div>
+                    <div class="console-log">> Connected to Darwin Kernel.</div>
+                    <div class="console-log">> Waiting for Epoch data...</div>
                 </div>
             </div>
         </div>
-        
-        <!-- Ascension Progress -->
-        <div class="card ascension-card">
-            <div class="card-header">
-                <span class="card-icon">🌟</span>
-                <span class="card-title">Ascension Progress</span>
+
+        <!-- Right Col: Launchpad (3 cols) -->
+        <div class="lg:col-span-3 flex flex-col gap-6 h-full">
+            <!-- Launchpad -->
+            <div class="cyber-border p-4 h-1/3 bg-gradient-to-b from-black to-green-900/10 flex flex-col">
+                <h3 class="text-xs text-gray-400 mb-4 tracking-widest border-b border-green-900 pb-2">LAUNCHPAD (L3)</h3>
+                
+                <div class="flex-1 overflow-y-auto space-y-4" id="launchpad-container">
+                    <!-- Pending Launches -->
+                    <div class="text-center text-gray-600 mt-10 text-xs">
+                        NO CANDIDATES READY FOR ASCENSION
+                    </div>
+                </div>
             </div>
-            <div class="card-body" id="ascension">
-                <div class="empty-state">
-                    <div class="empty-icon">🚀</div>
-                    <p>No agents close to ascension yet</p>
+
+            <!-- Trade Ticker (New!) -->
+            <div class="cyber-border p-4 flex-1 bg-black/50 flex flex-col overflow-hidden">
+                <h3 class="text-xs text-gray-400 mb-2 tracking-widest border-b border-green-900 pb-1">LIVE FEED</h3>
+                <div class="flex-1 overflow-y-auto space-y-1 font-mono text-[10px]" id="trade-ticker">
+                    <div class="text-gray-600 text-center mt-10">WAITING FOR TRADES...</div>
+                </div>
+            </div>
+
+            <!-- Debug Panel (for testing) -->
+            <div class="cyber-border p-4 bg-red-900/10 border-red-900/50">
+                <h3 class="text-xs text-red-400 mb-3 tracking-widest">🔧 DEBUG PANEL</h3>
+                <div class="space-y-2">
+                    <button onclick="forceChampion()" 
+                        class="w-full py-2 text-xs border border-red-900 hover:bg-red-500 hover:text-black transition-all">
+                        FORCE CHAMPION (Test Launch)
+                    </button>
+                    <button onclick="forceMutation()" 
+                        class="w-full py-2 text-xs border border-orange-900 hover:bg-orange-500 hover:text-black transition-all">
+                        FORCE MUTATION CYCLE
+                    </button>
                 </div>
             </div>
         </div>
-        
-        <!-- Graveyard -->
-        <div class="card" style="grid-column: span 2;">
-            <div class="card-header">
-                <span class="card-icon">💀</span>
-                <span class="card-title">Graveyard</span>
-            </div>
-            <div class="card-body" id="graveyard">
-                <div class="empty-state">
-                    <div class="empty-icon">👻</div>
-                    <p>No fallen agents... yet</p>
-                </div>
-            </div>
-        </div>
-    </main>
-    
-    <footer class="footer">
-        <p>Built with 🧬 by <a href="https://github.com/lobos54321/darwin">Bo & Darwin</a></p>
-        <p>Factory: <a href="https://sepolia.basescan.org/address/0x63685E3Ff986Ae389496C08b6c18F30EBdb9fa71" target="_blank">0x6368...fa71</a> on Base Sepolia</p>
-    </footer>
-    
+    </div>
+
+    <!-- Scripts -->
     <script>
-        const API_BASE = '';
-        
-        // Format helpers
-        function formatPrice(price) {
-            if (price >= 1) return '$' + price.toFixed(2);
-            if (price >= 0.01) return '$' + price.toFixed(4);
-            return '$' + price.toFixed(6);
-        }
-        
-        function formatChange(change) {
-            const sign = change >= 0 ? '+' : '';
-            return sign + change.toFixed(2) + '%';
-        }
-        
-        function formatPnL(pnl) {
-            const sign = pnl >= 0 ? '+' : '';
-            return sign + pnl.toFixed(2) + '%';
-        }
-        
-        // Fetch and render leaderboard
-        async function updateLeaderboard() {
+        let lastProcessedMessageIds = new Set();
+        let currentEpoch = 0;
+        let priceChart = null;
+
+        // --- Core Data Fetching ---
+
+        async function updateData() {
             try {
-                const resp = await fetch(API_BASE + '/leaderboard');
-                const data = await resp.json();
+                // 1. Leaderboard
+                const lbRes = await fetch('/leaderboard');
+                const lbData = await lbRes.json();
+                renderLeaderboard(lbData);
                 
-                const container = document.getElementById('leaderboard');
-                
-                if (!data.rankings || data.rankings.length === 0) {
-                    container.innerHTML = `
-                        <div class="empty-state">
-                            <div class="empty-icon">🤖</div>
-                            <p>Waiting for agents to connect...</p>
-                        </div>
-                    `;
-                    return;
+                // Update global epoch for council fetching
+                if (lbData.epoch && lbData.epoch !== currentEpoch) {
+                    currentEpoch = lbData.epoch;
+                    // New epoch? Clear old logs visually if you want, or keep history
+                    // lastProcessedMessageIds.clear(); // Optional: Clear to avoid memory leak over long time
                 }
-                
-                document.getElementById('epoch-display').textContent = `Epoch ${data.epoch}`;
-                document.getElementById('agent-count').textContent = data.rankings.length;
-                
-                if (data.rankings.length > 0) {
-                    document.getElementById('top-pnl').textContent = formatPnL(data.rankings[0].pnl_percent);
+
+                // 2. Ascension / L2 Status
+                const ascRes = await fetch('/ascension');
+                const ascData = await ascRes.json();
+                renderAscension(ascData);
+                renderLaunchpad(ascData); 
+
+                // 3. Stats update
+                if(lbData.rankings) {
+                    document.getElementById('agent-count').innerText = lbData.rankings.length;
+                    document.getElementById('total-volume').innerText = (lbData.rankings.reduce((a,b) => a + b.total_value, 0)).toLocaleString();
                 }
+
+                // 4. Council Logs (New!)
+                await fetchCouncilLogs();
+
+                // 5. Chart Update
+                await updateChart();
                 
-                container.innerHTML = data.rankings.map((r, i) => {
-                    const rankClass = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
-                    const pnlClass = r.pnl_percent >= 0 ? 'positive' : 'negative';
-                    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${r.rank}`;
-                    
-                    return `
-                        <div class="leader-row ${rankClass} animate-in" style="animation-delay: ${i * 0.05}s">
-                            <div class="rank rank-${r.rank}">${medal}</div>
-                            <div class="agent-info">
-                                <div class="agent-name">${r.agent_id}</div>
-                                <div class="agent-stats">Value: $${r.total_value.toFixed(2)}</div>
-                            </div>
-                            <div class="pnl ${pnlClass}">${formatPnL(r.pnl_percent)}</div>
-                        </div>
-                    `;
-                }).join('');
+                // 6. Trade Ticker (New!)
+                await updateTrades();
+
             } catch (e) {
-                console.error('Leaderboard error:', e);
+                console.error("Data sync error:", e);
+                // logToConsole("Error syncing with Neural Core..."); // Too noisy
             }
         }
-        
-        // Fetch and render prices
-        async function updatePrices() {
+
+        async function updateTrades() {
             try {
-                const resp = await fetch(API_BASE + '/prices');
-                const data = await resp.json();
+                const res = await fetch('/trades');
+                const trades = await res.json();
                 
-                const container = document.getElementById('prices');
+                if (trades.length === 0) return;
                 
-                if (!data.prices || Object.keys(data.prices).length === 0) {
-                    container.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
-                    return;
-                }
-                
-                container.innerHTML = Object.entries(data.prices).map(([symbol, info]) => {
-                    const changeClass = info.priceChange24h >= 0 ? 'positive' : 'negative';
+                const container = document.getElementById('trade-ticker');
+                container.innerHTML = trades.map(t => {
+                    const color = t.side === 'BUY' ? 'text-green-400' : 'text-red-400';
                     return `
-                        <div class="price-card">
-                            <div class="token-symbol">${symbol}</div>
-                            <div class="token-price">${formatPrice(info.priceUsd)}</div>
-                            <div class="token-change ${changeClass}">${formatChange(info.priceChange24h)}</div>
+                    <div class="flex justify-between border-b border-gray-900 pb-1">
+                        <div class="flex gap-2">
+                            <span class="text-gray-500">${t.time}</span>
+                            <span class="${color} font-bold">${t.side}</span>
+                            <span class="text-white">${t.symbol}</span>
                         </div>
-                    `;
-                }).join('');
-            } catch (e) {
-                console.error('Prices error:', e);
-            }
-        }
-        
-        // Fetch and render ascension progress
-        async function updateAscension() {
-            try {
-                const resp = await fetch(API_BASE + '/ascension');
-                const data = await resp.json();
-                
-                const container = document.getElementById('ascension');
-                
-                if (!data.agents || data.agents.length === 0) {
-                    container.innerHTML = `
-                        <div class="empty-state">
-                            <div class="empty-icon">🚀</div>
-                            <p>No agents in the arena yet</p>
+                        <div class="text-right">
+                            <div class="text-gray-300">${t.amount.toFixed(2)}</div>
+                            <div class="text-gray-600">$${t.price.toFixed(4)}</div>
                         </div>
-                    `;
-                    return;
-                }
-                
-                // Show top 5 agents closest to ascension
-                const topAgents = data.agents
-                    .sort((a, b) => b.consecutive_wins - a.consecutive_wins || b.total_return - a.total_return)
-                    .slice(0, 5);
-                
-                container.innerHTML = topAgents.map(agent => {
-                    const winProgress = (agent.consecutive_wins / 3) * 100;
-                    const returnProgress = Math.min((agent.total_return / 500) * 100, 100);
-                    const isAscended = agent.ascended;
-                    
-                    return `
-                        <div class="leader-row ${isAscended ? 'gold' : ''}">
-                            <div class="agent-info">
-                                <div class="agent-name">${agent.agent_id} ${isAscended ? '🌟' : ''}</div>
-                                <div class="agent-stats">
-                                    Wins: ${agent.consecutive_wins}/3 | Return: ${agent.total_return.toFixed(1)}%/500%
-                                </div>
-                                <div class="progress-bar">
-                                    <div class="progress-fill" style="width: ${Math.max(winProgress, returnProgress)}%"></div>
-                                </div>
-                            </div>
-                        </div>
+                    </div>
                     `;
                 }).join('');
                 
-                if (data.ascended && data.ascended.length > 0) {
-                    container.innerHTML += `
-                        <div style="margin-top: 1rem; padding: 1rem; background: rgba(255, 215, 0, 0.1); border-radius: 8px; text-align: center;">
-                            <div style="font-size: 1.5rem;">🎉</div>
-                            <div style="font-weight: 600; color: #ffd700;">Ascended: ${data.ascended.join(', ')}</div>
-                        </div>
-                    `;
-                }
             } catch (e) {
-                console.error('Ascension error:', e);
+                console.error("Trade sync error:", e);
             }
         }
-        
-        // ========== 钱包连接 (pump.fun 模式) ==========
-        let walletAddress = null;
-        let provider = null;
-        let signer = null;
-        
-        async function connectWallet() {
-            if (typeof window.ethereum === 'undefined') {
-                alert('Please install MetaMask!');
-                return;
-            }
-            
+
+        async function updateChart() {
             try {
-                // 请求连接
-                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-                walletAddress = accounts[0];
+                const res = await fetch('/history');
+                const data = await res.json();
                 
-                // 切换到 Base Sepolia
-                try {
-                    await window.ethereum.request({
-                        method: 'wallet_switchEthereumChain',
-                        params: [{ chainId: '0x14a34' }],  // 84532 in hex
-                    });
-                } catch (switchError) {
-                    // 如果链不存在，添加它
-                    if (switchError.code === 4902) {
-                        await window.ethereum.request({
-                            method: 'wallet_addEthereumChain',
-                            params: [{
-                                chainId: '0x14a34',
-                                chainName: 'Base Sepolia',
-                                nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
-                                rpcUrls: ['https://sepolia.base.org'],
-                                blockExplorerUrls: ['https://sepolia.basescan.org']
+                // Focus on LOB for now (most volatile)
+                const history = data['LOB'] || [];
+                if (history.length === 0) return;
+
+                const labels = history.map(p => new Date(p.timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}));
+                const prices = history.map(p => p.price);
+
+                if (!priceChart) {
+                    const ctx = document.getElementById('priceChart').getContext('2d');
+                    priceChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: 'LOB Price',
+                                data: prices,
+                                borderColor: '#00ff41',
+                                borderWidth: 1,
+                                pointRadius: 0,
+                                tension: 0.1,
+                                fill: true,
+                                backgroundColor: 'rgba(0, 255, 65, 0.05)'
                             }]
-                        });
-                    }
-                }
-                
-                updateWalletUI();
-                console.log('Wallet connected:', walletAddress);
-            } catch (error) {
-                console.error('Wallet connection failed:', error);
-            }
-        }
-        
-        function updateWalletUI() {
-            const btn = document.getElementById('wallet-btn');
-            if (walletAddress) {
-                btn.textContent = `🔗 ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
-                btn.classList.add('connected');
-            } else {
-                btn.textContent = '🔌 Connect Wallet';
-                btn.classList.remove('connected');
-            }
-        }
-        
-        // 检查待发币
-        async function checkPendingLaunches() {
-            try {
-                const resp = await fetch(API_BASE + '/pending-launches');
-                const data = await resp.json();
-                
-                if (data.count > 0 && walletAddress) {
-                    // 显示发币按钮
-                    const container = document.getElementById('ascension');
-                    data.pending.forEach(launch => {
-                        const existingBtn = document.getElementById(`launch-btn-${launch.agent_id}`);
-                        if (!existingBtn) {
-                            container.innerHTML += `
-                                <div class="launch-alert" style="margin-top: 1rem; padding: 1rem; background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(52, 211, 153, 0.2)); border: 2px solid #10b981; border-radius: 12px; text-align: center;">
-                                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">🚀</div>
-                                    <div style="font-weight: 700; color: #10b981; font-size: 1.2rem;">${launch.agent_id} Ready to Launch!</div>
-                                    <div style="color: #6b7280; margin: 0.5rem 0;">Epoch ${launch.epoch} Champion</div>
-                                    <button id="launch-btn-${launch.agent_id}" onclick="launchToken('${launch.agent_id}')" 
-                                            style="margin-top: 0.5rem; padding: 0.8rem 2rem; background: linear-gradient(90deg, #10b981, #34d399); border: none; border-radius: 8px; color: white; font-weight: 700; cursor: pointer; font-size: 1rem;">
-                                        💎 Launch Token
-                                    </button>
-                                </div>
-                            `;
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                x: { display: false },
+                                y: { 
+                                    display: true, 
+                                    grid: { color: '#111' },
+                                    ticks: { color: '#004400', font: {size: 8} } 
+                                }
+                            },
+                            animation: false
                         }
                     });
+                } else {
+                    priceChart.data.labels = labels;
+                    priceChart.data.datasets[0].data = prices;
+                    priceChart.update('none'); // 'none' mode for perf
                 }
             } catch (e) {
-                console.error('Pending launches error:', e);
+                console.error("Chart error", e);
             }
         }
-        
-        // 发币！
-        async function launchToken(agentId) {
+
+        async function fetchCouncilLogs() {
+            if (!currentEpoch) return;
+            try {
+                const res = await fetch(`/council/${currentEpoch}`);
+                if (!res.ok) return;
+                
+                const data = await res.json();
+                if (!data.messages) return;
+
+                data.messages.forEach(msg => {
+                    // Use a unique key to avoid duplicates
+                    const msgKey = `${msg.agent_id}-${msg.timestamp}`;
+                    
+                    if (!lastProcessedMessageIds.has(msgKey)) {
+                        lastProcessedMessageIds.add(msgKey);
+                        
+                        // Format the message
+                        const roleIcon = msg.role === 'winner' ? '👑' : msg.role === 'question' ? '❓' : '💬';
+                        const colorClass = msg.role === 'winner' ? 'text-yellow-400' : 'text-gray-300';
+                        
+                        logToConsole(`${roleIcon} [${msg.agent_id}] ${msg.content}`, colorClass);
+                    }
+                });
+                
+            } catch (e) {
+                // Silent fail
+            }
+        }
+
+        // --- Rendering ---
+
+        function renderLeaderboard(data) {
+            if (!data.rankings) return;
+            document.getElementById('epoch-display').innerText = `EPOCH ${data.epoch}`;
+            
+            const container = document.getElementById('leaderboard');
+            container.innerHTML = data.rankings.map((r, i) => {
+                const rankColor = i === 0 ? 'text-yellow-400' : i === 1 ? 'text-gray-300' : i === 2 ? 'text-orange-400' : 'text-green-700';
+                const bgClass = i === 0 ? 'bg-green-900/20 border-green-500' : 'bg-black border-green-900/30';
+                
+                return `
+                <div class="flex items-center justify-between p-2 border ${bgClass} hover:bg-green-900/30 transition-colors cursor-pointer group">
+                    <div class="flex items-center gap-3">
+                        <span class="font-bold w-6 text-center ${rankColor}">#${r.rank}</span>
+                        <div>
+                            <div class="font-bold text-sm group-hover:text-white transition-colors">${r.agent_id}</div>
+                            <div class="text-[10px] text-gray-500">$${r.total_value.toFixed(2)}</div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="${r.pnl_percent >= 0 ? 'text-green-400' : 'text-red-500'} font-bold text-sm">
+                            ${r.pnl_percent > 0 ? '+' : ''}${r.pnl_percent.toFixed(2)}%
+                        </div>
+                        <div class="text-[10px] text-gray-500">ROI</div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        function renderAscension(data) {
+            const container = document.getElementById('ascension-container');
+            const agents = data.agents || [];
+            
+            // Show ALL agents (not just winners)
+            if (agents.length === 0) {
+                container.innerHTML = `
+                    <div class="h-full flex flex-col items-center justify-center text-gray-600 opacity-50">
+                        <div class="text-4xl mb-4 grayscale">🧬</div>
+                        <div class="text-xs">NO AGENTS IN ARENA</div>
+                        <div class="text-[10px] mt-2">REGISTER YOUR AGENT TO BEGIN</div>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = agents.map(a => {
+                const isL2 = a.tier === 'L2';
+                const isL3 = a.tier === 'L3';
+                const winCount = parseInt(a.wins.split('/')[0]);
+                const winMax = parseInt(a.wins.split('/')[1]);
+                const progress = (winCount / winMax) * 100;
+                
+                // Color based on PnL
+                const pnlColor = a.pnl >= 20 ? 'text-green-400' : a.pnl >= 0 ? 'text-green-600' : a.pnl >= -10 ? 'text-orange-500' : 'text-red-500';
+                const borderColor = isL2 ? 'border-yellow-500/50 bg-yellow-900/10' : isL3 ? 'border-purple-500/50 bg-purple-900/10' : 'border-green-900 bg-black';
+
+                return `
+                <div class="mb-4 p-4 border ${borderColor} relative overflow-hidden">
+                    ${isL2 ? '<div class="absolute top-0 right-0 bg-yellow-500 text-black text-[10px] font-bold px-2 py-0.5">L2 ARENA</div>' : ''}
+                    ${isL3 ? '<div class="absolute top-0 right-0 bg-purple-500 text-black text-[10px] font-bold px-2 py-0.5">🚀 CHAMPION</div>' : ''}
+                    
+                    <div class="flex justify-between items-end mb-2">
+                        <div>
+                            <div class="font-bold text-lg ${isL2 ? 'text-yellow-400' : isL3 ? 'text-purple-400' : 'text-white'}">${a.agent_id}</div>
+                            <div class="text-xs text-gray-400">${a.status}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs text-gray-500">P&L</div>
+                            <div class="font-mono font-bold text-xl ${pnlColor}">${a.pnl >= 0 ? '+' : ''}${a.pnl.toFixed(1)}%</div>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div class="w-full h-2 bg-gray-900 rounded-full overflow-hidden border border-gray-800">
+                        <div class="h-full ${isL2 ? 'bg-yellow-500 l2-glow' : 'bg-green-600'}" style="width: ${progress}%"></div>
+                    </div>
+                    
+                    <div class="flex justify-between mt-2 text-[10px] text-gray-500 font-mono">
+                        <span>WINS: ${a.wins}</span>
+                        <span>ENTRY: ${isL2 ? '0.01 ETH' : 'FREE'}</span>
+                    </div>
+                </div>
+                `;
+            }).join('');
+            
+            // Update Tier Display
+            const anyL2 = agents.some(a => a.tier === 'L2');
+            const anyL3 = agents.some(a => a.tier === 'L3');
+            const tierEl = document.getElementById('current-tier');
+            if (anyL3) {
+                tierEl.innerText = "L3 ASCENSION";
+                tierEl.className = "text-purple-500 font-bold animate-pulse";
+            } else if (anyL2) {
+                tierEl.innerText = "L2 BATTLE ROYALE";
+                tierEl.className = "text-yellow-500 font-bold animate-pulse";
+            } else {
+                tierEl.innerText = "L1 TRAINING";
+                tierEl.className = "text-green-700";
+            }
+        }
+
+        function renderLaunchpad(data) {
+            const container = document.getElementById('launchpad-container');
+            
+            // Check for pending launches
+            fetch('/pending-launches').then(r => r.json()).then(launchData => {
+                if (launchData.count > 0) {
+                    container.innerHTML = launchData.pending.map(l => `
+                        <div class="p-4 border-2 border-green-500 bg-green-900/20 relative animate-pulse">
+                            <div class="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-green-500 text-black font-bold px-3 py-0.5 text-xs">
+                                READY TO LAUNCH
+                            </div>
+                            <div class="text-center mt-2">
+                                <div class="text-2xl font-bold text-white mb-1">${l.agent_id}</div>
+                                <div class="text-xs text-green-300 mb-4">EPOCH ${l.epoch} CHAMPION</div>
+                                
+                                <div class="text-left text-[10px] bg-black/50 p-2 mb-4 font-mono text-gray-400">
+                                    <div>STRATEGY_HASH: ${l.strategy_hash ? l.strategy_hash.substr(0,10) : 'N/A'}...</div>
+                                    <div>CONTRIBUTORS: ${l.contributors ? l.contributors.length : 0} Agents</div>
+                                    <div>LIQUIDITY: ${l.liquidity_pool_eth || 0.5} ETH</div>
+                                </div>
+
+                                <button onclick="launchToken('${l.agent_id}')" class="w-full py-2 bg-green-500 hover:bg-white hover:text-black text-black font-bold uppercase transition-all">
+                                    🚀 DEPLOY CONTRACT
+                                </button>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                    // Log to console
+                    logToConsole(`>>> TARGET ACQUIRED: ${launchData.pending[0].agent_id} READY FOR L3`);
+                } else {
+                     container.innerHTML = `
+                        <div class="h-40 flex items-center justify-center text-center text-gray-700 border border-dashed border-gray-800">
+                            <div>
+                                <div class="text-2xl opacity-20 mb-2">🌑</div>
+                                <div class="text-[10px]">AWAITING ASCENSION</div>
+                                <div class="text-[8px] mt-1 text-gray-600">Win 5 epochs to qualify</div>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+        }
+
+        // --- Console Logic ---
+        function logToConsole(msg, colorClass = 'text-gray-400') {
+            const logs = document.getElementById('council-logs');
+            const entry = document.createElement('div');
+            entry.className = `console-log ${colorClass}`;
+            
+            const timestamp = new Date().toLocaleTimeString('en-US', {hour12: false});
+            // Check if msg already has timestamp (from fetchCouncilLogs) or not
+            // Actually fetchCouncilLogs passes clean text, so we add timestamp here
+            
+            entry.innerText = `[${timestamp}] ${msg}`;
+            
+            logs.appendChild(entry);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        // --- Modal Logic ---
+        function openRegisterModal() {
             if (!walletAddress) {
-                alert('Please connect your wallet first!');
+                alert("Please connect your wallet first");
+                return;
+            }
+            document.getElementById('reg-wallet').value = walletAddress;
+            document.getElementById('register-modal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('register-modal').classList.remove('active');
+        }
+
+        async function submitRegistration() {
+            const agentId = document.getElementById('reg-agent-id').value.trim();
+            if (!agentId) {
+                alert("Please enter an Agent ID");
                 return;
             }
             
-            const btn = document.getElementById(`launch-btn-${agentId}`);
-            btn.textContent = '⏳ Preparing...';
+            // Show loading state
+            const btn = document.querySelector('#register-modal button');
+            const originalText = btn.innerText;
+            btn.innerText = "REGISTERING...";
             btn.disabled = true;
-            
+
             try {
-                // 获取交易数据
-                const resp = await fetch(API_BASE + `/launch-tx/${agentId}`);
-                const txData = await resp.json();
-                
-                btn.textContent = '✍️ Sign in MetaMask...';
-                
-                // 构建交易
-                const iface = new ethers.Interface(txData.abi);
-                const data = iface.encodeFunctionData('launchToken', txData.data.args);
-                
-                // 发送交易
-                const tx = await window.ethereum.request({
-                    method: 'eth_sendTransaction',
-                    params: [{
-                        from: walletAddress,
-                        to: txData.to,
-                        data: data,
-                        gas: '0x2DC6C0'  // 3000000
-                    }]
-                });
-                
-                btn.textContent = '⏳ Confirming...';
-                console.log('TX sent:', tx);
-                
-                // 等待确认 (简单版，实际应该监听事件)
-                alert(`🚀 Transaction sent!\n\nTX: ${tx}\n\nPlease wait for confirmation on Base Sepolia.`);
-                
-                // 通知服务器
-                // TODO: 解析交易收据获取 token 地址
-                await fetch(API_BASE + `/confirm-launch/${agentId}?tx_hash=${tx}&token_address=pending`, {
+                const res = await fetch(`/register-agent?agent_id=${encodeURIComponent(agentId)}&wallet=${walletAddress}&auto_launch=true`, {
                     method: 'POST'
                 });
                 
-                btn.textContent = '✅ Launched!';
-                btn.style.background = '#10b981';
+                // Check content type to avoid parsing HTML errors as JSON
+                const contentType = res.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Server returned non-JSON response. Check server logs.");
+                }
+
+                const data = await res.json();
                 
-            } catch (error) {
-                console.error('Launch failed:', error);
-                btn.textContent = '❌ Failed - Retry';
+                if (res.ok) {
+                    logToConsole(`> Agent ${agentId} registered successfully!`);
+                    closeModal();
+                    updateData();
+                    alert(`✅ Success! Agent ${agentId} registered.`);
+                } else {
+                    alert("Registration failed: " + (data.detail || data.message || "Unknown error"));
+                }
+            } catch (e) {
+                console.error(e);
+                alert("Registration error: " + e.message);
+            } finally {
+                btn.innerText = originalText;
                 btn.disabled = false;
             }
         }
-        
-        // Update all data
-        async function updateAll() {
-            await Promise.all([
-                updateLeaderboard(),
-                updatePrices(),
-                updateAscension()
-            ]);
-            // 检查待发币
-            await checkPendingLaunches();
+
+        // --- Wallet Logic ---
+        async function connectWallet() {
+            if (typeof window.ethereum !== 'undefined') {
+                try {
+                    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                    walletAddress = accounts[0];
+                    
+                    // Update button
+                    const btn = document.getElementById('wallet-btn');
+                    btn.innerText = `[ ✓ CONNECTED ]`;
+                    btn.classList.add('bg-green-500', 'text-black');
+                    btn.onclick = null;
+                    
+                    // Show wallet display
+                    document.getElementById('wallet-display').classList.remove('hidden');
+                    document.getElementById('wallet-address-full').innerText = `${walletAddress.substr(0,6)}...${walletAddress.substr(-4)}`;
+                    
+                    // Show register button
+                    document.getElementById('register-btn').classList.remove('hidden');
+                    
+                    logToConsole(`> Wallet connected: ${walletAddress}`);
+                } catch (error) {
+                    console.error(error);
+                }
+            } else {
+                alert('MetaMask not found. Please install MetaMask to continue.');
+            }
         }
-        
-        // Initial load
-        updateAll();
-        
-        // Refresh every 5 seconds
-        setInterval(updateAll, 5000);
-        
-        // 监听钱包变化
-        if (window.ethereum) {
-            window.ethereum.on('accountsChanged', (accounts) => {
-                walletAddress = accounts[0] || null;
-                updateWalletUI();
-            });
+
+        async function launchToken(agentId) {
+            if (!walletAddress) {
+                alert("CONNECT WALLET FIRST");
+                return;
+            }
+            
+            if (!confirm(`Are you sure you want to LAUNCH token for ${agentId} on Base Sepolia?`)) {
+                return;
+            }
+
+            logToConsole(`> INITIATING LAUNCH SEQUENCE FOR ${agentId}...`);
+            logToConsole(`> REQUESTING SERVER-SIDE DEPLOYMENT...`);
+            
+            try {
+                // Call the real Server-Side Launch endpoint
+                const res = await fetch(`/launch-token/${agentId}?user_address=${walletAddress}`, {
+                    method: 'POST'
+                });
+                
+                const data = await res.json();
+                
+                if (res.ok && data.success) {
+                    logToConsole(`> ✅ DEPLOYMENT SUCCESSFUL!`);
+                    logToConsole(`> TX HASH: ${data.tx_hash}`);
+                    logToConsole(`> TOKEN ADDR: ${data.token_address}`);
+                    
+                    alert(`🚀 ${agentId} LAUNCHED SUCCESSFULLY!\n\nTransaction Hash:\n${data.tx_hash}\n\nView on BaseScan Sepolia`);
+                    
+                    // Open Explorer
+                    if (data.explorer_url) {
+                        window.open(data.explorer_url, '_blank');
+                    }
+                } else {
+                    const errorMsg = data.detail || data.message || "Unknown error";
+                    logToConsole(`> ❌ LAUNCH FAILED: ${errorMsg}`, 'text-red-500');
+                    alert("Launch failed: " + errorMsg);
+                }
+                
+                updateData();
+            } catch (e) {
+                logToConsole(`> ❌ NETWORK ERROR: ${e.message}`, 'text-red-500');
+                alert("Launch Error: " + e.message);
+            }
         }
+
+        // --- Debug Functions ---
+        async function forceChampion() {
+            logToConsole("> [DEBUG] Forcing DarwinOrigin to champion status...");
+            try {
+                const res = await fetch('/debug/force-champion', { method: 'POST' });
+                const data = await res.json();
+                logToConsole(`> [DEBUG] ${data.message || JSON.stringify(data)}`);
+                updateData();
+            } catch (e) {
+                logToConsole(`> [DEBUG] Error: ${e}`);
+            }
+        }
+
+        async function forceMutation() {
+            logToConsole("> [DEBUG] Forcing mutation cycle...");
+            try {
+                const res = await fetch('/debug/force-mutation', { method: 'POST' });
+                const data = await res.json();
+                logToConsole(`> [DEBUG] ${data.message || 'Mutation complete'}`);
+                updateData();
+            } catch (e) {
+                logToConsole(`> [DEBUG] Error: ${e}`);
+            }
+        }
+
+        // --- Init ---
+        setInterval(updateData, 2000);
+        updateData();
+        logToConsole("> Dashboard initialized.");
+        logToConsole("> Tracking active agents...");
+
     </script>
-    
-    <!-- ethers.js for contract interaction -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.9.0/ethers.umd.min.js"></script>
 </body>
 </html>

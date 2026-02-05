@@ -1,0 +1,196 @@
+import numpy as np
+import pandas as pd
+from dataclasses import dataclass
+from typing import Dict, Any, Optional
+
+@dataclass
+class StrategyConfig:
+    # 核心参数 - 变异部分
+    rsi_period: int = 14
+    rsi_overbought: int = 70
+    rsi_oversold: int = 30
+    bollinger_window: int = 20
+    bollinger_dev: float = 2.0
+    volume_ma_window: int = 20
+    volume_shock_threshold: float = 1.5  # 巨鲸侦测阈值
+    trend_ema_window: int = 200
+    
+    # 风控参数 - 增强部分
+    risk_per_trade: float = 0.02  # 每次交易风险 2%
+    stop_loss_atr_multiplier: float = 2.0
+    take_profit_atr_multiplier: float = 4.0
+    max_drawdown_limit: float = 0.15  # 强制熔断线
+
+class WhaleWatcher_534_Evolved:
+    def __init__(self, initial_capital: float = 800.0):
+        self.capital = initial_capital
+        self.position = 0.0
+        self.entry_price = 0.0
+        self.config = StrategyConfig()
+        self.peak_capital = initial_capital
+        self.is_halted = False
+
+    def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        """计算技术指标，不依赖 talib 以保证兼容性"""
+        df = df.copy()
+        
+        # 趋势过滤
+        df['ema_200'] = df['close'].ewm(span=self.config.trend_ema_window, adjust=False).mean()
+        
+        # 波动率 (ATR)
+        df['tr'] = np.maximum(
+            df['high'] - df['low'],
+            np.maximum(
+                abs(df['high'] - df['close'].shift(1)),
+                abs(df['low'] - df['close'].shift(1))
+            )
+        )
+        df['atr'] = df['tr'].rolling(window=14).mean()
+        
+        # 布林带
+        df['bb_mid'] = df['close'].rolling(window=self.config.bollinger_window).mean()
+        df['bb_std'] = df['close'].rolling(window=self.config.bollinger_window).std()
+        df['bb_upper'] = df['bb_mid'] + (self.config.bollinger_dev * df['bb_std'])
+        df['bb_lower'] = df['bb_mid'] - (self.config.bollinger_dev * df['bb_std'])
+        
+        # RSI
+        delta = df['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=self.config.rsi_period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=self.config.rsi_period).mean()
+        rs = gain / loss
+        df['rsi'] = 100 - (100 / (1 + rs))
+        
+        # 成交量异常 (巨鲸侦测)
+        df['vol_ma'] = df['volume'].rolling(window=self.config.volume_ma_window).mean()
+        df['vol_shock'] = df['volume'] > (df['vol_ma'] * self.config.volume_shock_threshold)
+        
+        return df
+
+    def calculate_position_size(self, price: float, atr: float) -> float:
+        """基于波动率的动态仓位管理"""
+        if self.capital <= 0 or atr == 0:
+            return 0.0
+            
+        risk_amount = self.capital * self.config.risk_per_trade
+        stop_distance = atr * self.config.stop_loss_atr_multiplier
+        
+        if stop_distance == 0:
+            return 0.0
+            
+        size = risk_amount / stop_distance
+        # 限制最大杠杆为 1.0 (保守策略)
+        max_size = self.capital / price
+        return min(size, max_size)
+
+    def check_risk_management(self, current_price: float, atr: float) -> str:
+        """持仓期间的风控检查"""
+        if self.position == 0:
+            return "HOLD"
+            
+        # 止损逻辑
+        if self.position > 0: # 多头
+            stop_price = self.entry_price - (atr * self.config.stop_loss_atr_multiplier)
+            tp_price = self.entry_price + (atr * self.config.take_profit_atr_multiplier)
+            
+            if current_price <= stop_price:
+                return "CLOSE_STOP_LOSS"
+            if current_price >= tp_price:
+                return "CLOSE_TAKE_PROFIT"
+                
+        elif self.position < 0: # 空头
+            stop_price = self.entry_price + (atr * self.config.stop_loss_atr_multiplier)
+            tp_price = self.entry_price - (atr * self.config.take_profit_atr_multiplier)
+            
+            if current_price >= stop_price:
+                return "CLOSE_STOP_LOSS"
+            if current_price <= tp_price:
+                return "CLOSE_TAKE_PROFIT"
+                
+        return "HOLD"
+
+    def on_tick(self, market_data: pd.DataFrame) -> Dict[str, Any]:
+        """主交易逻辑循环"""
+        
+        # 1. 熔断检查
+        drawdown = (self.peak_capital - self.capital) / self.peak_capital
+        if drawdown > self.config.max_drawdown_limit:
+            self.is_halted = True
+            if self.position != 0:
+                return {"action": "CLOSE", "reason": "HARD_DRAWDOWN_LIMIT"}
+            return {"action": "WAIT", "reason": "HALTED"}
+
+        if len(market_data) < 200:
+            return {"action": "WAIT", "reason": "INSUFFICIENT_DATA"}
+
+        df = self.calculate_indicators(market_data)
+        curr = df.iloc[-1]
+        prev = df.iloc[-2]
+        
+        # 更新资金峰值
+        self.peak_capital = max(self.peak_capital, self.capital)
+        
+        # 2. 检查现有持仓风控
+        risk_action = self.check_risk_management(curr['close'], curr['atr'])
+        if risk_action != "HOLD":
+            return {"action": "CLOSE", "reason": risk_action}
+            
+        # 3. 信号生成 logic (变异点：结合趋势、波动率突破和成交量确认)
+        
+        # 做多条件：
+        # 1. 价格在长期均线之上 (趋势向上)
+        # 2. 价格突破布林带上轨
+        # 3. 出现巨鲸成交量 (Volume Shock)
+        # 4. RSI 未超买
+        long_signal = (
+            curr['close'] > curr['ema_200'] and
+            curr['close'] > curr['bb_upper'] and
+            curr['vol_shock'] and
+            curr['rsi'] < self.config.rsi_overbought
+        )
+
+        # 做空条件：
+        # 1. 价格在长期均线之下 (趋势向下)
+        # 2. 价格跌破布林带下轨
+        # 3. 出现巨鲸成交量
+        # 4. RSI 未超卖
+        short_signal = (
+            curr['close'] < curr['ema_200'] and
+            curr['close'] < curr['bb_lower'] and
+            curr['vol_shock'] and
+            curr['rsi'] > self.config.rsi_oversold
+        )
+
+        # 4. 执行逻辑
+        if self.position == 0:
+            if long_signal:
+                size = self.calculate_position_size(curr['close'], curr['atr'])
+                return {"action": "BUY", "size": size, "price": curr['close']}
+            elif short_signal:
+                size = self.calculate_position_size(curr['close'], curr['atr'])
+                return {"action": "SELL", "size": size, "price": curr['close']}
+        
+        return {"action": "HOLD", "reason": "NO_SIGNAL"}
+
+# 模拟运行示例 (用于验证代码完整性)
+if __name__ == "__main__":
+    # 生成模拟数据
+    dates = pd.date_range(start="2023-01-01", periods=300, freq="1H")
+    data = pd.DataFrame({
+        'open': np.random.normal(100, 1, 300).cumsum(),
+        'high': np.zeros(300),
+        'low': np.zeros(300),
+        'close': np.zeros(300),
+        'volume': np.random.randint(100, 1000, 300)
+    }, index=dates)
+    
+    # 填充 High/Low/Close 以保持一致性
+    data['close'] = data['open'] + np.random.normal(0, 0.5, 300)
+    data['high'] = data[['open', 'close']].max(axis=1) + 0.2
+    data['low'] = data[['open', 'close']].min(axis=1) - 0.2
+    
+    # 实例化策略
+    bot = WhaleWatcher_534_Evolved(initial_capital=800.0)
+    
+    # 运行最新的一帧
+    decision = bot.on_tick(data)
+    print(f"Strategy Decision: {decision}")

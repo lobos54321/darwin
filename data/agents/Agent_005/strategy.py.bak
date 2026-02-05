@@ -1,0 +1,154 @@
+```python
+import statistics
+from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from enum import Enum
+
+# ==========================================
+# 基础数据结构
+# ==========================================
+
+class Signal(Enum):
+    BUY = "BUY"
+    SELL = "SELL"
+    HOLD = "HOLD"
+
+
+@dataclass
+class TradeDecision:
+    signal: Signal
+    symbol: str
+    amount_usd: float
+    reason: str
+
+
+class DarwinStrategy:
+    """
+    Agent_005 进化版 (v9.0): "Fortress Rebuilder"
+    
+    针对当前 -28% 的严重回撤，本策略放弃了激进的动量博弈，转向"右侧防御型趋势跟随"。
+    首要目标是止血保本，其次才是稳健增长。
+    
+    策略逻辑 (结合赢家智慧与自身变异):
+    1.  **趋势过滤器 (Winner's DNA)**: 使用 SMA_20 作为多空分水岭。价格在 SMA_20 之下绝对不抄底，严格执行"右侧交易"。
+    2.  **波动率确认 (Mutation)**: 引入标准差 (StdDev) 过滤。如果市场波动率过高（可能是暴跌或假突破），则暂停开仓，避免在混乱中亏损。
+    3.  **确认入场 (Confirmation)**: 仅当价格突破 SMA_20 且 连续两根K线收涨 时入场，防止假突破。
+    4.  **生存风控 (Survival Mode)**:
+        - 仓位限制: 20% (虽然需要回本，但不能孤注一掷)。
+        - 移动止盈: 当浮盈超过 3% 时，手动收紧止损到开仓价，确保"赢钱不变成亏钱"。
+    """
+    
+    def __init__(self):
+        # === 核心参数 ===
+        self.sma_period = 20           # 趋势判断周期 (稳健型)
+        self.volatility_period = 10    # 波动率计算周期
+        self.max_volatility = 0.03     # 波动率上限 (3%)，超过则不交易
+        
+        # === 风控参数 ===
+        self.position_size = 0.2       # 单笔仓位 20%
+        self.stop_loss = -0.03         # 初始止损 -3.0% (给一点波动空间)
+        self.take_profit = 0.08        # 目标止盈 +8.0%
+        self.trailing_trigger = 0.03   # 浮盈 > 3% 时触发保本逻辑
+        
+        # === 状态变量 ===
+        self.price_history: Dict[str, List[float]] = {}
+        self.entry_prices: Dict[str, float] = {}
+        self.balance = 720.0           # 当前余额
+        self.cooldown: Dict[str, int] = {} # 交易冷却计数器
+        self.last_reflection = ""
+
+    def _calculate_indicators(self, symbol: str) -> Tuple[Optional[float], Optional[float]]:
+        """计算 SMA 和 波动率"""
+        prices = self.price_history.get(symbol, [])
+        if len(prices) < self.sma_period:
+            return None, None
+        
+        # 计算 SMA
+        sma = statistics.mean(prices[-self.sma_period:])
+        
+        # 计算波动率 (标准差 / 均值)
+        recent_prices = prices[-self.volatility_period:]
+        if len(recent_prices) > 1:
+            stdev = statistics.stdev(recent_prices)
+            volatility = stdev / sma
+        else:
+            volatility = 0.0
+            
+        return sma, volatility
+
+    def on_price_update(self, prices: Dict[str, dict]) -> Optional[TradeDecision]:
+        """
+        核心决策逻辑
+        """
+        # 1. 更新价格历史
+        target_symbol = "BTC" # 假设主要交易 BTC，也可扩展为遍历
+        if target_symbol not in prices:
+            return None
+            
+        current_price = prices[target_symbol]['price']
+        
+        if target_symbol not in self.price_history:
+            self.price_history[target_symbol] = []
+        self.price_history[target_symbol].append(current_price)
+        
+        # 保持历史数据长度适中
+        if len(self.price_history[target_symbol]) > 50:
+            self.price_history[target_symbol].pop(0)
+
+        # 冷却期处理
+        if self.cooldown.get(target_symbol, 0) > 0:
+            self.cooldown[target_symbol] -= 1
+            return None
+
+        # 2. 检查持仓状态 (卖出逻辑)
+        if target_symbol in self.entry_prices:
+            entry_price = self.entry_prices[target_symbol]
+            pnl_pct = (current_price - entry_price) / entry_price
+            
+            # 止损
+            if pnl_pct <= self.stop_loss:
+                del self.entry_prices[target_symbol]
+                self.balance += self.balance * self.position_size * (1 + pnl_pct)
+                self.cooldown[target_symbol] = 5 # 亏损后冷静5个周期
+                return TradeDecision(Signal.SELL, target_symbol, 0, f"止损触发 ({pnl_pct:.2%})")
+            
+            # 止盈
+            if pnl_pct >= self.take_profit:
+                del self.entry_prices[target_symbol]
+                self.balance += self.balance * self.position_size * (1 + pnl_pct)
+                return TradeDecision(Signal.SELL, target_symbol, 0, f"止盈落袋 ({pnl_pct:.2%})")
+            
+            # 移动保本逻辑: 如果浮盈超过 3%，且价格开始回落 (简单模拟)
+            if pnl_pct > self.trailing_trigger:
+                # 这里可以实现更复杂的移动止损，这里简化为：如果跌回 1% 就走
+                if pnl_pct < (self.trailing_trigger - 0.02): # 回撤
+                     del self.entry_prices[target_symbol]
+                     self.balance += self.balance * self.position_size * (1 + pnl_pct)
+                     return TradeDecision(Signal.SELL, target_symbol, 0, "保本离场")
+
+            # 趋势反转离场: 价格跌破 SMA
+            sma, _ = self._calculate_indicators(target_symbol)
+            if sma and current_price < sma:
+                del self.entry_prices[target_symbol]
+                self.balance += self.balance * self.position_size * (1 + pnl_pct)
+                return TradeDecision(Signal.SELL, target_symbol, 0, "趋势破位离场")
+                
+            return TradeDecision(Signal.HOLD, target_symbol, 0, f"持仓中 PnL: {pnl_pct:.2%}")
+
+        # 3. 检查开仓状态 (买入逻辑)
+        else:
+            sma, volatility = self._calculate_indicators(target_symbol)
+            
+            # 数据不足
+            if not sma or not volatility:
+                return None
+            
+            history = self.price_history[target_symbol]
+            
+            # 逻辑 A: 趋势确认 (价格在均线之上)
+            trend_confirmed = current_price > sma
+            
+            # 逻辑 B: 动量确认 (连续两根上涨，防止接飞刀)
+            momentum_confirmed = False
+            if len(history) >= 3:
+                momentum_confirmed = history[-1] > history
