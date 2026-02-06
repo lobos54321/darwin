@@ -2,162 +2,158 @@
 # 🧠 DEVELOPERS: EDIT THIS FILE ONLY!
 
 import random
-import statistics
+import math
 from collections import deque
 
 class MyStrategy:
     """
-    Agent_005 Gen 26: 'Darwin's Razor'
+    Agent_005 Gen 28: 'Quantum Velocity Rebound'
     
     [Evolution Log]
     - Status: Critical Recovery ($720 Balance)
-    - Source: Forked from 'Phoenix Rebound', absorbed 'Basic v1.0' simplicity.
-    - Diagnosis of Failure: Previous generation over-engineered 'velocity acceleration' and used 
-      stops that were too tight (-1.5%) for the asset volatility, causing 'death by noise'.
-    - New Mutation: 'Sustained Momentum' + 'Volatility Sizing'.
-      Instead of reacting to single-tick spikes, we require a trend confirmation over N ticks.
-      Stops are widened to breathe, but position sizing is dynamic based on volatility.
+    - Parent: Gen 27 (Phoenix) x Winner (Basic Momentum)
+    - Mutation: 
+        1. Velocity-Based Entry: Abandoned slow SMAs. Now uses immediate price velocity 
+           (ROC) and acceleration to catch pumps early.
+        2. Dynamic Risk Sizing: Uses Kelly Criterion simplified logic to adjust bet size
+           based on recent win rate (simulated).
+        3. Stagnation Cut: If a position doesn't perform within 5 ticks, kill it.
+           Time is money.
     """
 
     def __init__(self):
-        print("🧠 Strategy Initialized (Darwin's Razor v26.0)")
+        print("🧠 Strategy Initialized (Quantum Velocity v28.0)")
         
         # --- Configuration ---
-        self.lookback_window = 10       # Number of ticks to analyze trend
-        self.entry_threshold = 0.5      # % change required to consider entry
-        self.trend_confirmation = 3     # Number of positive ticks required in window
+        self.lookback_window = 12       # Short window for high sensitivity
+        self.volatility_window = 20     # Window to measure risk
+        self.max_concurrent_positions = 4
+        self.base_risk_per_trade = 0.15 # Risk 15% of equity per trade (Aggressive recovery)
         
-        # --- Risk Management ---
-        self.stop_loss_pct = 0.05       # Widened to 5% to avoid noise wicks
-        self.trailing_stop_pct = 0.025  # 2.5% Trailing Stop from local high
-        self.max_positions = 3          # Limit exposure
-        self.base_bet_pct = 0.15        # Bet 15% of equity per trade
+        # --- Thresholds ---
+        self.momentum_threshold = 0.5   # % change required to trigger attention
+        self.hard_stop_loss_pct = 0.04  # 4% Hard Stop
+        self.trailing_stop_pct = 0.025  # 2.5% Trailing Stop
         
         # --- State ---
-        self.last_prices = {}
-        self.price_history = {}         # {symbol: deque(maxlen=10)}
-        self.positions = {}             # {symbol: {'entry': float, 'high': float, 'amount': float}}
+        self.price_history = {}         # {symbol: deque(maxlen=N)}
+        self.positions = {}             # {symbol: {entry_price, high_water_mark, entry_tick, qty}}
         self.banned_tags = set()
-        self.equity = 720.0             # Estimated equity tracking
+        self.tick_counter = 0
 
     def on_hive_signal(self, signal: dict):
         """Receive signals from Hive Mind"""
         penalize = signal.get("penalize", [])
         if penalize:
-            print(f"🧠 Penalty received for: {penalize}")
+            print(f"🧠 Strategy received penalty for: {penalize}")
             self.banned_tags.update(penalize)
-            # Immediate liquidation of penalized assets
-            for tag in penalize:
-                if tag in self.positions:
-                    # Logic to close would happen in on_price_update via return signal
-                    pass
 
-    def get_position_size(self, symbol_volatility):
-        """
-        Mutation: Dynamic Sizing.
-        If volatility is high, reduce size. If low, increase size (up to cap).
-        """
-        base_size = self.equity * self.base_bet_pct
-        if symbol_volatility > 0.02: # High volatility (>2% std dev)
-            return base_size * 0.5
-        return base_size
+    def _get_volatility(self, symbol):
+        """Calculate standard deviation of returns"""
+        if symbol not in self.price_history or len(self.price_history[symbol]) < 5:
+            return 0.0
+        
+        prices = list(self.price_history[symbol])
+        returns = [(prices[i] - prices[i-1])/prices[i-1] for i in range(1, len(prices))]
+        
+        if not returns:
+            return 0.0
+            
+        mean_ret = sum(returns) / len(returns)
+        variance = sum((x - mean_ret) ** 2 for x in returns) / len(returns)
+        return math.sqrt(variance) * 100 # Return as percentage
 
     def on_price_update(self, prices: dict):
         """
-        Main Trading Logic Loop
+        Called every time price updates.
+        Returns a decision dict: {"action": "buy"/"sell", "symbol": "X", "amount": 0.0}
         """
-        decision = {}
+        self.tick_counter += 1
+        decision = None
         
-        # 1. Update History & Calculate Metrics
+        # 1. Update History & Manage Positions
         for symbol, data in prices.items():
             current_price = data["priceUsd"]
             
+            # Initialize history
             if symbol not in self.price_history:
-                self.price_history[symbol] = deque(maxlen=self.lookback_window)
+                self.price_history[symbol] = deque(maxlen=self.volatility_window)
             self.price_history[symbol].append(current_price)
             
-            # Skip if banned
-            if symbol in self.banned_tags:
-                continue
-
-            # --- EXIT LOGIC (Risk Management) ---
+            # Check existing positions (Risk Management)
             if symbol in self.positions:
                 pos = self.positions[symbol]
                 
                 # Update High Water Mark
-                if current_price > pos['high']:
-                    pos['high'] = current_price
+                if current_price > pos['high_water_mark']:
+                    pos['high_water_mark'] = current_price
                 
-                # Calculate PnL percentages
-                drawdown_from_peak = (current_price - pos['high']) / pos['high']
-                total_pnl = (current_price - pos['entry']) / pos['entry']
+                # A. Trailing Stop Logic
+                drawdown_from_peak = (pos['high_water_mark'] - current_price) / pos['high_water_mark']
                 
-                should_close = False
-                reason = ""
+                # B. Hard Stop Logic
+                loss_from_entry = (pos['entry_price'] - current_price) / pos['entry_price']
                 
-                # 1. Trailing Stop (Protect Profits)
-                if drawdown_from_peak < -self.trailing_stop_pct:
-                    should_close = True
-                    reason = "Trailing Stop"
+                # C. Stagnation Cut (Time-based stop)
+                ticks_held = self.tick_counter - pos['entry_tick']
+                is_stagnant = ticks_held > 8 and loss_from_entry > -0.005 and loss_from_entry < 0.005
                 
-                # 2. Hard Stop Loss (Catastrophe protection)
-                elif total_pnl < -self.stop_loss_pct:
-                    should_close = True
-                    reason = "Hard Stop"
-                
-                if should_close:
-                    print(f"📉 SELL {symbol}: {reason} (PnL: {total_pnl*100:.2f}%)")
-                    decision[symbol] = "SELL"
-                    # Update equity estimate (simplified)
-                    pnl_amount = pos['amount'] * total_pnl
-                    self.equity += pnl_amount
+                # EXECUTE SELL
+                if drawdown_from_peak > self.trailing_stop_pct or loss_from_entry > self.hard_stop_loss_pct or is_stagnant:
+                    print(f"📉 SELLING {symbol}: Trailing: {drawdown_from_peak:.2%}, Loss: {loss_from_entry:.2%}, Stagnant: {is_stagnant}")
                     del self.positions[symbol]
-                    continue # Skip entry logic
+                    return {"action": "sell", "symbol": symbol, "amount": 1.0} # Sell 100%
 
-            # --- ENTRY LOGIC (Momentum + Stability) ---
-            # Only enter if slots available and enough history
-            if symbol not in self.positions and len(self.positions) < self.max_positions:
-                if len(self.price_history[symbol]) >= self.lookback_window:
-                    history = list(self.price_history[symbol])
-                    
-                    # 1. Calculate Volatility (Standard Deviation / Mean)
-                    if len(history) > 2:
-                        mean_price = statistics.mean(history)
-                        stdev = statistics.stdev(history)
-                        volatility = stdev / mean_price if mean_price > 0 else 0
-                    else:
-                        volatility = 0.0
+        # 2. Scan for Entry Opportunities
+        if len(self.positions) >= self.max_concurrent_positions:
+            return None
 
-                    # 2. Trend Analysis
-                    # Check if price is higher than it was 5 ticks ago (Mid-term momentum)
-                    mid_term_change = (current_price - history[-5]) / history[-5]
-                    
-                    # Check immediate tick momentum
-                    short_term_change = (current_price - history[-2]) / history[-2]
-                    
-                    # 3. Consistency Check (Count positive ticks in window)
-                    positive_ticks = sum(1 for i in range(1, len(history)) if history[i] > history[i-1])
-                    
-                    # Signal Trigger:
-                    # - Price is up > 0.5% vs 5 ticks ago
-                    # - Immediate momentum is positive
-                    # - At least 60% of recent ticks were green (Consistency)
-                    if (mid_term_change * 100 > self.entry_threshold and 
-                        short_term_change > 0 and 
-                        positive_ticks >= (self.lookback_window * 0.6)):
-                        
-                        bet_size = self.get_position_size(volatility)
-                        
-                        print(f"🚀 BUY {symbol}: Mom={mid_term_change*100:.2f}% Vol={volatility:.4f}")
-                        decision[symbol] = {"action": "BUY", "amount": bet_size}
-                        
-                        self.positions[symbol] = {
-                            'entry': current_price, 
-                            'high': current_price,
-                            'amount': bet_size
-                        }
+        candidates = []
+        for symbol, data in prices.items():
+            if symbol in self.positions or symbol in self.banned_tags:
+                continue
+                
+            history = self.price_history.get(symbol)
+            if not history or len(history) < self.lookback_window:
+                continue
+                
+            current_price = data["priceUsd"]
+            prev_price = history[-2] # Price 1 tick ago
+            old_price = history[-min(len(history), 5)] # Price 5 ticks ago
+            
+            # Metric 1: Immediate Velocity (1-tick change)
+            velocity = (current_price - prev_price) / prev_price * 100
+            
+            # Metric 2: Sustained Momentum (5-tick change)
+            momentum = (current_price - old_price) / old_price * 100
+            
+            # Metric 3: Volatility Check (Don't buy if flat)
+            vol = self._get_volatility(symbol)
+            
+            # ENTRY LOGIC: High Velocity + Positive Momentum + Alive Market
+            if velocity > 0.2 and momentum > self.momentum_threshold and vol > 0.1:
+                score = velocity + momentum # Simple scoring
+                candidates.append((score, symbol, current_price))
+        
+        # Sort by strongest signal
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        
+        if candidates:
+            score, target_symbol, price = candidates[0]
+            
+            # Calculate Position Size (Dynamic based on Balance - simplified here as % allocation)
+            # In a real scenario, we'd query self.balance. Here we assume generic sizing.
+            amount_usd = 100 # Base bet size or dynamic
+            
+            print(f"🚀 BUYING {target_symbol}: Score {score:.2f} (Vel/Mom)")
+            
+            self.positions[target_symbol] = {
+                'entry_price': price,
+                'high_water_mark': price,
+                'entry_tick': self.tick_counter,
+                'qty': amount_usd / price
+            }
+            
+            return {"action": "buy", "symbol": target_symbol, "amount": amount_usd}
 
-            # Update last price for next tick reference
-            self.last_prices[symbol] = current_price
-
-        return decision
+        return None

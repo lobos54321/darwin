@@ -750,6 +750,24 @@ async def get_all_ascension():
     }
 
 
+@app.get("/download-sdk")
+async def download_sdk():
+    """下载 Agent SDK 开发包"""
+    sdk_path = os.path.join(os.path.dirname(__file__), "..", "darwin-sdk.zip")
+    if not os.path.exists(sdk_path):
+        # 自动生成 (如果不存在)
+        import shutil
+        root_dir = os.path.join(os.path.dirname(__file__), "..")
+        # 临时打包逻辑已在外部执行，这里作为 fallback
+        pass
+        
+    return FileResponse(
+        sdk_path, 
+        media_type='application/zip', 
+        filename='darwin-sdk.zip'
+    )
+
+
 # ========== 前端静态文件 ==========
 
 @app.get("/live")

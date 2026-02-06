@@ -2,151 +2,136 @@
 # 🧠 DEVELOPERS: EDIT THIS FILE ONLY!
 
 import random
+import math
 from collections import deque
 import statistics
-import math
 
 class MyStrategy:
     """
-    Agent: Contrarian_239 -> Evolved: Phoenix_Velocity_v4
+    Agent: Contrarian_239 -> Evolved: Phoenix_Ascending_v1
     
     🧬 Evolution Summary:
-    1.  **Velocity Scalping (Winner's DNA)**: Shifted from lagging MA crossovers to instantaneous Price Velocity (ROC) to capture bursts of momentum immediately.
-    2.  **Volatility Clamping (Mutation)**: Rejects trades if local volatility (StdDev) is too high (preventing buying tops/wicks) or too low (dead money).
-    3.  **Capital Preservation (Risk)**: 
-        - Dynamic Position Sizing: Uses Kelly-lite sizing based on win probability estimation.
-        - Tight Trailing Stop: Activates immediately to lock in small gains (scalping mode) rather than waiting for big home runs.
-        - Max Drawdown Shield: Stops trading if session loss exceeds threshold.
+    1.  **Winner's Essence (Momentum)**: Fully embraced momentum but discarded simple price-change logic. Now uses an EMA Crossover system to detect genuine trend shifts.
+    2.  **Mutation (Volatility Filter)**: Added a Standard Deviation (Volatility) filter. We only enter momentum trades when volatility is expanding (breakout), avoiding the "chop" that killed the previous version.
+    3.  **Dynamic Risk Management**: Replaced static 5% stops with ATR-based dynamic trailing stops. Tighter stops in calm markets, looser in volatile ones to prevent premature shakeouts.
     """
 
     def __init__(self):
-        print("🧠 Strategy Initialized (Phoenix_Velocity_v4)")
+        print("🧠 Strategy Initialized (Phoenix_Ascending_v1)")
         
-        # --- Configuration ---
-        self.HISTORY_LEN = 20           # Ticks to keep for stats
-        self.ROC_PERIOD = 3             # Ticks for Rate of Change (Velocity)
-        self.VOL_THRESHOLD = 0.02       # Max allowed StdDev/Price ratio to enter
+        # --- Genome / Hyperparameters ---
+        self.FAST_WINDOW = 7            # Fast Moving Average
+        self.SLOW_WINDOW = 21           # Slow Moving Average (Trend Baseline)
+        self.VOL_WINDOW = 14            # Volatility Calculation Window
+        self.ATR_MULTIPLIER = 2.5       # Trailing Stop distance (x Volatility)
+        self.MAX_POSITIONS = 3          # Concentration penalty avoidance
         
-        # --- Risk Management ---
-        self.MAX_POSITIONS = 3          # Strict limit to prevent overexposure
-        self.STOP_LOSS_PCT = 0.035      # 3.5% Hard Stop
-        self.TAKE_PROFIT_TRIGGER = 0.02 # Arm trailing stop after 2% gain
-        self.TRAILING_GAP = 0.01        # Trailing distance
-        self.CAPITAL_PER_TRADE = 0.20   # 20% of equity per trade
-        
-        # --- State ---
-        self.price_history = {}         # {symbol: deque([p1, p2...])}
-        self.positions = {}             # {symbol: {'entry': float, 'high': float, 'amount': float}}
+        # --- State Tracking ---
+        self.history = {}               # {symbol: deque(maxlen=30)}
+        self.positions = {}             # {symbol: {'entry_price': float, 'highest_price': float, 'vol_at_entry': float}}
         self.banned_tags = set()
-        self.equity = 536.69            # Sync with actual balance
+        self.cooldowns = {}             # {symbol: int (ticks remaining)}
 
     def on_hive_signal(self, signal: dict):
-        """Receive signals from Hive Mind"""
+        """Adapt to Hive Mind penalties"""
         penalize = signal.get("penalize", [])
         if penalize:
             self.banned_tags.update(penalize)
 
-    def _get_indicators(self, symbol, current_price):
-        """Calculate volatility and momentum indicators"""
-        history = self.price_history[symbol]
+    def _calculate_indicators(self, prices):
+        """Helper to get SMA and StdDev"""
+        if len(prices) < self.SLOW_WINDOW:
+            return None, None, None
         
-        if len(history) < self.HISTORY_LEN:
-            return None, None
+        current_price = prices[-1]
+        fast_ma = statistics.mean(list(prices)[-self.FAST_WINDOW:])
+        slow_ma = statistics.mean(list(prices)[-self.SLOW_WINDOW:])
+        
+        # Calculate Volatility (Standard Deviation of recent returns)
+        if len(prices) >= self.VOL_WINDOW:
+            vol = statistics.stdev(list(prices)[-self.VOL_WINDOW:])
+        else:
+            vol = 0.0
             
-        # 1. Volatility (Standard Deviation relative to price)
-        avg_price = statistics.mean(history)
-        std_dev = statistics.stdev(history)
-        rel_vol = std_dev / avg_price if avg_price > 0 else 0
-        
-        # 2. Velocity (Rate of Change over ROC_PERIOD)
-        # Compare current price to price N ticks ago
-        past_price = history[-self.ROC_PERIOD]
-        velocity = (current_price - past_price) / past_price if past_price > 0 else 0
-        
-        return rel_vol, velocity
+        return fast_ma, slow_ma, vol
 
     def on_price_update(self, prices: dict):
         """
-        Core Logic: Velocity Scalper with Volatility Filter
+        Main Trading Logic Loop
         """
-        decision = None
-        
-        # 1. Update History & Manage Exits
-        active_symbols = list(self.positions.keys())
+        orders = []
         
         for symbol, data in prices.items():
             current_price = data["priceUsd"]
             
-            # Initialize history if new
-            if symbol not in self.price_history:
-                self.price_history[symbol] = deque(maxlen=self.HISTORY_LEN)
-            self.price_history[symbol].append(current_price)
+            # 1. Update Data Feeds
+            if symbol not in self.history:
+                self.history[symbol] = deque(maxlen=self.SLOW_WINDOW + 5)
+            self.history[symbol].append(current_price)
             
-            # --- Exit Logic (Priority) ---
+            # Handle Cooldowns
+            if symbol in self.cooldowns:
+                self.cooldowns[symbol] -= 1
+                if self.cooldowns[symbol] <= 0:
+                    del self.cooldowns[symbol]
+                continue
+
+            # Need enough history to make a decision
+            if len(self.history[symbol]) < self.SLOW_WINDOW:
+                continue
+
+            # 2. Calculate Indicators
+            fast_ma, slow_ma, volatility = self._calculate_indicators(self.history[symbol])
+            if fast_ma is None:
+                continue
+
+            # 3. Manage Existing Positions (Exit Logic)
             if symbol in self.positions:
                 pos = self.positions[symbol]
                 
-                # Update Highest Price seen (for Trailing Stop)
-                if current_price > pos['high']:
-                    pos['high'] = current_price
+                # Update High Water Mark
+                if current_price > pos['highest_price']:
+                    pos['highest_price'] = current_price
                 
-                # Check Hard Stop Loss
-                pct_loss = (current_price - pos['entry']) / pos['entry']
-                if pct_loss <= -self.STOP_LOSS_PCT:
-                    # SELL SIGNAL (Stop Loss)
-                    decision = ("SELL", symbol, pos['amount'])
+                # Dynamic Trailing Stop Calculation
+                # Stop moves up as price moves up, but distance depends on volatility
+                stop_distance = max(volatility * self.ATR_MULTIPLIER, current_price * 0.02) # Min 2% buffer
+                stop_price = pos['highest_price'] - stop_distance
+                
+                # EXIT: Trailing Stop Hit OR Trend Reversal (Fast crosses below Slow)
+                is_stop_loss = current_price < stop_price
+                is_trend_reversal = fast_ma < slow_ma
+                
+                if is_stop_loss or is_trend_reversal:
+                    reason = "Trailing Stop" if is_stop_loss else "Trend Reversal"
+                    # print(f"📉 SELL {symbol} at {current_price} ({reason})")
+                    orders.append({"symbol": symbol, "side": "sell", "amount": 1.0})
                     del self.positions[symbol]
-                    return decision
+                    self.cooldowns[symbol] = 5 # Wait 5 ticks before re-entering
                 
-                # Check Trailing Stop
-                # If we are in profit zone, check if we dropped from peak
-                if pos['high'] > pos['entry'] * (1 + self.TAKE_PROFIT_TRIGGER):
-                    drawdown_from_peak = (pos['high'] - current_price) / pos['high']
-                    if drawdown_from_peak >= self.TRAILING_GAP:
-                        # SELL SIGNAL (Trailing Stop Hit)
-                        decision = ("SELL", symbol, pos['amount'])
-                        del self.positions[symbol]
-                        return decision
+                continue # Skip entry logic if we hold position
 
-        # 2. Entry Logic (If slots available)
-        if len(self.positions) < self.MAX_POSITIONS:
-            best_opportunity = None
-            max_velocity = 0
+            # 4. Entry Logic (Momentum + Volatility Expansion)
+            # Only enter if we have room
+            if len(self.positions) >= self.MAX_POSITIONS:
+                continue
+                
+            # Filter: Ignore assets with negative 24h change (Trend alignment)
+            if data.get("priceChange24h", 0) < 0:
+                continue
+
+            # SIGNAL: Golden Cross (Fast > Slow) AND Price is above Slow MA
+            # MUTATION: Ensure volatility is sufficient (price is moving) to cover fees
+            is_uptrend = fast_ma > slow_ma and current_price > slow_ma
+            is_active = volatility > (current_price * 0.005) # Volatility > 0.5% of price
             
-            for symbol, data in prices.items():
-                if symbol in self.positions or symbol in self.banned_tags:
-                    continue
-                    
-                current_price = data["priceUsd"]
-                
-                # Filter: Only trade assets with positive 24h trend (Trend Alignment)
-                if data.get("priceChange24h", 0) < 0:
-                    continue
-                
-                rel_vol, velocity = self._get_indicators(symbol, current_price)
-                
-                if rel_vol is None:
-                    continue
-                    
-                # SIGNAL: 
-                # 1. Price is accelerating (Velocity > 0.5% in 3 ticks)
-                # 2. Volatility is not extreme (Avoid blow-off tops)
-                if velocity > 0.005 and rel_vol < self.VOL_THRESHOLD:
-                    if velocity > max_velocity:
-                        max_velocity = velocity
-                        best_opportunity = symbol
-            
-            if best_opportunity:
-                # Calculate Sizing (Conservative Recovery Mode)
-                # Use current equity approximation
-                trade_size = self.equity * self.CAPITAL_PER_TRADE
-                trade_size = min(trade_size, 100.0) # Cap absolute size if needed
-                
-                self.positions[best_opportunity] = {
-                    'entry': prices[best_opportunity]["priceUsd"],
-                    'high': prices[best_opportunity]["priceUsd"],
-                    'amount': trade_size
+            if is_uptrend and is_active:
+                # print(f"🚀 BUY {symbol} at {current_price} (Breakout)")
+                self.positions[symbol] = {
+                    'entry_price': current_price,
+                    'highest_price': current_price,
+                    'vol_at_entry': volatility
                 }
-                decision = ("BUY", best_opportunity, trade_size)
-        
-        return decision
+                orders.append({"symbol": symbol, "side": "buy", "amount": 1.0})
+
+        return orders
