@@ -404,7 +404,9 @@ async def main():
     
     parser = argparse.ArgumentParser(description="Darwin Agent")
     parser.add_argument("--id", type=str, default=f"Agent_{os.getpid()}", help="Agent ID")
-    parser.add_argument("--arena", type=str, default="ws://localhost:8888", help="Arena URL")
+    # 优先读取环境变量，否则默认为 localhost
+    default_arena = os.getenv("DARWIN_ARENA_URL", "ws://localhost:8888")
+    parser.add_argument("--arena", type=str, default=default_arena, help="Arena URL")
     parser.add_argument("--key", type=str, default=None, help="API Key for external access")
     args = parser.parse_args()
     
