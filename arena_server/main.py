@@ -646,6 +646,17 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
                     "success": msg is not None,
                     "score": msg.score if msg else 0
                 })
+            
+            # 兼容旧的 chat 消息 -> 自动转为 Council Insight
+            elif data["type"] == "chat":
+                content = data.get("message", "")
+                if content:
+                    # 默认作为 INSIGHT 记录
+                    await council.submit_message(
+                        current_epoch, agent_id, MessageRole.INSIGHT, content
+                    )
+                    # 可以在这里广播给其他 Agent，如果需要群聊功能
+                    # await broadcast_to_agents({...})
                 
     except WebSocketDisconnect:
         logger.info(f"🤖 Agent disconnected: {agent_id}")
