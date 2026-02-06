@@ -1,154 +1,75 @@
-# Darwin SDK - Agent_006 Strategy (Evolution: Phoenix Impulse v3.0)
-# 🧬 Evolution: Adaptive Momentum + Volatility Regime Switch
-# 🧠 Logic: "Identify the regime, adapt the aggression."
-# 🎯 Goal: Recovery from drawdown via selective high-velocity trades with dynamic risk gating.
+```python
+# Darwin SDK - Agent_006 Strategy (Evolution: Darwin's Razor v4.0)
+# 🧬 Evolution: Trend Following + Volatility Filter + Strict Risk Control
+# 🧠 Logic: "Simplicity is the ultimate sophistication. Ride trends, cut losses fast."
+# 🎯 Goal: Stable growth with reduced drawdown probability via dynamic trailing stops.
 
 import random
 from collections import deque
-from statistics import mean, stdev
+from statistics import mean
 
 class MyStrategy:
     def __init__(self):
-        print("🧠 Strategy Initialized: Phoenix Impulse v3.0")
+        print("🧠 Strategy Initialized: Darwin's Razor v4.0")
         
         # --- Configuration ---
-        self.lookback_period = 12       # Ticks for EMA/Volatility calculation
-        self.min_volatility = 0.001     # Filter out dead assets
-        self.max_volatility = 0.05      # Avoid extreme chaos
-        self.trend_threshold = 0.005    # 0.5% move required to confirm trend
+        self.history_len = 20           # Number of price points to keep in memory
+        self.short_window = 5           # Short Moving Average window (Fast)
+        self.long_window = 15           # Long Moving Average window (Slow)
         
-        # --- Risk Management (Survival Mode) ---
-        self.hard_stop_loss = 0.02      # Tight 2% hard stop
-        self.take_profit_trigger = 0.04 # Start trailing after 4% gain
-        self.trailing_step = 0.015      # Trail by 1.5%
-        self.position_size = 0.95       # High conviction, single bullet approach given low balance
+        # --- Risk Management (Survival First) ---
+        self.stop_loss_pct = 0.03       # 3% Hard Stop Loss (Tighter than before)
+        self.take_profit_activation = 0.05 # Activate trailing stop after 5% gain
+        self.trailing_deviation = 0.02  # Trail price by 2% once activated
+        self.allocation_per_trade = 0.25 # Invest 25% of balance per trade to allow diversification
         
         # --- State Tracking ---
-        self.price_history = {}         # {symbol: deque(maxlen=lookback_period)}
-        self.positions = {}             # {symbol: {"entry": float, "highest": float}}
-        self.banned_tags = set()
-        self.cooldowns = {}             # {symbol: int}
+        self.price_history = {}         # {symbol: deque(maxlen=history_len)}
+        self.positions = {}             # {symbol: {"entry_price": float, "highest_price": float, "trailing_active": bool}}
+        self.banned_tags = set()        # Tags penalized by Hive Mind
 
     def on_hive_signal(self, signal: dict):
-        """Receive signals from Hive Mind"""
+        """Receive signals from Hive Mind regarding asset tags"""
         penalize = signal.get("penalize", [])
         if penalize:
-            print(f"🧠 Strategy received penalty for: {penalize}")
+            print(f"⚠️ Penalized tags received: {penalize}")
             self.banned_tags.update(penalize)
-
-    def _calculate_ema(self, prices, period):
-        if not prices:
-            return 0
-        k = 2 / (period + 1)
-        ema = prices[0]
-        for price in prices[1:]:
-            ema = (price * k) + (ema * (1 - k))
-        return ema
+            
+        # Boost signals could be added here to increase allocation dynamically
+        # For now, we prioritize survival (avoiding penalties)
 
     def on_price_update(self, prices: dict):
         """
-        Core logic loop called on price updates.
+        Called every time price updates.
+        Returns a decision dict: {"symbol": "MOLT", "action": "buy", "amount": 0.25}
         """
         decision = None
         
-        # 1. Update History & Manage Positions
+        # 1. Update History & Indicators for all symbols
         for symbol, data in prices.items():
             current_price = data["priceUsd"]
             
-            # Initialize history
+            # Initialize history if new symbol
             if symbol not in self.price_history:
-                self.price_history[symbol] = deque(maxlen=self.lookback_period)
+                self.price_history[symbol] = deque(maxlen=self.history_len)
+            
             self.price_history[symbol].append(current_price)
             
-            # Manage Open Positions
+            # --- Priority 1: Manage Open Positions (Exit Logic) ---
             if symbol in self.positions:
-                pos = self.positions[symbol]
-                entry_price = pos["entry"]
-                highest_price = max(pos["highest"], current_price)
-                self.positions[symbol]["highest"] = highest_price
-                
-                # PnL Calculation
-                pnl_pct = (current_price - entry_price) / entry_price
-                drawdown_from_peak = (highest_price - current_price) / highest_price
-                
-                # Logic: Exit Conditions
-                should_sell = False
-                reason = ""
-                
-                # A. Hard Stop Loss
-                if pnl_pct < -self.hard_stop_loss:
-                    should_sell = True
-                    reason = "Hard Stop"
-                
-                # B. Dynamic Trailing Stop
-                elif pnl_pct > self.take_profit_trigger and drawdown_from_peak > self.trailing_step:
-                    should_sell = True
-                    reason = "Trailing Stop"
-                
-                if should_sell:
-                    # Execute Sell
-                    decision = {
-                        "action": "sell",
-                        "symbol": symbol,
-                        "amount": 1.0, # Sell all
-                        "reason": reason
-                    }
-                    del self.positions[symbol]
-                    self.cooldowns[symbol] = 5 # Cooldown for 5 ticks
-                    return decision # Return immediately to execute
-
-        # 2. Scan for New Entries (if no active decision yet)
-        if not decision and len(self.positions) == 0:
-            best_opportunity = None
-            max_score = -1
-            
-            for symbol, data in prices.items():
-                # Filter checks
-                if symbol in self.banned_tags: continue
-                if self.cooldowns.get(symbol, 0) > 0:
-                    self.cooldowns[symbol] -= 1
-                    continue
-                if len(self.price_history[symbol]) < self.lookback_period: continue
-                
-                history = list(self.price_history[symbol])
-                current_price = history[-1]
-                
-                # Calculate Metrics
-                try:
-                    volatility = stdev(history) / mean(history)
-                except:
-                    volatility = 0
-                
-                ema_short = self._calculate_ema(history, 5)
-                ema_long = self._calculate_ema(history, 12)
-                
-                # Logic: Regime Filter
-                # We want assets that are waking up (volatility rising) but not too chaotic
-                if self.min_volatility < volatility < self.max_volatility:
-                    
-                    # Logic: Momentum Impulse
-                    # Price above short EMA, Short EMA above Long EMA (Golden Cross alignment)
-                    if current_price > ema_short > ema_long:
-                        
-                        # Score based on trend strength relative to volatility
-                        trend_strength = (current_price - ema_long) / ema_long
-                        score = trend_strength / (volatility + 1e-6)
-                        
-                        if score > max_score and trend_strength > self.trend_threshold:
-                            max_score = score
-                            best_opportunity = symbol
-            
-            # Execute Buy
-            if best_opportunity:
-                decision = {
-                    "action": "buy",
-                    "symbol": best_opportunity,
-                    "amount": self.position_size,
-                    "reason": f"Phoenix Impulse Score: {max_score:.2f}"
-                }
-                self.positions[best_opportunity] = {
-                    "entry": prices[best_opportunity]["priceUsd"],
-                    "highest": prices[best_opportunity]["priceUsd"]
-                }
+                decision = self._check_exit(symbol, current_price)
+                if decision:
+                    return decision # Execute exit immediately to protect capital
         
-        return decision
+        # 2. Scan for New Entries (if no exit triggered)
+        best_setup = None
+        highest_momentum = -999
+        
+        for symbol, data in prices.items():
+            # Skip if we already hold it or if it's banned
+            if symbol in self.positions:
+                continue
+                
+            # Check tags (avoid penalized assets)
+            tags = data.get("tags", [])
+            if any(

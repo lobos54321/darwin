@@ -15,6 +15,8 @@ import json
 import os
 import secrets
 import traceback
+import subprocess
+import sys
 from dotenv import load_dotenv
 
 # Load environment variables from ../.env
@@ -780,6 +782,68 @@ async def serve_frontend():
 
 
 # ========== Agent 注册 API ==========
+
+@app.post("/spawn-agent")
+async def spawn_cloud_agent(agent_id: str, wallet: str = "0x0000000000000000000000000000000000000000"):
+    """
+    [Cloud Spawn] 云端一键生成 Agent
+    用户无需安装，服务器直接启动一个子进程
+    """
+    import re
+    # 1. 安全检查: 只允许字母数字下划线
+    if not re.match(r'^[a-zA-Z0-9_]+$', agent_id):
+        raise HTTPException(status_code=400, detail="Agent ID must be alphanumeric")
+    
+    # 2. 检查是否已存在 (避免重复启动)
+    # 简单检查: 如果已连接 WebSocket 则认为已存在
+    if agent_id in connected_agents:
+        return {"status": "already_running", "message": f"Agent {agent_id} is already active!"}
+
+    # 3. 注册到数据库 (内存)
+    if not hasattr(app.state, 'agent_registry'):
+        app.state.agent_registry = {}
+    
+    app.state.agent_registry[agent_id] = {
+        "wallet": wallet,
+        "type": "cloud_instance",
+        "registered_at": datetime.now().isoformat()
+    }
+
+    # 4. 启动子进程
+    try:
+        # 定位 agent.py 路径
+        agent_script = os.path.join(os.path.dirname(__file__), "..", "agent_template", "agent.py")
+        log_dir = os.path.join(os.path.dirname(__file__), "..", "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(log_dir, f"{agent_id}.log")
+        
+        # 启动!
+        with open(log_file, "a") as f:
+            process = subprocess.Popen(
+                [sys.executable, "-u", agent_script, "--id", agent_id],
+                stdout=f,
+                stderr=subprocess.STDOUT,
+                cwd=os.path.join(os.path.dirname(__file__), "..") # set cwd to project root
+            )
+            
+        # 记录进程 ID，以便后续管理 (可选)
+        if not hasattr(app.state, 'cloud_processes'):
+            app.state.cloud_processes = {}
+        app.state.cloud_processes[agent_id] = process.pid
+            
+        logger.info(f"☁️ Cloud Agent spawned: {agent_id} (PID: {process.pid})")
+        
+        return {
+            "success": True,
+            "agent_id": agent_id,
+            "pid": process.pid,
+            "message": f"Agent {agent_id} is now running in the cloud!"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to spawn agent: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/register-agent")
 async def register_agent(agent_id: str, wallet: str, auto_launch: bool = True):

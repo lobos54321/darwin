@@ -155,28 +155,51 @@
 
     <!-- Register Agent Modal -->
     <div id="register-modal" class="modal-overlay">
-        <div class="modal-content cyber-border">
-            <h2 class="text-xl font-bold mb-4 text-white">🤖 REGISTER YOUR AGENT</h2>
+        <div class="modal-content cyber-border relative overflow-hidden">
+            <!-- Background decoration -->
+            <div class="absolute top-0 right-0 p-4 opacity-20">
+                <div class="text-6xl">🧬</div>
+            </div>
+            
+            <h2 class="text-xl font-bold mb-2 text-white flex items-center gap-2">
+                <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                INITIALIZE NEW AGENT
+            </h2>
+            <p class="text-xs text-gray-500 mb-6">Provision a dedicated autonomous trading instance.</p>
+            
             <div class="space-y-4">
                 <div>
-                    <label class="text-xs text-gray-400">AGENT ID</label>
-                    <input type="text" id="reg-agent-id" placeholder="e.g. MyTradingBot_001" 
-                        class="w-full bg-black border border-green-900 p-2 text-green-400 focus:border-green-500 outline-none">
+                    <label class="text-xs text-green-400 font-bold tracking-widest">AGENT CODENAME</label>
+                    <input type="text" id="reg-agent-id" placeholder="e.g. Alpha_Zero_01" 
+                        class="w-full bg-black border border-green-900 p-3 text-white focus:border-green-500 outline-none font-mono mt-1 placeholder-gray-700">
                 </div>
-                <div>
-                    <label class="text-xs text-gray-400">WALLET ADDRESS</label>
+                
+                <div class="hidden"> <!-- Hidden wallet for now, simplify flow -->
+                    <label class="text-xs text-gray-400">WALLET LINK</label>
                     <input type="text" id="reg-wallet" readonly
                         class="w-full bg-black border border-green-900 p-2 text-gray-500">
                 </div>
+
+                <div id="spawn-status" class="hidden text-xs font-mono space-y-1 mb-2 p-2 bg-green-900/10 border-l-2 border-green-500">
+                    <div class="text-gray-400">> Allocating runtime resources...</div>
+                    <div class="text-gray-400">> establishing neural link...</div>
+                </div>
+
                 <div class="flex gap-4 mt-6">
-                    <button onclick="submitRegistration()" 
-                        class="flex-1 py-2 bg-green-500 hover:bg-white text-black font-bold uppercase transition-all">
-                        REGISTER
+                    <button onclick="submitSpawn()" id="btn-spawn"
+                        class="flex-1 py-3 bg-green-600 hover:bg-green-500 text-black font-bold uppercase transition-all tracking-widest text-sm relative overflow-hidden group">
+                        <span class="relative z-10">🚀 LAUNCH INSTANCE</span>
+                        <div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-20 transition-opacity"></div>
                     </button>
-                    <button onclick="closeModal()" 
-                        class="flex-1 py-2 border border-green-900 hover:border-red-500 hover:text-red-500 transition-all">
+                    <button onclick="closeModal()" id="btn-cancel"
+                        class="px-6 py-3 border border-green-900 text-gray-500 hover:text-white hover:border-gray-500 transition-all text-sm">
                         CANCEL
                     </button>
+                </div>
+                
+                <div class="mt-4 pt-4 border-t border-green-900/30 text-[10px] text-gray-600 flex justify-between">
+                    <span>MODE: CLOUD_HOSTED (AUTO)</span>
+                    <a href="/download-sdk" target="_blank" class="hover:text-green-400">Prefer local SDK?</a>
                 </div>
             </div>
         </div>
@@ -885,46 +908,66 @@
             document.getElementById('register-modal').classList.remove('active');
         }
 
-        async function submitRegistration() {
+        async function submitSpawn() {
             const agentId = document.getElementById('reg-agent-id').value.trim();
             if (!agentId) {
-                alert("Please enter an Agent ID");
+                alert("Please assign a Codename for your Agent.");
                 return;
             }
             
-            // Show loading state
-            const btn = document.querySelector('#register-modal button');
-            const originalText = btn.innerText;
-            btn.innerText = "REGISTERING...";
+            // UI Effects
+            const btn = document.getElementById('btn-spawn');
+            const statusBox = document.getElementById('spawn-status');
+            const originalText = btn.innerHTML;
+            
+            btn.innerHTML = `<span class="animate-pulse">⚡ ACTIVATING...</span>`;
             btn.disabled = true;
+            document.getElementById('btn-cancel').style.display = 'none';
+            statusBox.classList.remove('hidden');
+
+            // Simulate "Desktop" loading effect
+            await new Promise(r => setTimeout(r, 600)); 
+            statusBox.innerHTML += `<div class="text-green-400">> injecting strategy template...</div>`;
+            await new Promise(r => setTimeout(r, 600));
+            statusBox.innerHTML += `<div class="text-green-400">> connecting to Darwin Engine...</div>`;
+            statusBox.scrollTop = statusBox.scrollHeight;
 
             try {
-                const res = await fetch(`/register-agent?agent_id=${encodeURIComponent(agentId)}&wallet=${walletAddress}&auto_launch=true`, {
+                // Call the new Cloud Spawn endpoint
+                const wallet = document.getElementById('reg-wallet').value || "0x0000000000000000000000000000000000000000";
+                const res = await fetch(`/spawn-agent?agent_id=${encodeURIComponent(agentId)}&wallet=${wallet}`, {
                     method: 'POST'
                 });
                 
-                // Check content type to avoid parsing HTML errors as JSON
-                const contentType = res.headers.get("content-type");
-                if (!contentType || !contentType.includes("application/json")) {
-                    throw new Error("Server returned non-JSON response. Check server logs.");
-                }
-
                 const data = await res.json();
                 
                 if (res.ok) {
-                    logToConsole(`> Agent ${agentId} registered successfully!`);
+                    statusBox.innerHTML += `<div class="text-white font-bold">> SYSTEM ONLINE.</div>`;
+                    logToConsole(`> ☁️ Cloud Agent [${agentId}] spawned successfully!`);
+                    
+                    await new Promise(r => setTimeout(r, 500));
                     closeModal();
                     updateData();
-                    alert(`✅ Success! Agent ${agentId} registered.`);
+                    
+                    // Show a nice welcome toast/alert
+                    alert(`✅ AGENT ONLINE\n\nCodename: ${agentId}\nStatus: Running\n\nYour dedicated instance is now active on the network.`);
                 } else {
-                    alert("Registration failed: " + (data.detail || data.message || "Unknown error"));
+                    const msg = data.detail || data.message || "Unknown error";
+                    if (data.status === 'already_running') {
+                        alert(`⚠️ Agent "${agentId}" is already running!`);
+                    } else {
+                        alert("Spawn failed: " + msg);
+                    }
                 }
             } catch (e) {
                 console.error(e);
-                alert("Registration error: " + e.message);
+                alert("Network error: " + e.message);
             } finally {
-                btn.innerText = originalText;
+                // Reset UI if failed or finished
+                btn.innerHTML = originalText;
                 btn.disabled = false;
+                document.getElementById('btn-cancel').style.display = 'block';
+                // statusBox.classList.add('hidden'); // Keep logs visible until close
             }
         }
 

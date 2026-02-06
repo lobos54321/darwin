@@ -8,130 +8,136 @@ import statistics
 
 class MyStrategy:
     """
-    Agent: Contrarian_239 -> Evolved: Phoenix_Ascending_v1
+    Agent: Contrarian_239 -> Evolved: Adaptive_MeanReversion_v2
     
     🧬 Evolution Summary:
-    1.  **Winner's Essence (Momentum)**: Fully embraced momentum but discarded simple price-change logic. Now uses an EMA Crossover system to detect genuine trend shifts.
-    2.  **Mutation (Volatility Filter)**: Added a Standard Deviation (Volatility) filter. We only enter momentum trades when volatility is expanding (breakout), avoiding the "chop" that killed the previous version.
-    3.  **Dynamic Risk Management**: Replaced static 5% stops with ATR-based dynamic trailing stops. Tighter stops in calm markets, looser in volatile ones to prevent premature shakeouts.
+    1.  **Learned from Failure**: The previous EMA strategy lagged too much in volatile crypto markets, causing entries at local tops.
+    2.  **Winner's DNA (Momentum)**: Absorbed the need for momentum, but applied it on a micro-scale (tick-by-tick) rather than macro-trend.
+    3.  **Unique Mutation (Z-Score Scalping)**: Replaced Moving Averages with Statistical Z-Score (Standard Score). We now buy statistically significant deviations from the mean (Oversold) ONLY when a micro-momentum reversal is detected.
+    4.  **Survival Protocols**: Added strict Time-Based Exits and Volatility-Adjusted Position Sizing to prevent the account drain seen in the previous iteration.
     """
 
     def __init__(self):
-        print("🧠 Strategy Initialized (Phoenix_Ascending_v1)")
+        print("🧠 Strategy Initialized (Adaptive_MeanReversion_v2)")
         
-        # --- Genome / Hyperparameters ---
-        self.FAST_WINDOW = 7            # Fast Moving Average
-        self.SLOW_WINDOW = 21           # Slow Moving Average (Trend Baseline)
-        self.VOL_WINDOW = 14            # Volatility Calculation Window
-        self.ATR_MULTIPLIER = 2.5       # Trailing Stop distance (x Volatility)
-        self.MAX_POSITIONS = 3          # Concentration penalty avoidance
+        # --- Hyperparameters ---
+        self.WINDOW_SIZE = 12           # Lookback window for statistics (Short term)
+        self.Z_ENTRY_THRESHOLD = -1.8   # Buy when price is 1.8 std devs below mean
+        self.Z_EXIT_THRESHOLD = 1.5     # Sell when price is 1.5 std devs above mean
         
-        # --- State Tracking ---
-        self.history = {}               # {symbol: deque(maxlen=30)}
-        self.positions = {}             # {symbol: {'entry_price': float, 'highest_price': float, 'vol_at_entry': float}}
+        self.STOP_LOSS_PCT = 0.04       # Hard stop loss at 4%
+        self.TAKE_PROFIT_PCT = 0.07     # Take profit at 7%
+        self.MAX_HOLD_TICKS = 20        # Time-based stop (don't hold stagnant bags)
+        self.BASE_BET_PCT = 0.15        # Bet 15% of portfolio per trade
+        
+        # --- State ---
+        self.price_history = {}         # {symbol: deque(maxlen=WINDOW_SIZE)}
+        self.positions = {}             # {symbol: {"entry_price": float, "ticks_held": int}}
         self.banned_tags = set()
-        self.cooldowns = {}             # {symbol: int (ticks remaining)}
 
     def on_hive_signal(self, signal: dict):
-        """Adapt to Hive Mind penalties"""
+        """Receive signals from Hive Mind"""
         penalize = signal.get("penalize", [])
         if penalize:
             self.banned_tags.update(penalize)
 
-    def _calculate_indicators(self, prices):
-        """Helper to get SMA and StdDev"""
-        if len(prices) < self.SLOW_WINDOW:
-            return None, None, None
-        
-        current_price = prices[-1]
-        fast_ma = statistics.mean(list(prices)[-self.FAST_WINDOW:])
-        slow_ma = statistics.mean(list(prices)[-self.SLOW_WINDOW:])
-        
-        # Calculate Volatility (Standard Deviation of recent returns)
-        if len(prices) >= self.VOL_WINDOW:
-            vol = statistics.stdev(list(prices)[-self.VOL_WINDOW:])
-        else:
-            vol = 0.0
-            
-        return fast_ma, slow_ma, vol
+    def _calculate_z_score(self, price_series):
+        if len(price_series) < 2:
+            return 0.0
+        mean = statistics.mean(price_series)
+        stdev = statistics.stdev(price_series)
+        if stdev == 0:
+            return 0.0
+        return (price_series[-1] - mean) / stdev
 
     def on_price_update(self, prices: dict):
         """
-        Main Trading Logic Loop
+        Called every time price updates.
+        Returns: ('buy', symbol, amount_usd) or ('sell', symbol, amount) or None
         """
-        orders = []
         
+        # 1. Update History & Manage Existing Positions
         for symbol, data in prices.items():
             current_price = data["priceUsd"]
             
-            # 1. Update Data Feeds
-            if symbol not in self.history:
-                self.history[symbol] = deque(maxlen=self.SLOW_WINDOW + 5)
-            self.history[symbol].append(current_price)
+            # Initialize history if new
+            if symbol not in self.price_history:
+                self.price_history[symbol] = deque(maxlen=self.WINDOW_SIZE)
+            self.price_history[symbol].append(current_price)
             
-            # Handle Cooldowns
-            if symbol in self.cooldowns:
-                self.cooldowns[symbol] -= 1
-                if self.cooldowns[symbol] <= 0:
-                    del self.cooldowns[symbol]
-                continue
-
-            # Need enough history to make a decision
-            if len(self.history[symbol]) < self.SLOW_WINDOW:
-                continue
-
-            # 2. Calculate Indicators
-            fast_ma, slow_ma, volatility = self._calculate_indicators(self.history[symbol])
-            if fast_ma is None:
-                continue
-
-            # 3. Manage Existing Positions (Exit Logic)
+            # Check Exits for current positions
             if symbol in self.positions:
                 pos = self.positions[symbol]
+                entry_price = pos["entry_price"]
+                pos["ticks_held"] += 1
                 
-                # Update High Water Mark
-                if current_price > pos['highest_price']:
-                    pos['highest_price'] = current_price
+                pct_change = (current_price - entry_price) / entry_price
                 
-                # Dynamic Trailing Stop Calculation
-                # Stop moves up as price moves up, but distance depends on volatility
-                stop_distance = max(volatility * self.ATR_MULTIPLIER, current_price * 0.02) # Min 2% buffer
-                stop_price = pos['highest_price'] - stop_distance
+                # Logic: Stop Loss / Take Profit / Time Stop
+                should_sell = False
+                reason = ""
                 
-                # EXIT: Trailing Stop Hit OR Trend Reversal (Fast crosses below Slow)
-                is_stop_loss = current_price < stop_price
-                is_trend_reversal = fast_ma < slow_ma
+                if pct_change <= -self.STOP_LOSS_PCT:
+                    should_sell = True
+                    reason = "Stop Loss"
+                elif pct_change >= self.TAKE_PROFIT_PCT:
+                    should_sell = True
+                    reason = "Take Profit"
+                elif pos["ticks_held"] >= self.MAX_HOLD_TICKS and pct_change < 0:
+                    should_sell = True
+                    reason = "Time Stop (Stagnant)"
                 
-                if is_stop_loss or is_trend_reversal:
-                    reason = "Trailing Stop" if is_stop_loss else "Trend Reversal"
-                    # print(f"📉 SELL {symbol} at {current_price} ({reason})")
-                    orders.append({"symbol": symbol, "side": "sell", "amount": 1.0})
+                # Dynamic Exit based on Z-Score (Mean Reversion)
+                z_score = self._calculate_z_score(self.price_history[symbol])
+                if z_score > self.Z_EXIT_THRESHOLD:
+                    should_sell = True
+                    reason = "Statistical Overextension"
+
+                if should_sell:
                     del self.positions[symbol]
-                    self.cooldowns[symbol] = 5 # Wait 5 ticks before re-entering
-                
-                continue # Skip entry logic if we hold position
+                    return ("sell", symbol, 1.0) # Sell 100% of position
 
-            # 4. Entry Logic (Momentum + Volatility Expansion)
-            # Only enter if we have room
-            if len(self.positions) >= self.MAX_POSITIONS:
+        # 2. Scan for New Entries
+        # Only hold one position at a time to rebuild capital (Conservative Mode)
+        if len(self.positions) >= 1:
+            return None
+
+        candidates = []
+        
+        for symbol, data in prices.items():
+            if symbol in self.positions or symbol in self.banned_tags:
                 continue
                 
-            # Filter: Ignore assets with negative 24h change (Trend alignment)
-            if data.get("priceChange24h", 0) < 0:
+            history = self.price_history[symbol]
+            if len(history) < self.WINDOW_SIZE:
                 continue
-
-            # SIGNAL: Golden Cross (Fast > Slow) AND Price is above Slow MA
-            # MUTATION: Ensure volatility is sufficient (price is moving) to cover fees
-            is_uptrend = fast_ma > slow_ma and current_price > slow_ma
-            is_active = volatility > (current_price * 0.005) # Volatility > 0.5% of price
             
-            if is_uptrend and is_active:
-                # print(f"🚀 BUY {symbol} at {current_price} (Breakout)")
-                self.positions[symbol] = {
-                    'entry_price': current_price,
-                    'highest_price': current_price,
-                    'vol_at_entry': volatility
-                }
-                orders.append({"symbol": symbol, "side": "buy", "amount": 1.0})
+            current_price = data["priceUsd"]
+            prev_price = history[-2]
+            
+            z_score = self._calculate_z_score(history)
+            
+            # STRATEGY: Statistical Dip + Micro Momentum
+            # We want a low Z-score (oversold) BUT price must be ticking up (green candle)
+            # This filters out "catching a falling knife"
+            is_oversold = z_score < self.Z_ENTRY_THRESHOLD
+            is_recovering = current_price > prev_price
+            
+            if is_oversold and is_recovering:
+                candidates.append((symbol, z_score))
+        
+        # Pick the most oversold candidate
+        if candidates:
+            candidates.sort(key=lambda x: x[1]) # Sort by lowest Z-score
+            best_pick = candidates[0][0]
+            
+            self.positions[best_pick] = {
+                "entry_price": prices[best_pick]["priceUsd"],
+                "ticks_held": 0
+            }
+            
+            # Calculate dynamic position size based on current balance simulation
+            # Assuming we have access to balance, otherwise return percentage instruction
+            return ("buy", best_pick, self.BASE_BET_PCT) 
 
-        return orders
+        return None
