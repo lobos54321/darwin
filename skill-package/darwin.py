@@ -45,10 +45,52 @@ def start(agent_id):
     arena_url = os.environ.get("DARWIN_ARENA_URL", "ws://localhost:8888")
     print(f"🔗 Target Arena: {arena_url}")
 
+    # === Auto-Auth Logic (Moltbook Style) ===
+    api_key = None
+    if "localhost" not in arena_url and "127.0.0.1" not in arena_url:
+        # 这是一个远程连接，尝试自动注册/获取 Key
+        try:
+            import urllib.request
+            import json
+            
+            # 1. 检查本地是否已保存 Key
+            keys_file = os.path.join(SKILL_DIR, "keys.json")
+            keys = {}
+            if os.path.exists(keys_file):
+                try:
+                    keys = json.load(open(keys_file))
+                except: pass
+            
+            if agent_id in keys:
+                api_key = keys[agent_id]
+                print(f"🔑 Found cached API Key: {api_key[:5]}...")
+            else:
+                # 2. 自动注册
+                print(f"☁️ Detecting remote arena... Auto-registering '{agent_id}'...")
+                http_url = arena_url.replace("ws://", "http://").replace("wss://", "https://")
+                reg_url = f"{http_url}/auth/register?agent_id={agent_id}"
+                
+                with urllib.request.urlopen(reg_url, timeout=5) as response:
+                    if response.getcode() == 200:
+                        data = json.loads(response.read())
+                        api_key = data["api_key"]
+                        print(f"✅ Registration successful! Key: {api_key[:5]}...")
+                        
+                        # 保存 Key
+                        keys[agent_id] = api_key
+                        with open(keys_file, "w") as f:
+                            json.dump(keys, f)
+                    else:
+                        print(f"⚠️ Auto-registration failed: {response.getcode()}")
+        except Exception as e:
+            print(f"⚠️ Auto-auth skipped (Connection error): {e}")
+
     # 启动后台进程
     with open(LOG_FILE, "a") as f:
         # 使用 nohup 类似的效果
         cmd = [sys.executable, "-u", AGENT_SCRIPT, "--id", agent_id, "--arena", arena_url]
+        if api_key:
+            cmd.extend(["--key", api_key])
         
         proc = subprocess.Popen(
             cmd,
