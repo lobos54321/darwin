@@ -483,6 +483,10 @@ curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/
                         class="w-full py-2 text-xs border border-orange-900 hover:bg-orange-500 hover:text-black transition-all">
                         FORCE MUTATION CYCLE
                     </button>
+                    <button onclick="testToast()" 
+                        class="w-full py-2 text-xs border border-blue-900 hover:bg-blue-500 hover:text-white transition-all">
+                        TEST NOTIFICATION
+                    </button>
                 </div>
             </div>
         </div>
@@ -823,7 +827,10 @@ curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/
                     <div class="flex items-center gap-3">
                         <span class="font-bold w-6 text-center ${rankColor}">#${r.rank}</span>
                         <div>
-                            <div class="font-bold text-sm group-hover:text-white transition-colors hover:underline" onclick="viewCode('${r.agent_id}')">${r.agent_id} 🔍</div>
+                            <div class="font-bold text-sm group-hover:text-white transition-colors hover:underline flex items-center gap-1" onclick="viewCode('${r.agent_id}')">
+                                ${r.agent_id}
+                                ${getVerifiedBadge(r.agent_id)}
+                            </div>
                             <div class="text-[10px] text-gray-500">$${r.total_value.toFixed(2)}</div>
                         </div>
                     </div>
@@ -836,6 +843,16 @@ curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/
                 </div>
                 `;
             }).join('');
+        }
+
+        function getVerifiedBadge(agentId) {
+            // Mock verification for demo purposes
+            // In production, this would come from the backend API
+            const verifiedAgents = ['Agent_006', 'Neo_The_One', 'Agent_Gen1_001'];
+            if (verifiedAgents.includes(agentId)) {
+                return `<span class="text-blue-400 text-[10px]" title="Moltbook Verified">✅</span>`;
+            }
+            return '';
         }
 
         // --- Code Viewer Logic ---
@@ -1257,6 +1274,11 @@ curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/
             } catch (e) {
                 logToConsole(`> [DEBUG] Error: ${e}`);
             }
+        }
+
+        function testToast() {
+            showToast("⚠️ NEW CHALLENGER: Test_Bot_9000", "warning");
+            logToConsole("> [DEBUG] Toast notification triggered.");
         }
 
         // --- Init ---
