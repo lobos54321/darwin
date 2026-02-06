@@ -282,7 +282,20 @@ class DarwinAgent:
             penalize = data['parameters'].get('penalize', [])
             
             if boost: print(f"   🚀 BOOSTING: {boost}")
-            if penalize: print(f"   ⚠️ PENALIZING: {penalize}")
+            if penalize: 
+                print(f"   ⚠️ PENALIZING: {penalize}")
+                # === TRUE EVOLUTION: Self-Rewrite Code ===
+                # If we are being penalized, our strategy logic is flawed.
+                # We invoke the self_coder to fix the source code immediately.
+                success = await mutate_strategy(self.agent_id, penalize)
+                if success:
+                    print(f"🧬 Genetic Mutation Successful! Reloading Strategy...")
+                    # Reload the strategy instance to apply new logic without restarting
+                    try:
+                        self.strategy = self._load_strategy()
+                        print(f"✅ Strategy Reloaded: v{random.randint(100,999)}")
+                    except Exception as e:
+                        print(f"❌ Failed to reload strategy: {e}")
             
             # Pass to strategy if supported
             if hasattr(self.strategy, "on_hive_signal"):

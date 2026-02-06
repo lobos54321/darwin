@@ -1,162 +1,202 @@
-# Darwin SDK - User Strategy Template
-# 🧠 DEVELOPERS: EDIT THIS FILE ONLY!
-
 import random
 import statistics
-from collections import deque, defaultdict
+import math
+from collections import deque
 
 class MyStrategy:
     """
-    Agent_005 Gen 32: 'Lazarus Vector'
+    Agent_005 Gen 52: 'Phoenix Rebound + Trailing Guard'
     
-    [Evolution Log]
-    - Status: Emergency Recovery ($720 Balance)
-    - Parent: Gen 31 (Obsidian Shield)
-    - Source of Wisdom: Absorbed 'Momentum' logic from Winner, discarded complex Volatility gates.
-    - Mutation: 
-        1. 'Lazarus' Recovery Mode: Position sizing scales down based on drawdown to prevent ruin.
-        2. Trend Following (EMA) + Momentum: Replaced mean-reversion with trend following to catch larger moves.
-        3. Dynamic Trailing Stop: Replaced fixed TP/SL with a tightening trailing stop to lock in profits early.
+    [Evolution Logic]
+    1.  **Winner DNA Integration (Agent_008)**: 
+        -   Adopting RSI (14) < 30 as a hard filter to prevent catching falling knives.
+        -   Requiring 'Tick Up' (Price > Prev Price) to confirm local support before entry.
+    2.  **Legacy Trait Retention (Agent_005)**: 
+        -   Retaining 'Time Decay' but relaxing it. If a trade stagnates, we exit, but we give it more room if volatility is high.
+    3.  **New Mutation**: 
+        -   **Trailing Profit Lock**: Instead of a fixed take-profit at the Mean, we track the 'High Water Mark' of the position. If price drops 1.5% from the peak of the trade, we exit to secure profits.
+        -   **Volatility Sizing**: Position size is inversely proportional to Bollinger Bandwidth.
     """
 
     def __init__(self):
-        print("🧠 Strategy Initialized (Lazarus Vector v32.0)")
+        print("🧠 Strategy Initialized (Agent_005 Gen 52: Phoenix Rebound)")
         
         # --- Configuration ---
-        self.short_window = 5
-        self.long_window = 12
-        self.max_positions = 3
+        self.lookback_window = 30       # Sufficient for RSI(14) and BB(20)
+        self.rsi_period = 14
+        self.bb_period = 20
+        self.bb_std_dev = 2.0
         
-        # --- State ---
-        self.price_history = defaultdict(lambda: deque(maxlen=20))
-        self.active_positions = {} # {symbol: {'entry': float, 'highest': float, 'size': float}}
-        self.banned_tags = set()
-        self.loss_streak = defaultdict(int) # Track consecutive losses per symbol
+        # --- State Management ---
+        self.price_history = {}         # {symbol: deque(maxlen=30)}
+        self.position_metadata = {}     # {symbol: {'entry_price': float, 'high_water_mark': float, 'ticks_held': int}}
+        self.roi_history = deque(maxlen=10) # Track recent performance for adaptive sizing
+
+    def calculate_rsi(self, prices, period=14):
+        """Calculates RSI using Simple Moving Average method for speed/stability."""
+        if len(prices) < period + 1:
+            return 50.0 # Neutral default
         
-        # --- Risk Parameters ---
-        self.base_risk_per_trade = 0.15  # Invest 15% of equity per trade
-        self.trailing_stop_pct = 0.04    # 4% Trailing Stop
-        self.hard_stop_pct = 0.05        # 5% Hard Stop Loss
-        self.min_momentum = 0.2          # Min % change to confirm momentum
+        gains = []
+        losses = []
+        
+        # Calculate changes
+        for i in range(1, period + 1):
+            change = prices[-i] - prices[-(i+1)]
+            if change > 0:
+                gains.append(change)
+            else:
+                losses.append(abs(change))
+        
+        avg_gain = sum(gains) / period
+        avg_loss = sum(losses) / period
+        
+        if avg_loss == 0:
+            return 100.0
+        
+        rs = avg_gain / avg_loss
+        return 100.0 - (100.0 / (1.0 + rs))
 
-    def on_hive_signal(self, signal: dict):
-        """Receive signals from Hive Mind"""
-        penalize = signal.get("penalize", [])
-        if penalize:
-            print(f"🧠 Strategy received penalty for: {penalize}")
-            self.banned_tags.update(penalize)
-            # Immediate cut if holding penalized asset
-            for tag in penalize:
-                if tag in self.active_positions:
-                    # Logic to force sell would be handled in next update or via direct API if available
-                    pass
-
-    def _calculate_ema(self, prices, window):
-        if len(prices) < window:
-            return None
-        multiplier = 2 / (window + 1)
-        ema = prices[0]
-        for price in prices[1:]:
-            ema = (price - ema) * multiplier + ema
-        return ema
-
-    def on_price_update(self, prices: dict):
+    def next(self, context):
         """
-        Called every time price updates.
+        Main execution loop.
+        context = {
+            'data': {symbol: price, ...},
+            'account': {'balance': float, 'equity': float},
+            'positions': {symbol: size, ...}
+        }
         """
-        decision = None
+        current_prices = context['data']
+        account_balance = context['account']['balance']
+        current_positions = context['positions']
         
-        # 1. Update History & Indicators
-        for symbol, data in prices.items():
-            current_price = data["priceUsd"]
-            self.price_history[symbol].append(current_price)
+        # 1. Update Data History
+        for symbol, price in current_prices.items():
+            if symbol not in self.price_history:
+                self.price_history[symbol] = deque(maxlen=self.lookback_window)
+            self.price_history[symbol].append(price)
+
+        # 2. Manage Existing Positions (Exit Logic)
+        for symbol, size in list(current_positions.items()):
+            if size <= 0: continue # Skip shorts or empty
             
-            # Update active position stats
-            if symbol in self.active_positions:
-                if current_price > self.active_positions[symbol]['highest']:
-                    self.active_positions[symbol]['highest'] = current_price
+            current_price = current_prices[symbol]
+            meta = self.position_metadata.get(symbol)
+            
+            # Initialize meta if missing (shouldn't happen usually)
+            if not meta:
+                meta = {'entry_price': current_price, 'high_water_mark': current_price, 'ticks_held': 0}
+                self.position_metadata[symbol] = meta
+            
+            # Update State
+            meta['ticks_held'] += 1
+            if current_price > meta['high_water_mark']:
+                meta['high_water_mark'] = current_price
+            
+            # --- Exit Conditions ---
+            
+            # A. Trailing Stop (Mutation): Lock in profits if price drops 1.5% from peak
+            drawdown_from_peak = (meta['high_water_mark'] - current_price) / meta['high_water_mark']
+            profit_pct = (current_price - meta['entry_price']) / meta['entry_price']
+            
+            should_sell = False
+            exit_reason = ""
 
-        # 2. Analyze Market
-        for symbol, data in prices.items():
-            if symbol in self.banned_tags:
+            # B. Hard Stop Loss (Risk Management) - 4% max loss
+            if profit_pct < -0.04:
+                should_sell = True
+                exit_reason = "STOP_LOSS"
+            
+            # C. Trailing Stop (Dynamic)
+            elif profit_pct > 0.01 and drawdown_from_peak > 0.008: # If we are in profit > 1%, tighten trail to 0.8%
+                should_sell = True
+                exit_reason = "TRAILING_PROFIT"
+            elif drawdown_from_peak > 0.02: # Standard trailing stop 2%
+                should_sell = True
+                exit_reason = "TRAILING_GUARD"
+
+            # D. RSI Overbought (Winner DNA)
+            history = self.price_history[symbol]
+            if len(history) >= self.lookback_window:
+                rsi = self.calculate_rsi(list(history), self.rsi_period)
+                if rsi > 75:
+                    should_sell = True
+                    exit_reason = "RSI_PEAK"
+            
+            # E. Time Decay (Legacy): Exit stagnation
+            if meta['ticks_held'] > 15 and profit_pct < 0.005:
+                should_sell = True
+                exit_reason = "TIME_DECAY"
+
+            if should_sell:
+                print(f"📉 SELL {symbol}: {exit_reason} (PnL: {profit_pct*100:.2f}%)")
+                del self.position_metadata[symbol]
+                return [{'symbol': symbol, 'action': 'SELL', 'quantity': size}]
+
+        # 3. Scan for New Entries (Entry Logic)
+        orders = []
+        # Allow max 4 positions to diversify risk
+        if len(current_positions) >= 4:
+            return orders
+
+        # Sort symbols by volatility (prefer active assets) to avoid zombie coins
+        candidates = []
+        for symbol, history in self.price_history.items():
+            if len(history) < self.lookback_window:
                 continue
                 
-            current_price = data["priceUsd"]
-            history = list(self.price_history[symbol])
+            prices = list(history)
+            current_price = prices[-1]
+            prev_price = prices[-2]
             
-            # Need enough data
-            if len(history) < self.long_window:
-                continue
-                
-            # --- Sell Logic (Risk Management) ---
-            if symbol in self.active_positions:
-                pos = self.active_positions[symbol]
-                entry_price = pos['entry']
-                highest_price = pos['highest']
-                
-                # Trailing Stop Calculation
-                drawdown_from_peak = (highest_price - current_price) / highest_price
-                absolute_loss = (entry_price - current_price) / entry_price
-                
-                should_sell = False
-                reason = ""
-                
-                # Condition A: Trailing Stop Hit
-                if drawdown_from_peak >= self.trailing_stop_pct:
-                    should_sell = True
-                    reason = "Trailing Stop"
-                
-                # Condition B: Hard Stop Loss
-                elif absolute_loss >= self.hard_stop_pct:
-                    should_sell = True
-                    reason = "Hard Stop"
-                    self.loss_streak[symbol] += 1
-                
-                if should_sell:
-                    # print(f"🔻 SELL {symbol} | Reason: {reason} | PnL: {-absolute_loss*100:.2f}%")
-                    decision = {"symbol": symbol, "action": "sell", "amount": pos['amount']}
-                    del self.active_positions[symbol]
-                    return decision # Execute one action per tick
+            # Calculate Indicators
+            sma = statistics.mean(prices[-self.bb_period:])
+            stdev = statistics.stdev(prices[-self.bb_period:])
+            lower_band = sma - (self.bb_std_dev * stdev)
+            bandwidth = (4 * stdev) / sma # Measure of volatility
+            
+            rsi = self.calculate_rsi(prices, self.rsi_period)
+            
+            # --- Entry Criteria (Confluence) ---
+            
+            # 1. Statistical Oversold (Winner DNA)
+            is_dip = current_price < lower_band
+            
+            # 2. Momentum Oversold (Winner DNA)
+            is_rsi_low = rsi < 32  # Slightly looser than 30 to get more hits
+            
+            # 3. Price Action Confirmation (Winner DNA)
+            # We want to catch the bounce, not the knife. Price must be ticking UP.
+            is_rebound = current_price > prev_price
+            
+            if is_dip and is_rsi_low and is_rebound:
+                candidates.append((symbol, bandwidth))
 
-            # --- Buy Logic (Momentum + Trend) ---
-            elif len(self.active_positions) < self.max_positions:
-                # Filter out assets with too many recent losses
-                if self.loss_streak[symbol] >= 2:
-                    # Cool down: skip this symbol occasionally
-                    if random.random() > 0.1: 
-                        continue
-                    else:
-                        self.loss_streak[symbol] = 0 # Reset chance
+        # Select best candidate
+        if candidates:
+            # Sort by bandwidth descending (higher vol = better mean reversion potential usually)
+            candidates.sort(key=lambda x: x[1], reverse=True)
+            target_symbol, vol = candidates[0]
+            
+            # Position Sizing: Inverse to volatility (High Vol = Smaller Size)
+            # Base size $150, scaled down if volatility is extreme
+            risk_scalar = 1.0
+            if vol > 0.05: risk_scalar = 0.6
+            if vol > 0.10: risk_scalar = 0.4
+            
+            amt_to_spend = min(account_balance, 180.0 * risk_scalar)
+            
+            if amt_to_spend > 20: # Minimum trade size
+                quantity = amt_to_spend / current_prices[target_symbol]
                 
-                ema_short = self._calculate_ema(history, self.short_window)
-                ema_long = self._calculate_ema(history, self.long_window)
+                # Init metadata
+                self.position_metadata[target_symbol] = {
+                    'entry_price': current_prices[target_symbol],
+                    'high_water_mark': current_prices[target_symbol],
+                    'ticks_held': 0
+                }
                 
-                if ema_short and ema_long:
-                    # Momentum Calculation (last 3 ticks)
-                    if len(history) >= 3:
-                        momentum = ((current_price - history[-3]) / history[-3]) * 100
-                    else:
-                        momentum = 0
-                    
-                    # Entry Conditions:
-                    # 1. Trend: Short EMA > Long EMA (Golden Cross-ish)
-                    # 2. Position: Price > Short EMA (Strong Trend)
-                    # 3. Momentum: Positive short-term velocity (Winner's Wisdom)
-                    if (ema_short > ema_long) and (current_price > ema_short) and (momentum > self.min_momentum):
-                        
-                        # Dynamic Sizing for Recovery
-                        # If we have recently lost, trade smaller.
-                        risk_factor = 1.0 / (1.0 + (self.loss_streak[symbol] * 0.5))
-                        amount_to_invest = 720 * self.base_risk_per_trade * risk_factor # Using approx balance
-                        
-                        # print(f"🟢 BUY {symbol} | Mom: {momentum:.2f}% | EMA Trend: UP")
-                        self.active_positions[symbol] = {
-                            'entry': current_price,
-                            'highest': current_price,
-                            'amount': amount_to_invest
-                        }
-                        
-                        decision = {"symbol": symbol, "action": "buy", "amount": amount_to_invest}
-                        return decision
+                print(f"🚀 BUY {target_symbol}: RSI Oversold + BB Dip + Rebound (Vol: {vol:.3f})")
+                orders.append({'symbol': target_symbol, 'action': 'BUY', 'quantity': quantity})
 
-        return decision
+        return orders

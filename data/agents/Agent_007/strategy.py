@@ -46,3 +46,14 @@ class MyStrategy:
                 return decision
                 
         return None
+
+    def get_council_message(self, is_winner: bool) -> str:
+        """Participate in the Council Chat"""
+        if is_winner:
+            return "Momentum is king. Follow the trend, don't fight it."
+        else:
+            return "Liquidity was low. My stops got hunted."
+
+    def on_epoch_end(self, rank: int, total_agents: int, winner_wisdom: str) -> str:
+        """Reflection for evolution"""
+        return f"Ranked #{rank}. Need to tune momentum threshold."

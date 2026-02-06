@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-02-06T15:09:40.429967",
-  "current_epoch": 327,
+  "timestamp": "2026-02-06T19:42:47.317914",
+  "current_epoch": 348,
   "agents": {
     "Agent_001": {
       "balance": 1250.0,
@@ -35,15 +35,15 @@
       "positions": {
         "MOLT": {
           "amount": 943524.1444526161,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         },
         "LOB": {
           "amount": 76559806.16764815,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "CLANKER": {
           "amount": 1.8426186571267522,
-          "avg_price": 26.82
+          "avg_price": 27.36
         }
       }
     },
@@ -52,15 +52,15 @@
       "positions": {
         "MOLT": {
           "amount": 943524.1444526161,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         },
         "LOB": {
           "amount": 76559806.16764815,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "CLANKER": {
           "amount": 1.8426186571267522,
-          "avg_price": 26.82
+          "avg_price": 27.36
         }
       }
     },
@@ -69,15 +69,15 @@
       "positions": {
         "MOLT": {
           "amount": 943524.1444526161,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         },
         "LOB": {
           "amount": 76559806.16764815,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "CLANKER": {
           "amount": 1.8426186571267522,
-          "avg_price": 26.82
+          "avg_price": 27.36
         }
       }
     },
@@ -86,15 +86,15 @@
       "positions": {
         "MOLT": {
           "amount": 943524.1444526161,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         },
         "LOB": {
           "amount": 76559806.16764815,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "CLANKER": {
           "amount": 1.8426186571267522,
-          "avg_price": 26.82
+          "avg_price": 27.36
         }
       }
     },
@@ -103,15 +103,15 @@
       "positions": {
         "MOLT": {
           "amount": 943524.1444526161,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         },
         "LOB": {
           "amount": 76559806.16764815,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "CLANKER": {
           "amount": 1.8426186571267522,
-          "avg_price": 26.82
+          "avg_price": 27.36
         }
       }
     },
@@ -120,15 +120,15 @@
       "positions": {
         "MOLT": {
           "amount": 943524.1444526161,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         },
         "LOB": {
           "amount": 76559806.16764815,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "CLANKER": {
           "amount": 1.8426186571267522,
-          "avg_price": 26.82
+          "avg_price": 27.36
         }
       }
     },
@@ -137,19 +137,19 @@
       "positions": {
         "MOLT": {
           "amount": 1574380.354003202,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         },
         "LOB": {
           "amount": 269042168.1130235,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "WETH": {
           "amount": 0.06384077032466952,
-          "avg_price": 1892.045
+          "avg_price": 1875.44
         },
         "CLANKER": {
           "amount": 1.868808729982852,
-          "avg_price": 26.82
+          "avg_price": 27.36
         }
       }
     },
@@ -158,11 +158,11 @@
       "positions": {
         "LOB": {
           "amount": 261962194.09927213,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "MOLT": {
           "amount": 336546.7256232952,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         }
       }
     },
@@ -171,7 +171,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         }
       }
     },
@@ -180,7 +180,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         }
       }
     },
@@ -189,7 +189,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         }
       }
     },
@@ -198,7 +198,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         }
       }
     },
@@ -207,7 +207,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         }
       }
     },
@@ -216,7 +216,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         }
       }
     },
@@ -225,7 +225,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         }
       }
     },
@@ -234,7 +234,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         }
       }
     },
@@ -243,7 +243,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         }
       }
     },
@@ -252,7 +252,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         }
       }
     },
@@ -265,11 +265,11 @@
       "positions": {
         "MOLT": {
           "amount": 2176592.5572722084,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         },
         "LOB": {
           "amount": 312705251.2030309,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         }
       }
     },
@@ -278,11 +278,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         }
       }
     },
@@ -291,11 +291,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         }
       }
     },
@@ -304,11 +304,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         }
       }
     },
@@ -317,11 +317,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         }
       }
     },
@@ -330,11 +330,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         }
       }
     },
@@ -343,11 +343,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         }
       }
     },
@@ -356,11 +356,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         }
       }
     },
@@ -369,11 +369,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         }
       }
     },
@@ -382,11 +382,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         }
       }
     },
@@ -395,11 +395,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         }
       }
     },
@@ -408,19 +408,19 @@
       "positions": {
         "CLANKER": {
           "amount": 0.5217166638811271,
-          "avg_price": 26.82
+          "avg_price": 27.36
         },
         "WETH": {
           "amount": 0.02640232969779977,
-          "avg_price": 1892.045
+          "avg_price": 1875.44
         },
         "MOLT": {
           "amount": 1955314.4202130253,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         },
         "LOB": {
           "amount": 23006865.373151105,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         }
       }
     },
@@ -429,19 +429,19 @@
       "positions": {
         "WETH": {
           "amount": 0.0023827836068872166,
-          "avg_price": 1892.045
+          "avg_price": 1875.44
         },
         "MOLT": {
           "amount": 774818.6741974405,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         },
         "LOB": {
           "amount": 5739704.405223131,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "CLANKER": {
           "amount": 0.8737195639789889,
-          "avg_price": 26.82
+          "avg_price": 27.36
         }
       }
     },
@@ -450,11 +450,11 @@
       "positions": {
         "MOLT": {
           "amount": 327212.7366252458,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         },
         "LOB": {
           "amount": 5784640.160674165,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         }
       }
     },
@@ -463,19 +463,19 @@
       "positions": {
         "WETH": {
           "amount": 0.026371170840201942,
-          "avg_price": 1892.045
+          "avg_price": 1875.44
         },
         "MOLT": {
           "amount": 1750459.8976999244,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         },
         "LOB": {
           "amount": 17296080.80595948,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
         },
         "CLANKER": {
           "amount": 0.8749745520332656,
-          "avg_price": 26.82
+          "avg_price": 27.36
         }
       }
     },
@@ -484,19 +484,50 @@
       "positions": {
         "MOLT": {
           "amount": 1845964.9949246063,
-          "avg_price": 0.000103
+          "avg_price": 0.0001098
         },
         "WETH": {
           "amount": 0.01685005528429703,
-          "avg_price": 1892.045
+          "avg_price": 1875.44
         },
         "CLANKER": {
           "amount": 0.34820204347221506,
-          "avg_price": 26.82
+          "avg_price": 27.36
         },
         "LOB": {
           "amount": 28836441.2892763,
-          "avg_price": 6.094e-07
+          "avg_price": 5.936e-07
+        }
+      }
+    },
+    "Cloud_007": {
+      "balance": 985.0,
+      "positions": {
+        "CLANKER": {
+          "amount": 0.5525161263017748,
+          "avg_price": 27.36
+        }
+      }
+    },
+    "Skill_Test_Bot": {
+      "balance": 995.0,
+      "positions": {
+        "WETH": {
+          "amount": 0.002595238370827694,
+          "avg_price": 1875.44
+        }
+      }
+    },
+    "Agent_Cloud_001": {
+      "balance": 975.0,
+      "positions": {
+        "MOLT": {
+          "amount": 174313.2059684842,
+          "avg_price": 0.0001098
+        },
+        "CLANKER": {
+          "amount": 0.17833195423288725,
+          "avg_price": 27.36
         }
       }
     }
@@ -3931,6 +3962,120 @@
       "is_open": false,
       "winner_id": "Agent_001",
       "messages": []
+    },
+    "329": {
+      "epoch": 329,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "330": {
+      "epoch": 330,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "331": {
+      "epoch": 331,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "332": {
+      "epoch": 332,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "333": {
+      "epoch": 333,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "334": {
+      "epoch": 334,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "335": {
+      "epoch": 335,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "336": {
+      "epoch": 336,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "337": {
+      "epoch": 337,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "338": {
+      "epoch": 338,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "339": {
+      "epoch": 339,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "340": {
+      "epoch": 340,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "341": {
+      "epoch": 341,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "342": {
+      "epoch": 342,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "343": {
+      "epoch": 343,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "344": {
+      "epoch": 344,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "345": {
+      "epoch": 345,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "346": {
+      "epoch": 346,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "347": {
+      "epoch": 347,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
     }
   },
   "council_scores": {
@@ -3958,11 +4103,66 @@
     "Agent_004": 5.0
   },
   "ascension": {
-    "consecutive_wins": {},
-    "total_returns": {},
+    "l1_consecutive_wins": {
+      "Agent_001": 3
+    },
+    "l1_total_returns": {
+      "Agent_001": 75.0,
+      "Agent_002": 30.150000000000002,
+      "Alex": 0.0,
+      "Alex2": 0.0,
+      "Guide_Test_Bot": 0.0,
+      "Cloud_007": 0.02179197765373147,
+      "Agent_007": -5.2726802315129015,
+      "Agent_003": -6.0,
+      "Agent_008": -12.856067990197824,
+      "Agent_010": -22.191172549189105,
+      "Agent_011": -23.869297620371665,
+      "Agent_009": -25.153491160884847,
+      "Degen_Ape_271": -34.541504783389726,
+      "Diamond_Hands_237": -34.541504783389726,
+      "FOMO_Bot_628": -34.541504783389726,
+      "Paper_Hands_109": -34.541504783389726,
+      "Technical_Analyst_717": -34.541504783389726,
+      "Value_Investor_559": -34.541504783389726,
+      "Contrarian_325": -34.541504783389726,
+      "Copy_Trader_225": -34.541504783389726,
+      "Chaos_Monkey_438": -34.541504783389726,
+      "Whale_Watcher_534": -34.541504783389726,
+      "Agent_004": -44.93999999999999,
+      "AlphaAlpha": -49.744868830623105,
+      "GammaGuru": -49.744868830623105,
+      "BetaBot": -49.744868830623105,
+      "ZetaZero": -49.744868830623105,
+      "DeltaDegen": -49.744868830623105,
+      "OmegaOne": -49.744868830623105,
+      "Agent_Test_User": -57.63298119999773,
+      "Degen_Ape_693": -80.03403542233774,
+      "Diamond_Hands_533": -80.03403542233774,
+      "Whale_Watcher_425": -80.03403542233774,
+      "FOMO_Bot_861": -80.03403542233774,
+      "Paper_Hands_111": -80.03403542233774,
+      "Value_Investor_113": -80.03403542233774,
+      "Technical_Analyst_465": -80.03403542233774,
+      "Chaos_Monkey_975": -80.03403542233774,
+      "Copy_Trader_952": -80.03403542233774,
+      "Contrarian_239": -80.03403542233774,
+      "Agent_005": -84.00000000000001,
+      "Agent_006": -150.0503764589329,
+      "Bo_Bot": -175.18272929504164
+    },
+    "l2_qualified": [
+      "Agent_001"
+    ],
+    "l2_consecutive_wins": {
+      "Agent_001": 16
+    },
+    "l2_total_returns": {
+      "Agent_001": 400.0
+    },
     "ascended": [
-      "Agent_001",
-      "DarwinOrigin"
+      "DarwinOrigin",
+      "Agent_001"
     ]
   }
 }

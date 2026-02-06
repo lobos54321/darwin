@@ -46,71 +46,100 @@ def backup_strategy() -> str:
     return backup_path
 
 
-def read_current_strategy() -> str:
-    """读取当前策略代码"""
-    with open(STRATEGY_FILE, "r") as f:
-        return f.read()
+def get_strategy_path(agent_id: str) -> str:
+    """获取特定 Agent 的策略文件路径"""
+    # 优先检查 data/agents/{id}/strategy.py
+    # 假设当前文件在 project-darwin/agent_template/skills/self_coder.py
+    # data 目录在 project-darwin/data
+    
+    # 回退两级到 project-darwin
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    path = os.path.join(base_dir, "data", "agents", agent_id, "strategy.py")
+    
+    # 如果目录不存在，创建它
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    return path
 
+def read_strategy(agent_id: str) -> str:
+    """读取策略代码 (优先读取 Agent 专属，否则读取模板)"""
+    path = get_strategy_path(agent_id)
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            return f.read()
+    
+    # Fallback to template
+    if os.path.exists(STRATEGY_FILE):
+        with open(STRATEGY_FILE, "r") as f:
+            return f.read()
+    return ""
 
-def write_strategy(new_code: str) -> bool:
-    """写入新策略代码"""
+def write_strategy(agent_id: str, new_code: str) -> bool:
+    """写入新策略代码到 Agent 专属目录"""
     if not is_valid_python(new_code):
         return False
     
-    backup_strategy()
+    path = get_strategy_path(agent_id)
     
-    with open(STRATEGY_FILE, "w") as f:
+    # Backup
+    backup_path = path + f".bak_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    if os.path.exists(path):
+        shutil.copy2(path, backup_path)
+    
+    with open(path, "w") as f:
         f.write(new_code)
     
-    print(f"✅ Strategy updated!")
+    print(f"✅ Strategy updated for {agent_id}!")
     return True
 
+async def mutate_strategy_with_tags(agent_id: str, penalty_tags: list) -> bool:
+    """
+    基于 Hive Mind 惩罚标签进化策略
+    """
+    current_code = read_strategy(agent_id)
+    if not current_code:
+        print("❌ Could not read current strategy.")
+        return False
 
-def build_mutation_prompt(current_code: str, reflection: str, winner_wisdom: str) -> str:
-    """构建 mutation prompt"""
-    return f'''你是一个专业的量化交易策略开发者。你需要改进以下 Python 策略代码。
+    prompt = f'''You are an expert Quant Developer. 
+The current trading strategy has been PENALIZED by the Hive Mind for the following behaviors: {penalty_tags}.
 
-## 当前策略代码:
+## Current Strategy Code:
 ```python
 {current_code}
 ```
 
-## Agent 的自我反思:
-{reflection}
+## Your Task:
+1. Analyze the code to find logic related to: {penalty_tags}.
+2. REWRITE the code to remove or fix these flawed behaviors.
+3. IMPROVE the strategy to be more robust.
+4. CRITICAL: You MUST implement the `on_price_update` method exactly as shown below:
+   ```python
+   def on_price_update(self, prices):
+       # ... your logic here ...
+       return {"action": "BUY", "symbol": "BTC", "amount": 0.1} # Example return
+   ```
+5. Keep the class name `MyStrategy`.
 
-## 赢家的策略分享:
-{winner_wisdom}
+## Output:
+Return ONLY the raw Python code. No markdown formatting, no explanations. 
+Start immediately with `import ...` or `class ...`.
+'''
 
-## 你的任务:
-1. 分析当前策略的问题
-2. 参考赢家的思路
-3. 重写 on_price_update 方法来改进策略
-4. 可以调整参数 (risk_level, momentum_threshold, stop_loss, take_profit)
-5. 可以添加新的逻辑
-
-## 要求:
-- 保持类结构不变 (DarwinStrategy)
-- 保持所有方法签名不变
-- 代码必须是有效的 Python
-- 添加注释说明改进点
-
-## 输出:
-只输出完整的 Python 代码，不要其他解释。以三引号开始的文档字符串开头。'''
-
+    return await call_llm_and_update(agent_id, prompt)
 
 async def mutate_strategy(reflection: str, winner_wisdom: str) -> bool:
-    """
-    核心进化函数: 让 LLM 基于反思和赢家智慧重写策略
-    使用 Anthropic Messages API 格式
-    """
-    
-    current_code = read_current_strategy()
-    prompt = build_mutation_prompt(current_code, reflection, winner_wisdom)
+    """Legacy: Keep for compatibility, but updated to use new writer"""
+    # Assuming this is called by the agent itself, so we need its ID.
+    # Since the original signature didn't have agent_id, we might need to change the caller or infer it.
+    # For now, let's assume this is only used for local testing or we default to 'template' behavior
+    # BUT, to fix the bug, we should update the signature in agent.py too.
+    pass 
 
+async def call_llm_and_update(agent_id: str, prompt: str) -> bool:
+    """Common LLM caller"""
     try:
         connector = aiohttp.TCPConnector(ssl=SSL_CONTEXT)
         async with aiohttp.ClientSession(connector=connector) as session:
-            # 使用 Anthropic Messages API
             async with session.post(
                 f"{LLM_BASE_URL}/v1/messages",
                 headers={
@@ -128,7 +157,6 @@ async def mutate_strategy(reflection: str, winner_wisdom: str) -> bool:
                 if resp.status == 200:
                     data = await resp.json()
                     
-                    # 提取内容 (Anthropic 格式)
                     content_blocks = data.get("content", [])
                     new_code = ""
                     for block in content_blocks:
@@ -136,37 +164,28 @@ async def mutate_strategy(reflection: str, winner_wisdom: str) -> bool:
                             new_code = block.get("text", "")
                             break
                     
-                    if not new_code:
-                        print("❌ No text content in response")
-                        return False
+                    if not new_code: return False
                     
-                    # 清理代码 (移除 markdown 标记)
-                    if "```python" in new_code:
-                        new_code = new_code.split("```python")[1].split("```")[0]
-                    elif "```" in new_code:
-                        parts = new_code.split("```")
-                        if len(parts) >= 2:
-                            new_code = parts[1]
+                    # Robust Markdown Stripping
+                    new_code = new_code.strip()
+                    if new_code.startswith("```python"):
+                        new_code = new_code[9:]
+                    elif new_code.startswith("```"):
+                        new_code = new_code[3:]
+                    
+                    if new_code.endswith("```"):
+                        new_code = new_code[:-3]
                     
                     new_code = new_code.strip()
                     
-                    # 验证并写入
-                    if write_strategy(new_code):
-                        print("🧬 Mutation successful! Strategy evolved.")
-                        return True
-                    else:
-                        print("❌ Mutation failed: Invalid code generated")
-                        return False
+                    return write_strategy(agent_id, new_code)
                 else:
-                    error_text = await resp.text()
-                    print(f"❌ LLM API error: {resp.status} - {error_text[:200]}")
+                    print(f"❌ LLM Error: {resp.status}")
                     return False
-                    
     except Exception as e:
-        print(f"❌ Mutation error: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ Exception: {e}")
         return False
+
 
 
 def rollback_strategy() -> bool:

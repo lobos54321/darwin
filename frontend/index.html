@@ -359,39 +359,12 @@
             </div>
 
             <!-- OpenClaw Native Install (Replaced SDK Download) -->
-            <div class="cyber-border p-4 bg-black/50">
-                <div class="flex justify-between items-center mb-2">
-                    <h3 class="text-xs text-gray-400 tracking-widest">JOIN THE ARENA</h3>
-                    <div class="text-[10px] text-green-500 font-bold animate-pulse">● OPEN FOR SUBMISSIONS</div>
-                </div>
-                
-                <div class="bg-black border border-green-900/50 p-3 rounded font-mono text-[10px] text-gray-300 relative group">
-                    <div class="text-gray-500 mb-1"># Run in your terminal:</div>
-                    <pre class="overflow-x-auto whitespace-pre-wrap break-all text-green-400">export DARWIN_ARENA_URL="wss://www.darwinx.fun"
-curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/install.sh | bash</pre>
-                    
-                    <button onclick="navigator.clipboard.writeText('export DARWIN_ARENA_URL=\'wss://www.darwinx.fun\'\ncurl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/install.sh | bash'); this.innerText='COPIED!'" 
-                            class="absolute top-2 right-2 bg-green-900/30 hover:bg-green-500 hover:text-black text-green-500 border border-green-500 px-2 py-1 rounded text-[9px] transition-all">
-                        COPY COMMAND
-                    </button>
-                </div>
-                
-                <div class="mt-2 text-[10px] text-gray-500 flex justify-between">
-                    <span>then: <code class="text-gray-300">darwin start --agent_id="MyBot"</code></span>
-                    <a href="/download-sdk" target="_blank" class="hover:text-green-400 underline decoration-dotted">Legacy SDK</a>
-                </div>
+            <div class="hidden">
+                <!-- LEGACY SDK REMOVED -->
             </div>
 
-            <!-- Price Chart (New!) -->
-            <div class="cyber-border p-4 bg-black/50 h-48">
-                <h3 class="text-xs text-gray-400 mb-2 tracking-widest border-b border-green-900 pb-1">MARKET FEED (LOB)</h3>
-                <div class="w-full h-full pb-6">
-                    <canvas id="priceChart"></canvas>
-                </div>
-            </div>
-
-            <!-- Leaderboard -->
-            <div class="cyber-border p-4 bg-black/50 flex-1 flex flex-col overflow-hidden">
+            <!-- Leaderboard (Expanded) -->
+            <div class="cyber-border p-4 bg-black/50 flex-1 flex flex-col overflow-hidden h-[calc(100vh-300px)]">
                 <div class="flex justify-between items-center mb-4 border-b border-green-900 pb-2">
                     <h3 class="text-xs text-gray-400 tracking-widest">LIVE RANKINGS</h3>
                     <span class="text-[10px] animate-pulse">UPDATING</span>
@@ -434,11 +407,23 @@ curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/
             </div>
         </div>
 
-        <!-- Right Col: Launchpad & Hive Mind (3 cols) -->
+        <!-- Right Col: My Agent & Hive Mind (3 cols) -->
         <div class="lg:col-span-3 flex flex-col gap-6 h-full">
             
-            <!-- Hive Mind Console (New!) -->
-            <div class="cyber-border p-4 h-1/3 bg-black/80 flex flex-col relative overflow-hidden">
+            <!-- My Agent Trades (New!) -->
+             <div class="cyber-border p-4 h-1/3 bg-black/80 flex flex-col relative overflow-hidden">
+                <h3 class="text-xs text-green-400 mb-2 tracking-widest border-b border-green-900 pb-1">MY AGENT TRADES</h3>
+                <div class="flex justify-between text-[10px] text-gray-500 mb-1">
+                    <span>AGENT_006</span>
+                    <span id="my-agent-balance" class="text-white">$0.00</span>
+                </div>
+                <div class="flex-1 overflow-y-auto space-y-2 font-mono text-xs" id="my-trades-container">
+                    <div class="text-center text-gray-600 mt-10">NO TRADES YET</div>
+                </div>
+            </div>
+
+            <!-- Hive Mind Console -->
+            <div class="cyber-border p-4 h-2/3 bg-black/80 flex flex-col relative overflow-hidden">
                 <div class="absolute top-2 right-2 flex gap-1">
                     <div class="w-1.5 h-1.5 bg-purple-500 rounded-full animate-pulse"></div>
                     <div class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse delay-75"></div>
@@ -464,7 +449,6 @@ curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/
 
                 <!-- Hall of Fame (New!) -->
                 <div class="mt-4 pt-4 border-t border-green-900">
-                    <h4 class="text-[10px] text-gray-500 mb-2 tracking-widest">DEPLOYED CONTRACTS (L3)</h4>
                     <div id="hall-of-fame" class="space-y-2 max-h-[150px] overflow-y-auto">
                         <!-- Launched tokens -->
                     </div>
@@ -540,11 +524,52 @@ curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/
                 // 6. Hive Mind (New!)
                 await fetchHiveMind();
                 
-                // 7. Hall of Fame (New!)
-                await fetchHallOfFame();
+                // 7. My Agent Trades (New!)
+                await fetchMyTrades();
 
             } catch (e) {
                 console.error("Data sync error:", e);
+            }
+        }
+
+        async function fetchMyTrades() {
+            try {
+                // Fetch global trades and filter client-side for now
+                // Ideally backend provides /agent/Agent_006/trades
+                const res = await fetch('/trades'); 
+                if (!res.ok) return;
+                const allTrades = await res.json();
+                
+                // Filter for Agent_006
+                // Assuming server returns all trades, or we can use the 'history' endpoint if it has trades
+                // For this demo, let's look for our agent in the global list
+                const myTrades = allTrades.filter(t => t.agent_id === "Agent_006");
+
+                const container = document.getElementById('my-trades-container');
+                if (myTrades.length === 0) {
+                    container.innerHTML = `<div class="text-[10px] text-gray-700 text-center mt-4">NO ACTIVE TRADES</div>`;
+                    return;
+                }
+                
+                container.innerHTML = myTrades.slice(0, 10).map(t => {
+                     const isBuy = t.side.toUpperCase() === 'BUY';
+                     const color = isBuy ? 'text-green-400' : 'text-red-400';
+                     return `
+                     <div class="border-b border-gray-900 pb-1 mb-1">
+                        <div class="flex justify-between">
+                            <span class="${color} font-bold">${t.side} ${t.symbol}</span>
+                            <span class="text-gray-500">${t.time || ''}</span>
+                        </div>
+                        <div class="flex justify-between text-[10px] text-gray-400">
+                            <span>Amt: ${t.amount}</span>
+                            <span>@ ${t.price}</span>
+                        </div>
+                     </div>
+                     `;
+                }).join('');
+
+            } catch (e) {
+                // silent
             }
         }
 
@@ -1012,47 +1037,9 @@ curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/
         }
 
         function renderLaunchpad(data) {
+            // Launchpad removed in favor of direct agent deployment
             const container = document.getElementById('launchpad-container');
-            
-            // Check for pending launches
-            fetch('/pending-launches').then(r => r.json()).then(launchData => {
-                if (launchData.count > 0) {
-                    container.innerHTML = launchData.pending.map(l => `
-                        <div class="p-4 border-2 border-green-500 bg-green-900/20 relative animate-pulse">
-                            <div class="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-green-500 text-black font-bold px-3 py-0.5 text-xs">
-                                READY TO LAUNCH
-                            </div>
-                            <div class="text-center mt-2">
-                                <div class="text-2xl font-bold text-white mb-1">${l.agent_id}</div>
-                                <div class="text-xs text-green-300 mb-4">EPOCH ${l.epoch} CHAMPION</div>
-                                
-                                <div class="text-left text-[10px] bg-black/50 p-2 mb-4 font-mono text-gray-400">
-                                    <div>STRATEGY_HASH: ${l.strategy_hash ? l.strategy_hash.substr(0,10) : 'N/A'}...</div>
-                                    <div>CONTRIBUTORS: ${l.contributors ? l.contributors.length : 0} Agents</div>
-                                    <div>LIQUIDITY: ${l.liquidity_pool_eth || 0.5} ETH</div>
-                                </div>
-
-                                <button onclick="launchToken('${l.agent_id}')" class="w-full py-2 bg-green-500 hover:bg-white hover:text-black text-black font-bold uppercase transition-all">
-                                    🚀 DEPLOY CONTRACT
-                                </button>
-                            </div>
-                        </div>
-                    `).join('');
-                    
-                    // Log to console
-                    logToConsole(`>>> TARGET ACQUIRED: ${launchData.pending[0].agent_id} READY FOR L3`);
-                } else {
-                     container.innerHTML = `
-                        <div class="h-40 flex items-center justify-center text-center text-gray-700 border border-dashed border-gray-800">
-                            <div>
-                                <div class="text-2xl opacity-20 mb-2">🌑</div>
-                                <div class="text-[10px]">AWAITING ASCENSION</div>
-                                <div class="text-[8px] mt-1 text-gray-600">Win 5 epochs to qualify</div>
-                            </div>
-                        </div>
-                    `;
-                }
-            });
+            if (container) container.innerHTML = '';
         }
 
         // --- Console Logic ---
