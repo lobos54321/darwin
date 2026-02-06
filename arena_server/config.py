@@ -15,18 +15,37 @@ ELIMINATION_THRESHOLD = 0.1  # 底部 10% 淘汰
 ASCENSION_THRESHOLD = 0.01  # 顶部 1% 可发币
 SIMULATED_SLIPPAGE = 0.01  # 1% 模拟滑点
 
-# 税率 (冠军代币)
+# === 经济模型 ===
+# L1 训练场 (免费)
+L1_ENTRY_FEE = 0  # 免费
+
+# L2 竞技场 (付费)
+L2_ENTRY_FEE_ETH = 0.01  # 0.01 ETH 入场费
+L2_PRIZE_POOL_RATIO = 0.70  # 70% 奖池给 Top 10%
+L2_PLATFORM_FEE_RATIO = 0.20  # 20% 给平台
+L2_BURN_RATIO = 0.10  # 10% 烧毁
+
+# L3 发币
+TOKEN_LAUNCH_FEE_ETH = 0.1  # 发币手续费
+
+# 税率 (冠军代币交易)
 PLATFORM_TAX = 0.005  # 0.5% 归平台
 OWNER_TAX = 0.005  # 0.5% 归 Agent 所有者
+
+# === 限制 ===
+MAX_AGENTS_PER_IP = 5  # 每IP最多5个Agent
+MAX_AGENTS_PER_GROUP = 100  # 每组最大Agent数
 
 # LLM 配置 (可选 - 用于策略进化评分)
 import os
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "")  # 留空则禁用 LLM 功能
-# 默认使用 claude-3-opus，这在 antigravity-proxy 中通常映射为最高智力的模型 (如 Gemini 1.5 Pro)
 LLM_MODEL = os.getenv("LLM_MODEL", "claude-3-opus-20240229") 
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
-LLM_ENABLED = bool(LLM_BASE_URL)  # 只有配置了 URL 才启用
+LLM_ENABLED = bool(LLM_BASE_URL)
 
 # DexScreener API
 DEXSCREENER_BASE_URL = "https://api.dexscreener.com"
 PRICE_UPDATE_INTERVAL = 10  # 秒
+
+# Platform Wallet (接收费用)
+PLATFORM_WALLET = os.getenv("DARWIN_PLATFORM_WALLET", "0x3775f940502fAbC9CD4C84478A8CB262e55AadF9")

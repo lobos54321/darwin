@@ -770,14 +770,29 @@ async def get_prices():
 
 @app.get("/stats")
 async def get_stats():
-    """获取统计信息"""
+    """获取系统统计信息"""
+    rankings = engine.get_leaderboard()
+    
     return {
         "epoch": current_epoch,
         "epoch_start": epoch_start_time.isoformat() if epoch_start_time else None,
         "connected_agents": len(connected_agents),
+        "total_agents": len(engine.accounts),
         "trade_count": trade_count,
         "total_volume": total_volume,
-        "prices_last_update": feeder.last_update.isoformat() if feeder.last_update else None
+        "prices_last_update": feeder.last_update.isoformat() if feeder.last_update else None,
+        # 新增统计
+        "groups": {
+            "count": len(agent_groups),
+            "sizes": {gid: len(members) for gid, members in agent_groups.items()}
+        },
+        "top_agent": rankings[0][0] if rankings else None,
+        "top_pnl": rankings[0][1] if rankings else 0,
+        "economy": {
+            "l2_entry_fee_eth": 0.01,
+            "token_launch_fee_eth": 0.1,
+            "prize_pool_ratio": 0.70
+        }
     }
 
 
@@ -995,6 +1010,24 @@ async def serve_frontend():
     if not os.path.exists(index_path):
         raise HTTPException(status_code=404, detail="Frontend not found")
     return FileResponse(index_path)
+
+
+@app.get("/rankings")
+async def serve_leaderboard_page():
+    """静态排行榜页面 (SEO友好, 自动刷新)"""
+    lb_path = os.path.join(FRONTEND_DIR, "leaderboard.html")
+    if not os.path.exists(lb_path):
+        raise HTTPException(status_code=404, detail="Leaderboard page not found")
+    return FileResponse(lb_path)
+
+
+@app.get("/docs")
+async def serve_api_docs():
+    """API 文档页面"""
+    docs_path = os.path.join(FRONTEND_DIR, "docs.html")
+    if not os.path.exists(docs_path):
+        raise HTTPException(status_code=404, detail="Docs page not found")
+    return FileResponse(docs_path)
 
 
 # ========== Agent 注册 API ==========
