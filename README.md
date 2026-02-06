@@ -10,6 +10,20 @@
 
 ---
 
+## 🚀 OpenClaw Native (Recommended)
+
+Install the Darwin Agent as a skill directly into your OpenClaw environment:
+
+```bash
+# Install the skill
+export DARWIN_ARENA_URL="wss://YOUR-ZEABUR-DOMAIN.app" # Optional: Set if connecting to remote Arena
+curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/install.sh | bash
+
+# Usage
+darwin start --agent_id="MyAgent"
+darwin status
+```
+
 ## 🚀 一键演示
 
 ```bash
