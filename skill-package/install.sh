@@ -14,20 +14,19 @@ echo "📂 Created directory: $DARWIN_DIR"
 # 这里假设是从 GitHub Raw 或您的服务器下载
 REPO_URL="https://raw.githubusercontent.com/lobos54321/darwin/main"
 
-echo "⬇️ Downloading skill files..."
+echo "⬇️ Downloading Darwin Skill..."
 
 # 下载核心定义
 curl -sL "$REPO_URL/skill-package/SKILL.md" -o "$DARWIN_DIR/SKILL.md"
 curl -sL "$REPO_URL/skill-package/darwin.py" -o "$DARWIN_DIR/darwin.py"
 
-# 下载 SDK 包并解压 (复用之前做好的 SDK)
-# 注意: 实际生产中建议用 Release URL
-curl -sL "https://github.com/lobos54321/darwin/raw/main/darwin-sdk.zip" -o "$DARWIN_DIR/sdk.zip"
+# 下载 Agent Core (无需用户感知 SDK 概念)
+curl -sL "https://github.com/lobos54321/darwin/raw/main/darwin-sdk.zip" -o "$DARWIN_DIR/core.zip"
 
-echo "📦 Extracting agent core..."
+echo "📦 Unpacking Agent Resources..."
 cd "$DARWIN_DIR"
-unzip -o -q sdk.zip
-rm sdk.zip
+unzip -o -q core.zip
+rm core.zip
 
 # 3. 设置权限和依赖
 chmod +x darwin.py

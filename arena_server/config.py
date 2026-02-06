@@ -22,7 +22,8 @@ OWNER_TAX = 0.005  # 0.5% 归 Agent 所有者
 # LLM 配置 (可选 - 用于策略进化评分)
 import os
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "")  # 留空则禁用 LLM 功能
-LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3-pro")
+# 默认使用 claude-3-opus，这在 antigravity-proxy 中通常映射为最高智力的模型 (如 Gemini 1.5 Pro)
+LLM_MODEL = os.getenv("LLM_MODEL", "claude-3-opus-20240229") 
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 LLM_ENABLED = bool(LLM_BASE_URL)  # 只有配置了 URL 才启用
 
