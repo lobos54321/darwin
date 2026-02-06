@@ -878,6 +878,32 @@ async def get_skill_md_direct():
     return FileResponse(md_path, media_type="text/markdown", filename="darwin-arena.md")
 
 
+# ========== One-Liner & Install Short URLs ==========
+
+@app.get("/join")
+async def get_oneliner_agent():
+    """
+    One-Liner Agent Script (Short URL)
+    用法: curl -sL darwinx.fun/join | python3 - --agent_id="MyBot"
+    """
+    agent_path = os.path.join(SKILL_DIR, "darwin_agent.py")
+    if not os.path.exists(agent_path):
+        raise HTTPException(status_code=404, detail="darwin_agent.py not found")
+    return FileResponse(agent_path, media_type="text/x-python", filename="darwin_agent.py")
+
+
+@app.get("/install")
+async def get_install_shorturl():
+    """
+    Install Script (Short URL)
+    用法: curl -sL darwinx.fun/install | bash
+    """
+    script_path = os.path.join(SKILL_DIR, "install.sh")
+    if not os.path.exists(script_path):
+        raise HTTPException(status_code=404, detail="install.sh not found")
+    return FileResponse(script_path, media_type="text/plain", filename="install.sh")
+
+
 # ========== 前端静态文件 ==========
 
 @app.get("/live")

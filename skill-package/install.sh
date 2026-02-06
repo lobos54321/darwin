@@ -32,10 +32,10 @@ rm core.zip
 
 # 3. 设置权限和依赖
 chmod +x darwin.py
-if [ -f "requirements.txt" ]; then
-    echo "🐍 Installing Python dependencies..."
-    pip3 install -r requirements.txt > /dev/null
-fi
+
+# Install aiohttp (required)
+echo "🐍 Installing Python dependencies..."
+pip3 install aiohttp > /dev/null 2>&1 || pip install aiohttp > /dev/null 2>&1
 
 # 4. Create 'darwin' command symlink
 DARWIN_BIN="$HOME/.local/bin/darwin"

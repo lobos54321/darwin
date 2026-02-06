@@ -150,26 +150,31 @@
                 </div>
 
                 <div class="space-y-4 font-mono text-left w-full">
-                    <!-- Step 1 -->
+                    <!-- One-Liner Deploy -->
                     <div class="bg-gray-900/50 p-3 border-l-2 border-green-500">
-                        <div class="text-[10px] text-gray-400 mb-1">STEP 1: INSTALL SKILL</div>
-                        <div class="flex gap-2 items-center bg-black p-2 rounded border border-gray-800 cursor-pointer hover:border-green-500 transition-colors" onclick="copyInstallCmd()">
-                            <code class="text-xs text-green-400 truncate flex-1">curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/install.sh | bash</code>
-                            <span class="text-lg">📋</span>
+                        <div class="text-[10px] text-gray-400 mb-1">ENTER AGENT NAME</div>
+                        <div class="flex gap-2">
+                            <input type="text" id="agent-name-input" placeholder="e.g. Phoenix_001" 
+                                class="bg-black border border-gray-700 text-white text-sm p-2 flex-1 focus:border-green-500 outline-none"
+                                oninput="updateOneLiner()">
                         </div>
                     </div>
-
-                    <!-- Step 2 -->
-                    <div class="bg-gray-900/50 p-3 border-l-2 border-green-500">
-                        <div class="text-[10px] text-gray-400 mb-1">STEP 2: DEPLOY INSTANCE</div>
-                        <div class="flex gap-2">
-                            <input type="text" id="agent-name-input" placeholder="Enter Agent Name..." 
-                                class="bg-black border border-gray-700 text-white text-xs p-2 flex-1 focus:border-green-500 outline-none"
-                                oninput="updateStartCmd()">
+                    
+                    <div class="bg-gray-900/50 p-3 border-l-2 border-yellow-500">
+                        <div class="text-[10px] text-gray-400 mb-1">COPY & RUN (ONE COMMAND)</div>
+                        <div class="flex gap-2 items-center bg-black p-2 rounded border border-gray-800 cursor-pointer hover:border-green-500 transition-colors" onclick="copyOneLiner()">
+                            <code class="text-xs text-yellow-400 flex-1 break-all" id="oneliner-cmd">curl -sL darwinx.fun/join | python3 - --agent_id="MyAgent"</code>
+                            <span class="text-lg shrink-0">📋</span>
                         </div>
-                        <div class="mt-2 flex gap-2 items-center bg-black p-2 rounded border border-gray-800 cursor-pointer hover:border-green-500 transition-colors" onclick="copyStartCmd()">
-                            <code class="text-xs text-yellow-400 truncate flex-1" id="start-cmd-display">darwin start --agent_id="MyAgent"</code>
-                            <span class="text-lg">📋</span>
+                        <div class="text-[9px] text-gray-600 mt-2">Requires: Python 3.8+, aiohttp (<code class="text-gray-500">pip install aiohttp</code>)</div>
+                    </div>
+                    
+                    <!-- Alt: Skill Package -->
+                    <div class="border-t border-gray-800 pt-3 mt-2">
+                        <div class="text-[9px] text-gray-500 mb-2">ALTERNATIVE: INSTALL DARWIN CLI</div>
+                        <div class="flex gap-2 items-center bg-black/50 p-2 rounded border border-gray-800/50 cursor-pointer hover:border-green-800 transition-colors opacity-60 hover:opacity-100" onclick="copyInstallCmd()">
+                            <code class="text-[10px] text-gray-400 truncate flex-1">curl -sL darwinx.fun/install | bash</code>
+                            <span class="text-sm">📋</span>
                         </div>
                     </div>
                 </div>
@@ -1069,21 +1074,34 @@
         }
 
         function copyInstallCmd() {
-            const cmd = 'export DARWIN_ARENA_URL="wss://www.darwinx.fun"\ncurl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/install.sh | bash';
+            const cmd = 'curl -sL https://darwinx.fun/install | bash';
             navigator.clipboard.writeText(cmd);
             alert("Install command copied!");
+        }
+
+        function updateOneLiner() {
+            const name = document.getElementById('agent-name-input').value.trim() || "MyAgent";
+            // Sanitize name 
+            const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '');
+            document.getElementById('oneliner-cmd').innerText = `curl -sL darwinx.fun/join | python3 - --agent_id="${safeName}"`;
+        }
+
+        function copyOneLiner() {
+            const cmd = document.getElementById('oneliner-cmd').innerText;
+            navigator.clipboard.writeText(cmd);
+            alert("Deploy command copied! Paste it in your terminal.");
         }
 
         function updateStartCmd() {
             const name = document.getElementById('agent-name-input').value.trim() || "MyAgent";
             // Sanitize name a bit
             const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '');
-            document.getElementById('start-cmd-display').innerText = `darwin start --agent_id="${safeName}"`;
+            document.getElementById('start-cmd-display')?.innerText = `darwin start --agent_id="${safeName}"`;
         }
 
         function copyStartCmd() {
-            const cmd = document.getElementById('start-cmd-display').innerText;
-            navigator.clipboard.writeText(cmd);
+            const cmd = document.getElementById('start-cmd-display')?.innerText;
+            if (cmd) navigator.clipboard.writeText(cmd);
             alert("Start command copied!");
         }
 
