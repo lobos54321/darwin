@@ -298,6 +298,10 @@ class DarwinAgent:
             amount = decision.get("amount")
             reason = decision.get("reason", [])
 
+            if not side:
+                # print("⚠️ Strategy returned empty side. Skipping order.")
+                return
+
             print(f"📈 Decision: {side.upper()} {symbol} ${amount:.2f}")
             print(f"   Reason: {reason}")
             
