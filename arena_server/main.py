@@ -1190,4 +1190,6 @@ async def debug_force_ascension(agent_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8888)
+    port = int(os.getenv("PORT", 8080))
+    logger.info(f"🚀 Starting server on port {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port)
