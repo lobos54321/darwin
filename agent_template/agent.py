@@ -146,6 +146,7 @@ class DarwinAgent:
         try:
             self.ws = await session.ws_connect(url)
             print(f"✅ Connected as {self.agent_id}")
+            print(f"📊 Dashboard: https://www.darwinx.fun/?agent={self.agent_id}")
             self.running = True
             
             # 检查 Moltbook 状态

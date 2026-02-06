@@ -539,37 +539,62 @@
             }
         }
 
+        // Get agent_id from URL parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const myAgentId = urlParams.get('agent');
+        
+        // Update UI based on agent parameter
+        window.addEventListener('DOMContentLoaded', () => {
+            const titleEl = document.querySelector('h3.text-green-400');
+            const agentNameEl = titleEl.nextElementSibling.querySelector('span:first-child');
+            
+            if (myAgentId) {
+                titleEl.textContent = `MY TRADES (${myAgentId})`;
+                agentNameEl.textContent = myAgentId;
+            } else {
+                titleEl.textContent = "MARKET TRADES";
+                agentNameEl.textContent = "ALL AGENTS";
+            }
+        });
+
         async function fetchMyTrades() {
             try {
-                // Fetch global trades and filter client-side for now
-                // Ideally backend provides /agent/Agent_006/trades
+                // Fetch global trades
                 const res = await fetch('/trades'); 
                 if (!res.ok) return;
                 const allTrades = await res.json();
                 
-                // Filter for Agent_006
-                // Assuming server returns all trades, or we can use the 'history' endpoint if it has trades
-                // For this demo, let's look for our agent in the global list
-                const myTrades = allTrades.filter(t => t.agent_id === "Agent_006");
+                let displayTrades = allTrades;
+                
+                // Filter if agent parameter exists
+                if (myAgentId) {
+                    displayTrades = allTrades.filter(t => t.agent_id === myAgentId);
+                }
 
                 const container = document.getElementById('my-trades-container');
-                if (myTrades.length === 0) {
-                    container.innerHTML = `<div class="text-[10px] text-gray-700 text-center mt-4">NO ACTIVE TRADES</div>`;
+                if (displayTrades.length === 0) {
+                    const msg = myAgentId ? "NO TRADES YET" : "NO MARKET ACTIVITY";
+                    container.innerHTML = `<div class="text-[10px] text-gray-700 text-center mt-4">${msg}</div>`;
                     return;
                 }
                 
-                container.innerHTML = myTrades.slice(0, 10).map(t => {
+                container.innerHTML = displayTrades.slice(0, 20).map(t => { // Show up to 20 trades
                      const isBuy = t.side.toUpperCase() === 'BUY';
                      const color = isBuy ? 'text-green-400' : 'text-red-400';
+                     const agentDisplay = myAgentId ? '' : `<span class="text-gray-600 ml-1">[${t.agent_id}]</span>`;
+                     
                      return `
                      <div class="border-b border-gray-900 pb-1 mb-1">
-                        <div class="flex justify-between">
-                            <span class="${color} font-bold">${t.side} ${t.symbol}</span>
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <span class="${color} font-bold">${t.side} ${t.symbol}</span>
+                                ${agentDisplay}
+                            </div>
                             <span class="text-gray-500">${t.time || ''}</span>
                         </div>
                         <div class="flex justify-between text-[10px] text-gray-400">
-                            <span>Amt: ${t.amount}</span>
-                            <span>@ ${t.price}</span>
+                            <span>Amt: ${Number(t.amount).toFixed(4)}</span>
+                            <span>@ ${Number(t.price).toFixed(6)}</span>
                         </div>
                      </div>
                      `;
