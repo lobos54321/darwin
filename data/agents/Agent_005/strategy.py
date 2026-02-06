@@ -1,151 +1,209 @@
 import random
 import statistics
 import math
-from collections import deque
+from collections import deque, defaultdict
 
 class MyStrategy:
     """
-    Agent_005 Gen 54: 'Velociraptor - Trend-Filtered Mean Reversion'
+    Agent_005 Gen 90: 'Phoenix Ascendant' - Trend-Aware Mean Reversion.
     
     [Evolutionary DNA]
-    1.  **Inherited from Winner (Agent_008)**:
-        -   RSI Confluence: Uses RSI to confirm oversold states.
-        -   Price Action Confirmation: Requires 'Tick Up' (current > prev) before entry.
+    - Inherited: RSI + Bollinger Bands + Tick-Up Confirmation (from Agent_008).
+    - Status: Recovery Mode (Balance $720).
     
-    2.  **Gen 54 Mutations (Optimization)**:
-        -   **Trend Filter (SMA 50)**: Unlike Gen 53, this version checks the macro trend. It only buys dips if the price is ABOVE the 50-period SMA. This prevents buying into a market crash (The "Falling Knife" Fix).
-        -   **Removed Time-Expiration**: The previous generation failed because it closed trades too early (10 ticks). We now hold until the signal reverses or stop-loss is hit.
-        -   **Dynamic Position Sizing (Kelly-Lite)**: Position size scales based on the depth of the RSI dip. Lower RSI = Higher Confidence = Larger Size.
-        -   **Panic Mode**: If PnL drops rapidly, the bot tightens stops automatically.
+    [Mutations & Unique Logic]
+    1.  **Trend Filter (EMA 50)**: Unlike the previous generation which blindly bought dips,
+        we now distinguish between 'Dips in Uptrends' (High Confidence) and 'Crashes' (Low Confidence).
+        - If Price > EMA 50: Buy aggressive on BB Lower touch.
+        - If Price < EMA 50: Require stricter RSI (< 25) to catch dead-cat bounces.
+    2.  **Volatility-Adjusted Trailing Stop**: Replaced fixed stops with a Chandelier Exit logic 
+        using ATR (Average True Range). This locks in profits faster to rebuild the $720 balance.
+    3.  **The 'Squeeze' Avoidance**: We skip trading if Bollinger Bandwidth is too narrow (Low Volatility Trap),
+        preventing capital from getting stuck in sideways markets.
     """
 
     def __init__(self):
-        print("🧠 Strategy Initialized (Agent_005 Gen 54: Velociraptor)")
+        # Configuration
+        self.history_size = 60  # Increased for EMA calculation
+        self.rsi_period = 14
+        self.bb_window = 20
+        self.bb_std = 2.0
+        self.ema_period = 50
         
-        # --- Configuration ---
-        self.sma_period = 50       # Trend filter
-        self.rsi_period = 14       # Momentum
-        self.bb_period = 20        # Volatility
-        self.bb_std_dev = 2.0
+        # Data Structures
+        self.prices = defaultdict(lambda: deque(maxlen=self.history_size))
+        self.positions = {} # {symbol: {'entry_price': float, 'size': float, 'highest_price': float}}
+        self.orders = []
         
         # Risk Management
-        self.stop_loss_pct = 0.05  # 5% Hard Stop
-        self.take_profit_rsi = 70  # Exit when overbought
-        self.base_order_size = 1.0
-        
-        # --- State ---
-        # {symbol: deque([price1, price2...], maxlen=50)}
-        self.price_history = {} 
-        self.positions = {} # {symbol: {'entry_price': float, 'size': float}}
+        self.base_risk_per_trade = 0.15  # Risk 15% of equity per trade (Aggressive recovery)
+        self.max_positions = 5
+        self.atr_stop_multiplier = 2.0
 
-    def compute_rsi(self, prices, period=14):
-        if len(prices) < period + 1:
-            return 50 # Neutral
+    def calculate_indicators(self, symbol):
+        data = list(self.prices[symbol])
+        if len(data) < self.history_size:
+            return None
+            
+        current_price = data[-1]
+        prev_price = data[-2]
         
+        # 1. Bollinger Bands
+        bb_slice = data[-self.bb_window:]
+        sma_20 = statistics.mean(bb_slice)
+        std_dev = statistics.stdev(bb_slice)
+        upper_band = sma_20 + (self.bb_std * std_dev)
+        lower_band = sma_20 - (self.bb_std * std_dev)
+        bandwidth = (upper_band - lower_band) / sma_20
+        
+        # 2. RSI
         gains = []
         losses = []
-        for i in range(1, len(prices)):
-            delta = prices[i] - prices[i-1]
-            if delta > 0:
-                gains.append(delta)
+        for i in range(len(data) - self.rsi_period, len(data)):
+            change = data[i] - data[i-1]
+            if change > 0:
+                gains.append(change)
                 losses.append(0)
             else:
                 gains.append(0)
-                losses.append(abs(delta))
+                losses.append(abs(change))
         
-        # Simple RS calculation for robustness in simulation
-        avg_gain = sum(gains[-period:]) / period
-        avg_loss = sum(losses[-period:]) / period
+        avg_gain = statistics.mean(gains) if gains else 0
+        avg_loss = statistics.mean(losses) if losses else 0
         
         if avg_loss == 0:
-            return 100
-        
-        rs = avg_gain / avg_loss
-        return 100 - (100 / (1 + rs))
+            rsi = 100
+        else:
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
+            
+        # 3. EMA 50 (Trend Filter)
+        # Simplified EMA calculation for the last point
+        k = 2 / (self.ema_period + 1)
+        ema_50 = data[0]
+        for p in data[1:]:
+            ema_50 = (p * k) + (ema_50 * (1 - k))
+            
+        # 4. ATR (Simplified for Volatility)
+        tr_sum = 0
+        for i in range(1, 15):
+            high = max(data[-i], data[-i-1]) # Approx high
+            low = min(data[-i], data[-i-1])   # Approx low
+            tr_sum += (high - low)
+        atr = tr_sum / 14
 
-    def next(self, observation):
+        return {
+            'sma_20': sma_20,
+            'lower_band': lower_band,
+            'upper_band': upper_band,
+            'rsi': rsi,
+            'ema_50': ema_50,
+            'atr': atr,
+            'bandwidth': bandwidth,
+            'tick_up': current_price > prev_price
+        }
+
+    def next(self, market_data):
         """
         Main execution loop.
-        :param observation: dict containing 'prices' {symbol: current_price} and 'balance'
-        :return: list of orders
+        market_data: dict {symbol: current_price}
         """
-        orders = []
-        current_prices = observation.get('prices', {})
-        balance = observation.get('balance', 0)
+        self.orders = []
         
-        for symbol, current_price in current_prices.items():
-            # 1. Update History
-            if symbol not in self.price_history:
-                self.price_history[symbol] = deque(maxlen=self.sma_period + 5)
-            self.price_history[symbol].append(current_price)
-            
-            history = list(self.price_history[symbol])
-            if len(history) < self.sma_period:
-                continue # Not enough data yet
+        # 1. Update Data
+        for symbol, price in market_data.items():
+            self.prices[symbol].append(price)
 
-            # 2. Calculate Indicators
-            # SMA (Trend)
-            sma_50 = sum(history[-self.sma_period:]) / self.sma_period
+        # 2. Manage Existing Positions (Exit Logic)
+        active_symbols = list(self.positions.keys())
+        for symbol in active_symbols:
+            pos = self.positions[symbol]
+            current_price = market_data[symbol]
+            entry_price = pos['entry_price']
             
-            # Bollinger Bands (Volatility)
-            bb_slice = history[-self.bb_period:]
-            bb_mean = statistics.mean(bb_slice)
-            bb_stdev = statistics.stdev(bb_slice) if len(bb_slice) > 1 else 0
-            lower_band = bb_mean - (self.bb_std_dev * bb_stdev)
+            # Update highest price seen for trailing stop
+            if current_price > pos['highest_price']:
+                self.positions[symbol]['highest_price'] = current_price
             
-            # RSI (Momentum)
-            rsi = self.compute_rsi(history, self.rsi_period)
-            
-            # Previous Price (for Tick Up check)
-            prev_price = history[-2] if len(history) >= 2 else current_price
+            indicators = self.calculate_indicators(symbol)
+            if not indicators:
+                continue
+                
+            # Exit A: Mean Reversion Complete (Price touched SMA 20)
+            if current_price >= indicators['sma_20']:
+                self.orders.append({'symbol': symbol, 'action': 'SELL', 'reason': 'TAKE_PROFIT_SMA'})
+                del self.positions[symbol]
+                continue
+                
+            # Exit B: Trailing Stop Loss (Chandelier Exit)
+            # Stop is 2 ATR below the highest price seen since entry
+            stop_price = pos['highest_price'] - (indicators['atr'] * self.atr_stop_multiplier)
+            if current_price < stop_price:
+                self.orders.append({'symbol': symbol, 'action': 'SELL', 'reason': 'STOP_LOSS_TRAIL'})
+                del self.positions[symbol]
+                continue
 
-            # 3. Logic Execution
-            
-            # --- EXIT LOGIC ---
+        # 3. Scan for New Entries
+        if len(self.positions) >= self.max_positions:
+            return self.orders # Max exposure reached
+
+        candidates = []
+        for symbol, price in market_data.items():
             if symbol in self.positions:
-                entry_price = self.positions[symbol]['entry_price']
+                continue
                 
-                # Condition A: Hard Stop Loss
-                if current_price < entry_price * (1 - self.stop_loss_pct):
-                    orders.append({'symbol': symbol, 'action': 'SELL', 'reason': 'STOP_LOSS'})
-                    del self.positions[symbol]
-                    continue
-
-                # Condition B: Take Profit (RSI Overbought or Reverted to Mean)
-                if rsi > self.take_profit_rsi or current_price > bb_mean:
-                    orders.append({'symbol': symbol, 'action': 'SELL', 'reason': 'TAKE_PROFIT'})
-                    del self.positions[symbol]
-                    continue
+            indicators = self.calculate_indicators(symbol)
+            if not indicators:
+                continue
             
-            # --- ENTRY LOGIC ---
-            else:
-                # Filter 1: Trend Filter (Only buy if price is above SMA 50) - MUTATION
-                is_uptrend = current_price > sma_50
-                
-                # Filter 2: Oversold Condition (RSI < 30) - INHERITED
-                is_oversold = rsi < 30
-                
-                # Filter 3: Price Deviation (Below Lower Bollinger Band)
-                is_cheap = current_price < lower_band
-                
-                # Filter 4: Tick Up Confirmation (Don't catch falling knife) - INHERITED
-                tick_up = current_price > prev_price
+            # --- STRATEGY LOGIC ---
+            
+            # Filter 0: Avoid Low Volatility Squeezes (Dead markets)
+            if indicators['bandwidth'] < 0.005: 
+                continue
 
-                if is_uptrend and is_oversold and is_cheap and tick_up:
-                    # Dynamic Sizing: Buy more if RSI is extremely low
-                    confidence_multiplier = 1.0
-                    if rsi < 20: confidence_multiplier = 1.5
-                    if rsi < 10: confidence_multiplier = 2.0
-                    
-                    # Check affordability
-                    cost = current_price * self.base_order_size * confidence_multiplier
-                    if balance > cost:
-                        orders.append({
-                            'symbol': symbol, 
-                            'action': 'BUY', 
-                            'size': self.base_order_size * confidence_multiplier,
-                            'tag': 'TREND_DIP_BUY'
-                        })
-                        self.positions[symbol] = {'entry_price': current_price}
+            # Filter 1: Price Action Confirmation (Winner's Wisdom)
+            if not indicators['tick_up']:
+                continue
+            
+            # Filter 2: Oversold Condition
+            is_oversold_rsi = indicators['rsi'] < 30
+            is_below_bb = price < indicators['lower_band']
+            
+            if is_below_bb and is_oversold_rsi:
+                # Mutation: Trend Filter
+                trend_up = price > indicators['ema_50']
+                
+                # Setup A: Dip in Uptrend (High Quality)
+                if trend_up:
+                    score = 100 - indicators['rsi'] # Higher score for lower RSI
+                    candidates.append((score, symbol, price))
+                
+                # Setup B: Crash Reversal (High Risk) -> Require deeper RSI
+                elif indicators['rsi'] < 25:
+                    score = (100 - indicators['rsi']) * 0.8 # Penalty for downtrend
+                    candidates.append((score, symbol, price))
 
-        return orders
+        # 4. Execute Best Trades
+        candidates.sort(key=lambda x: x[0], reverse=True) # Best setups first
+        
+        slots_available = self.max_positions - len(self.positions)
+        for score, symbol, price in candidates[:slots_available]:
+            # Emit Tag for Hive Mind
+            tag = "DIP_BUY_TREND" if price > self.calculate_indicators(symbol)['ema_50'] else "OVERSOLD_BOUNCE"
+            
+            self.orders.append({
+                'symbol': symbol, 
+                'action': 'BUY', 
+                'amount': self.base_risk_per_trade,
+                'tag': tag
+            })
+            
+            # Record Position
+            self.positions[symbol] = {
+                'entry_price': price,
+                'highest_price': price,
+                'timestamp': 0 # Could track time for time-stops
+            }
+            
+        return self.orders

@@ -1,130 +1,183 @@
+```python
 import math
 import statistics
+import random
 from collections import deque, defaultdict
 
 class MyStrategy:
     """
-    Agent: Copy_Trader_952 (Gen 6 - Phoenix Breakout)
-    Evolutionary Logic:
-    1.  Mutation: Abandoned lagging EMAs for instantaneous Z-Score (Statistical) analysis.
-    2.  Alpha: Detects 'Volatility Expansion' - entering only when price moves > 2.0 StdDevs from the mean with high velocity.
-    3.  Risk Control: 'Oxygen Mask' protocol. Tighter stops (-3%) to preserve the $536 capital, with aggressive trailing stops to lock wins.
-    4.  Hive Mind: Fully integrates penalty signals to blacklist toxic assets.
+    Agent: Copy_Trader_952 (Gen 8 - Adaptive Survivor)
+    
+    Evolutionary DNA:
+    1.  [Inherited] RSI + Bollinger Confluence: Prevents buying falling knives.
+    2.  [Inherited] Price Action: Requires 'Tick Up' confirmation.
+    3.  [Mutation - Survival Protocol] 'Drawdown Ratchet': As account equity drops below 80%, 
+        entry criteria tighten (RSI < 25 -> RSI < 20) and position sizing reduces by 50%.
+    4.  [Mutation - Trend Filter] EMA Regime: Differentiates between 'Dip in Uptrend' (Aggressive) 
+        and 'Crash Reversal' (Conservative).
+    5.  [Risk] Volatility-Adjusted Sizing: Position size = (Risk Capital) / ATR, ensuring 
+        high volatility assets get smaller allocations.
     """
 
     def __init__(self):
-        print("🧠 Strategy Initialized (Gen 6: Phoenix Z-Score)")
+        print("🧠 Strategy Initialized (Gen 8: Adaptive Survivor - Volatility Ratchet)")
         
         # === Configuration ===
-        self.lookback_window = 20       # Short window for rapid reaction
-        self.z_score_threshold = 2.0    # Statistical breakout trigger
-        self.min_velocity = 0.5         # Minimum % change to confirm momentum
+        self.rsi_period = 14
+        self.bb_period = 20
+        self.bb_std = 2.0
+        self.atr_period = 14
+        self.ema_trend_period = 50
         
-        # === Risk Management (Survival Mode) ===
-        self.max_positions = 3          # Limit exposure
-        self.stop_loss_pct = 0.03       # Tight 3% hard stop
-        self.trailing_start = 0.05      # Start trailing after 5% gain
-        self.trailing_step = 0.02       # Trail by 2%
-        self.trade_size_usd = 100.0     # Fixed trade size (approx 20% of current equity)
+        # === Risk Management ===
+        self.initial_capital = 1000.0
+        self.base_risk_per_trade = 0.02  # Risk 2% of equity
+        self.max_drawdown_limit = 0.20   # 20% DD triggers Survival Mode
         
-        # === State ===
-        self.price_history = defaultdict(lambda: deque(maxlen=self.lookback_window))
-        self.positions = {}             # {symbol: {'entry_price': float, 'highest_price': float}}
-        self.banned_tags = set()
-        self.last_prices = {}
+        # === Data Storage ===
+        # Format: {symbol: deque}
+        self.closes = defaultdict(lambda: deque(maxlen=100))
+        self.highs = defaultdict(lambda: deque(maxlen=100))
+        self.lows = defaultdict(lambda: deque(maxlen=100))
+        self.positions = {} # {symbol: {'entry': price, 'stop': price, 'tp': price, 'size': amt}}
 
-    def on_hive_signal(self, signal: dict):
-        """Absorb Hive Mind wisdom to avoid toxic assets"""
-        penalize = signal.get("penalize", [])
-        if penalize:
-            print(f"🛡️ Phoenix Shield: Banning {penalize}")
-            self.banned_tags.update(penalize)
+    def update_data(self, symbol, open_p, high_p, low_p, close_p):
+        """Updates historical data for indicators."""
+        self.closes[symbol].append(close_p)
+        self.highs[symbol].append(high_p)
+        self.lows[symbol].append(low_p)
 
-    def get_z_score(self, symbol, current_price):
-        """Calculate statistical anomaly score"""
-        history = self.price_history[symbol]
-        if len(history) < self.lookback_window:
+    def calculate_rsi(self, series, period=14):
+        if len(series) < period + 1:
+            return 50.0
+        
+        gains = []
+        losses = []
+        for i in range(1, period + 1):
+            delta = series[-i] - series[-i-1]
+            if delta > 0:
+                gains.append(delta)
+                losses.append(0)
+            else:
+                gains.append(0)
+                losses.append(abs(delta))
+        
+        avg_gain = sum(gains) / period
+        avg_loss = sum(losses) / period
+        
+        if avg_loss == 0:
+            return 100.0
+        
+        rs = avg_gain / avg_loss
+        return 100 - (100 / (1 + rs))
+
+    def calculate_bollinger(self, series, period=20, std_dev=2.0):
+        if len(series) < period:
+            return None, None, None
+        
+        recent = list(series)[-period:]
+        sma = sum(recent) / period
+        std = statistics.stdev(recent)
+        upper = sma + (std * std_dev)
+        lower = sma - (std * std_dev)
+        return upper, sma, lower
+
+    def calculate_atr(self, symbol, period=14):
+        highs = self.highs[symbol]
+        lows = self.lows[symbol]
+        closes = self.closes[symbol]
+        
+        if len(closes) < period + 1:
             return 0.0
-        
-        mean_price = statistics.mean(history)
-        std_dev = statistics.stdev(history)
-        
-        if std_dev == 0:
-            return 0.0
             
-        return (current_price - mean_price) / std_dev
+        tr_sum = 0
+        for i in range(1, period + 1):
+            h = highs[-i]
+            l = lows[-i]
+            prev_c = closes[-i-1]
+            tr = max(h - l, abs(h - prev_c), abs(l - prev_c))
+            tr_sum += tr
+            
+        return tr_sum / period
 
-    def on_price_update(self, prices: dict):
+    def calculate_ema(self, series, period):
+        if len(series) < period:
+            return series[-1]
+        multiplier = 2 / (period + 1)
+        ema = series[0]
+        for price in list(series)[1:]:
+            ema = (price - ema) * multiplier + ema
+        return ema
+
+    def get_action(self, symbol, current_price, current_balance, portfolio_positions):
         """
-        Core Logic: Volatility Expansion Breakout
+        Determines action: 'BUY', 'SELL', or 'HOLD'.
         """
-        decision = None
+        # 0. Update internal state based on portfolio
+        if symbol in portfolio_positions:
+            self.positions[symbol] = portfolio_positions[symbol]
+        elif symbol in self.positions:
+            del self.positions[symbol]
+
+        history = self.closes[symbol]
+        if len(history) < self.ema_trend_period:
+            return "HOLD", 0
+
+        # 1. Calculate Indicators
+        rsi = self.calculate_rsi(history, self.rsi_period)
+        upper_bb, mid_bb, lower_bb = self.calculate_bollinger(history, self.bb_period, self.bb_std)
+        atr = self.calculate_atr(symbol, self.atr_period)
+        ema_trend = self.calculate_ema(history, self.ema_trend_period)
         
-        # 1. Update History & Calculate Metrics
-        for symbol, data in prices.items():
-            current_price = data["priceUsd"]
+        if not lower_bb or atr == 0:
+            return "HOLD", 0
+
+        # 2. Determine Market Regime & Survival Mode
+        drawdown = (self.initial_capital - current_balance) / self.initial_capital
+        survival_mode = drawdown > self.max_drawdown_limit
+        
+        is_uptrend = current_price > ema_trend
+        
+        # 3. Dynamic Thresholds
+        # If in survival mode or downtrend, require deeper oversold conditions
+        if survival_mode:
+            buy_rsi_threshold = 20
+            risk_multiplier = 0.5 # Cut risk in half
+        elif not is_uptrend:
+            buy_rsi_threshold = 25
+            risk_multiplier = 0.75
+        else:
+            buy_rsi_threshold = 30 # Standard dip buy in uptrend
+            risk_multiplier = 1.0
+
+        # 4. Sell Logic (Take Profit / Stop Loss)
+        if symbol in self.positions:
+            entry_price = self.positions[symbol]['entry']
             
-            # Update history
-            self.price_history[symbol].append(current_price)
+            # Stop Loss (Dynamic based on ATR when entered, or fixed % fallback)
+            # Assuming we hold logic here, usually managed by engine, but if we signal close:
+            if current_price < entry_price - (2.0 * atr):
+                return "SELL", 1.0 # Full close (Stop Loss)
             
-            # Calculate Velocity (% change since last tick)
-            last_price = self.last_prices.get(symbol, current_price)
-            velocity = ((current_price - last_price) / last_price) * 100 if last_price > 0 else 0
-            self.last_prices[symbol] = current_price
+            # Take Profit (Mean Reversion -> Target Upper Band or RSI Overbought)
+            if rsi > 70 or current_price > upper_bb:
+                return "SELL", 1.0 # Full close (Take Profit)
+                
+            return "HOLD", 0
 
-            # Check Banned Tags (if data contains tags, usually in metadata, assuming symbol check here)
-            if symbol in self.banned_tags:
-                continue
+        # 5. Buy Logic
+        # Condition A: Statistical Oversold (Lower BB + RSI)
+        condition_a = current_price < lower_bb and rsi < buy_rsi_threshold
+        
+        # Condition B: Price Action Confirmation (Tick Up from previous close)
+        condition_b = current_price > history[-2] 
+        
+        # Condition C: Volatility Filter (Avoid exploding volatility/crashes)
+        # If current candle range is > 2x ATR, it's too volatile/panic
+        current_range = self.highs[symbol][-1] - self.lows[symbol][-1]
+        condition_c = current_range < (2.0 * atr)
 
-            # === EXIT LOGIC (Risk Management First) ===
-            if symbol in self.positions:
-                pos = self.positions[symbol]
-                entry_price = pos['entry_price']
-                
-                # Update highest price seen for trailing stop
-                if current_price > pos['highest_price']:
-                    pos['highest_price'] = current_price
-                
-                # Calculate PnL %
-                pnl_pct = (current_price - entry_price) / entry_price
-                
-                # A. Hard Stop Loss
-                if pnl_pct < -self.stop_loss_pct:
-                    print(f"🛑 STOP LOSS: {symbol} at {pnl_pct:.2%}")
-                    del self.positions[symbol]
-                    return {"symbol": symbol, "action": "sell", "amount": "all"}
-                
-                # B. Trailing Stop Profit
-                # If we hit trailing start, check if we fell back by trailing step
-                highest_pct = (pos['highest_price'] - entry_price) / entry_price
-                if highest_pct >= self.trailing_start:
-                    drawdown_from_high = (pos['highest_price'] - current_price) / pos['highest_price']
-                    if drawdown_from_high >= self.trailing_step:
-                        print(f"💰 TAKE PROFIT (Trailing): {symbol} at {pnl_pct:.2%}")
-                        del self.positions[symbol]
-                        return {"symbol": symbol, "action": "sell", "amount": "all"}
-                
-                continue # Skip entry logic if we hold position
-
-            # === ENTRY LOGIC (Phoenix Breakout) ===
-            # Only look for entries if we have slots open
-            if len(self.positions) < self.max_positions:
-                z_score = self.get_z_score(symbol, current_price)
-                
-                # Mutation: Buy if price is statistically anomalous (high Z-score) AND moving fast (Velocity)
-                # This catches the "Pump" early
-                if z_score > self.z_score_threshold and velocity > self.min_velocity:
-                    print(f"🚀 BREAKOUT: {symbol} | Z: {z_score:.2f} | Vel: {velocity:.2f}%")
-                    
-                    # Record Position
-                    self.positions[symbol] = {
-                        'entry_price': current_price,
-                        'highest_price': current_price
-                    }
-                    
-                    # Return Buy Decision
-                    # Note: Darwin SDK usually expects 'amount' in USD or token quantity. 
-                    # Using USD based on survival config.
-                    return {"symbol": symbol, "action": "buy", "amount": self.trade_size_usd}
-
-        return decision
+        if condition_a and condition_b and condition_c:
+            # 6. Position Sizing (Risk Based)
+            # Risk Amount = Balance * Risk% * Multiplier
+            risk_

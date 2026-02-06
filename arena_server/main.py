@@ -7,7 +7,7 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import Dict, List
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from contextlib import asynccontextmanager
@@ -396,12 +396,19 @@ async def end_epoch():
 
 # ========== 鉴权 API ==========
 
+# === Agent 数量限制 ===
+MAX_AGENTS_PER_IP = 5  # 每个IP最多5个Agent
+MAX_TOTAL_AGENTS = 100  # 系统最大Agent总数
+ip_agent_count: Dict[str, int] = {}  # IP -> count
+
 @app.post("/auth/register")
-async def register_api_key(agent_id: str):
+async def register_api_key(agent_id: str, request: Request):
     """
-    [模拟] 用户注册接口
-    返回一个专属的 API Key
+    用户注册接口 - 返回专属 API Key
+    限制: 每个IP最多注册 MAX_AGENTS_PER_IP 个Agent
     """
+    client_ip = request.client.host if request.client else "unknown"
+    
     # Check if agent already has a key
     for key, aid in API_KEYS_DB.items():
         if aid == agent_id:
@@ -412,12 +419,27 @@ async def register_api_key(agent_id: str):
                 "message": "Welcome back!"
             }
 
+    # === 限制检查 ===
+    # 1. 系统总数限制
+    if len(API_KEYS_DB) >= MAX_TOTAL_AGENTS:
+        raise HTTPException(status_code=429, detail=f"Arena is full! Max {MAX_TOTAL_AGENTS} agents allowed.")
+    
+    # 2. 每IP限制 (跳过本地开发)
+    if client_ip not in ["127.0.0.1", "localhost"]:
+        current_count = ip_agent_count.get(client_ip, 0)
+        if current_count >= MAX_AGENTS_PER_IP:
+            raise HTTPException(
+                status_code=429, 
+                detail=f"Rate limit: Max {MAX_AGENTS_PER_IP} agents per IP. You have {current_count}."
+            )
+        ip_agent_count[client_ip] = current_count + 1
+
     # 生成一个 32 位的随机 Key
     new_key = f"dk_{secrets.token_hex(16)}"
     API_KEYS_DB[new_key] = agent_id
     save_api_keys(API_KEYS_DB) # Save to disk
     
-    logger.info(f"🔑 Generated new API Key for {agent_id}: {new_key}")
+    logger.info(f"🔑 Generated new API Key for {agent_id} (IP: {client_ip}): {new_key}")
     return {
         "agent_id": agent_id,
         "api_key": new_key,
