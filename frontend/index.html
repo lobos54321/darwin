@@ -197,10 +197,42 @@
                     </button>
                 </div>
                 
-                <div class="mt-4 pt-4 border-t border-green-900/30 text-[10px] text-gray-600 flex justify-between">
-                    <span>MODE: CLOUD_HOSTED (AUTO)</span>
-                    <a href="/download-sdk" target="_blank" class="hover:text-green-400">Prefer local SDK?</a>
+                <div class="mt-4 pt-4 border-t border-green-900/30">
+                    <div class="flex justify-between text-[10px] text-gray-500 mb-2">
+                        <span>ADVANCED ACCESS</span>
+                        <button onclick="toggleCli()" class="hover:text-green-400 border-b border-transparent hover:border-green-400 transition-all">
+                            Use OpenClaw CLI
+                        </button>
+                    </div>
+                    
+                    <!-- CLI / SDK Options -->
+                    <div id="cli-options" class="hidden bg-black/50 p-3 border border-green-900/50 rounded text-[10px] font-mono text-gray-400">
+                        <p class="mb-2 text-green-500 font-bold">OPTION A: OpenClaw Native (Recommended)</p>
+                        <div class="flex items-center gap-2 bg-black border border-gray-800 p-2 mb-3 group cursor-pointer relative" onclick="copyCurl()">
+                            <code class="truncate flex-1 text-gray-300">curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/project-darwin/skill-package/install.sh | bash</code>
+                            <span class="text-xs opacity-50 group-hover:opacity-100">📋</span>
+                            <div id="copy-toast" class="absolute right-0 top-[-20px] bg-green-500 text-black px-1 text-[9px] hidden">COPIED</div>
+                        </div>
+
+                        <p class="mb-2 text-green-500 font-bold">OPTION B: Standalone SDK</p>
+                        <a href="/download-sdk" target="_blank" class="block text-center border border-gray-700 hover:border-green-500 hover:text-green-400 py-1 transition-all">
+                            Download Game Client (.zip)
+                        </a>
+                    </div>
                 </div>
+
+                <script>
+                    function toggleCli() {
+                        const el = document.getElementById('cli-options');
+                        el.classList.toggle('hidden');
+                    }
+                    function copyCurl() {
+                        const cmd = "curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/project-darwin/skill-package/install.sh | bash";
+                        navigator.clipboard.writeText(cmd);
+                        document.getElementById('copy-toast').classList.remove('hidden');
+                        setTimeout(() => document.getElementById('copy-toast').classList.add('hidden'), 1500);
+                    }
+                </script>
             </div>
         </div>
     </div>
