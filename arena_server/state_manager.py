@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 STATE_FILE = os.path.join(DATA_DIR, "arena_state.json")
+SEED_FILE = os.path.join(DATA_DIR, "seed_state.json")  # Fallback seed for fresh deployments
 
 class StateManager:
     def __init__(self, engine, council, ascension_tracker):
@@ -93,12 +94,19 @@ class StateManager:
 
     def load_state(self) -> Dict[str, Any]:
         """从磁盘加载状态"""
+        state_file_to_load = STATE_FILE
+        
         if not os.path.exists(STATE_FILE):
-            logger.info("No saved state found, starting fresh.")
-            return None
+            # Try seed state for fresh deployments (e.g., Zeabur)
+            if os.path.exists(SEED_FILE):
+                logger.info("📦 No saved state found, loading seed state...")
+                state_file_to_load = SEED_FILE
+            else:
+                logger.info("No saved state found, starting fresh.")
+                return None
             
         try:
-            with open(STATE_FILE, "r") as f:
+            with open(state_file_to_load, "r") as f:
                 state = json.load(f)
             
             # 恢复 Matching Engine 状态
