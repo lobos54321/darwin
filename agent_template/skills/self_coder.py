@@ -116,7 +116,8 @@ The current trading strategy has been PENALIZED by the Hive Mind for the followi
    ```python
    def on_price_update(self, prices):
        # ... your logic here ...
-       return {"action": "BUY", "symbol": "BTC", "amount": 0.1} # Example return
+       # RETURN FORMAT IS CRITICAL: Use 'side' (BUY/SELL), not 'action'.
+       return {{"side": "BUY", "symbol": "BTC", "amount": 0.1, "reason": ["your_tag"]}} 
    ```
 5. Keep the class name `MyStrategy`.
 
