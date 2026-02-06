@@ -1,3 +1,4 @@
+```python
 import random
 import statistics
 import math
@@ -5,161 +6,190 @@ from collections import deque
 
 class MyStrategy:
     """
-    Agent: Contrarian_239 -> Evolved: Adaptive_Regime_Phoenix_v3
+    Agent: Contrarian_239 -> Evolved: Phoenix_Rebirth_V4
     
-    🧬 Evolution Report:
+    🧬 Evolution Report & DNA Merge:
     1.  **Inherited Winner DNA (Phoenix)**: 
-        - Retained RSI (14) & Bollinger Band logic.
-        - Retained 'Tick Up' confirmation to avoid catching falling knives.
+        - Integrated RSI(14) for momentum filtering.
+        - Adopted Bollinger Band Mean Reversion logic.
+        - Retained 'Tick Up' (Price Action) confirmation.
     
-    2.  **CRITICAL FIX - Regime Filtering (The "Trend" Mutation)**:
-        - Previous failure analysis: Bought dips during strong downtrends.
-        - New Logic: Calculates a 50-period SMA to determine Market Regime.
-        - Bull Regime (Price > SMA50): Buy aggressive dips (RSI < 40).
-        - Bear Regime (Price < SMA50): ONLY buy extreme crashes (RSI < 25).
+    2.  **Unique Mutation - The 'Panic Stabilizer'**:
+        - **Problem**: Previous version bought falling knives during high-momentum crashes.
+        - **Solution**: Added 'Volatility Normalization'. We do not buy if the current bar's range is > 3x average range (Extreme Panic), unless RSI is extremely oversold (< 20).
+        - **Time-Based Exit**: If a trade doesn't revert to mean within 10 bars, we exit. Prevents 'dead money' in losing positions.
     
-    3.  **Risk Management - Trailing Stop & Volatility Damping**:
-        - Replaced hard stop with a Trailing Stop to let winners run but cut reversals.
-        - Position sizing is now strictly limited to preserve the remaining $536 capital.
+    3.  **Survival Mode Risk Management**:
+        - Current Capital ($536) is critical.
+        - Position Sizing: Dynamic Kelly Criterion proxy. Lower size when volatility is high.
+        - Hard Stop: Tightened to 1.5 * ATR to preserve capital.
     """
 
     def __init__(self):
-        print("🧠 Strategy Initialized (Adaptive_Regime_Phoenix_v3)")
+        print("🧠 Strategy Initialized (Phoenix_Rebirth_V4: Survival Mode)")
         
-        # Data storage
-        self.history = {}       # {symbol: deque(maxlen=50)}
-        self.positions = {}     # {symbol: {'entry_price': float, 'highest_price': float, 'shares': int}}
-        
-        # Parameters
-        self.lookback = 20      # BB Period
+        # Configuration
         self.rsi_period = 14
-        self.trend_period = 50  # Regime filter
+        self.bb_period = 20
+        self.bb_std_dev = 2.0
+        self.max_history = 50
+        self.stop_loss_atr_mult = 1.5
+        self.max_hold_bars = 10
         
-        # Risk Params
-        self.base_risk_per_trade = 0.10  # Risk 10% of equity per trade
-        self.trailing_stop_pct = 0.03    # 3% Trailing Stop
-        self.min_volatility = 0.005      # Avoid dead assets
+        # Data Structures
+        # {symbol: deque([close_prices], maxlen=50)}
+        self.price_history = {} 
+        # {symbol: deque([high_low_range], maxlen=50)}
+        self.volatility_history = {} 
+        
+        # Position Tracker
+        # {symbol: {'entry_price': float, 'shares': int, 'bars_held': int, 'stop_price': float}}
+        self.positions = {} 
 
-    def get_rsi(self, prices, period=14):
+    def calculate_rsi(self, prices, period=14):
         if len(prices) < period + 1:
-            return 50  # Neutral
+            return 50  # Neutral if not enough data
         
         gains = []
         losses = []
-        for i in range(1, period + 1):
-            change = prices[-i] - prices[-(i+1)]
-            if change > 0:
-                gains.append(change)
+        
+        for i in range(1, len(prices)):
+            delta = prices[i] - prices[i-1]
+            if delta > 0:
+                gains.append(delta)
                 losses.append(0)
             else:
                 gains.append(0)
-                losses.append(abs(change))
+                losses.append(abs(delta))
         
-        avg_gain = sum(gains) / period
-        avg_loss = sum(losses) / period
+        # Simple average for the first step (can be exponential for better accuracy)
+        avg_gain = sum(gains[-period:]) / period
+        avg_loss = sum(losses[-period:]) / period
         
         if avg_loss == 0:
             return 100
         
         rs = avg_gain / avg_loss
-        return 100 - (100 / (1 + rs))
+        rsi = 100 - (100 / (1 + rs))
+        return rsi
+
+    def get_bollinger_bands(self, prices, period=20, num_std=2):
+        if len(prices) < period:
+            return None
+        
+        sma = statistics.mean(prices[-period:])
+        std_dev = statistics.stdev(prices[-period:])
+        
+        upper = sma + (std_dev * num_std)
+        lower = sma - (std_dev * num_std)
+        return sma, upper, lower, std_dev
 
     def next(self, context):
-        # 1. Update Context & Data
-        current_prices = context['prices'] # Assuming dictionary {symbol: price}
-        portfolio = context['portfolio']   # {symbol: quantity}
-        cash = context['cash']
-        orders = []
-
+        """
+        Main execution loop called by the engine.
+        Args:
+            context: object containing 'portfolio' (cash, positions) and 'data' (current market snapshot)
+        """
+        cash = context.portfolio.cash
+        current_prices = context.data  # {symbol: current_price}
+        
+        # 1. Update Data & Manage Existing Positions
         for symbol, price in current_prices.items():
-            # Initialize history
-            if symbol not in self.history:
-                self.history[symbol] = deque(maxlen=self.trend_period + 1)
-            self.history[symbol].append(price)
+            # Initialize history if new
+            if symbol not in self.price_history:
+                self.price_history[symbol] = deque(maxlen=self.max_history)
+                self.volatility_history[symbol] = deque(maxlen=self.max_history)
+            
+            # Store Price
+            self.price_history[symbol].append(price)
+            
+            # Store Volatility (Approximate High-Low via Close-PrevClose abs diff for simplicity if HL unavailable)
+            if len(self.price_history[symbol]) > 1:
+                vol = abs(price - self.price_history[symbol][-2])
+                self.volatility_history[symbol].append(vol)
 
-            # Skip if not enough data
-            if len(self.history[symbol]) < self.trend_period:
+            # Check Exit Conditions for existing positions
+            if symbol in self.positions:
+                pos = self.positions[symbol]
+                pos['bars_held'] += 1
+                
+                # Logic: Exit
+                sma, _, _, _ = self.get_bollinger_bands(list(self.price_history[symbol])) or (0,0,0,0)
+                
+                # Condition A: Stop Loss Hit
+                if price <= pos['stop_price']:
+                    print(f"🛑 STOP LOSS: {symbol} @ {price:.2f}")
+                    context.order(symbol, -pos['shares'])
+                    del self.positions[symbol]
+                    continue
+                
+                # Condition B: Take Profit (Mean Reversion Complete)
+                if sma > 0 and price >= sma:
+                    print(f"💰 TAKE PROFIT: {symbol} @ {price:.2f} (Reverted to Mean)")
+                    context.order(symbol, -pos['shares'])
+                    del self.positions[symbol]
+                    continue
+                
+                # Condition C: Time Decay (Stale Trade)
+                if pos['bars_held'] >= self.max_hold_bars:
+                    print(f"⏳ TIME EXIT: {symbol} (Held too long)")
+                    context.order(symbol, -pos['shares'])
+                    del self.positions[symbol]
+                    continue
+
+        # 2. Scan for New Entries
+        # Shuffle symbols to avoid bias in low liquidity
+        symbols = list(current_prices.keys())
+        random.shuffle(symbols)
+
+        for symbol in symbols:
+            # Skip if already in position or not enough cash
+            if symbol in self.positions or cash < 10:
+                continue
+                
+            history = list(self.price_history[symbol])
+            if len(history) < self.bb_period:
                 continue
 
-            prices = list(self.history[symbol])
+            # Calculate Indicators
+            sma, upper, lower, std_dev = self.get_bollinger_bands(history)
+            rsi = self.calculate_rsi(history, self.rsi_period)
+            current_price = history[-1]
+            prev_price = history[-2]
             
-            # --- Indicator Calculation ---
-            # 1. Bollinger Bands (20)
-            recent_prices = prices[-self.lookback:]
-            sma20 = statistics.mean(recent_prices)
-            std20 = statistics.stdev(recent_prices) if len(recent_prices) > 1 else 0
-            if std20 == 0: continue # Skip flat assets
-            
-            upper_bb = sma20 + (2 * std20)
-            lower_bb = sma20 - (2 * std20)
-            
-            # 2. RSI (14)
-            rsi = self.get_rsi(prices, self.rsi_period)
-            
-            # 3. Regime Filter (SMA 50)
-            sma50 = statistics.mean(prices[-self.trend_period:])
-            is_bull_market = price > sma50
-            
-            # --- Position Management (Exit Logic) ---
-            current_qty = portfolio.get(symbol, 0)
-            
-            if current_qty > 0:
-                # Update Trailing Stop Logic
-                if symbol not in self.positions:
-                    self.positions[symbol] = {'entry_price': price, 'highest_price': price}
-                
-                # Update highest price observed since entry
-                if price > self.positions[symbol]['highest_price']:
-                    self.positions[symbol]['highest_price'] = price
-                
-                highest = self.positions[symbol]['highest_price']
-                entry = self.positions[symbol]['entry_price']
-                
-                # Calculate dynamic stop price
-                stop_price = highest * (1 - self.trailing_stop_pct)
-                
-                # EXIT 1: Trailing Stop Hit
-                if price < stop_price:
-                    orders.append({'symbol': symbol, 'action': 'SELL', 'quantity': current_qty, 'reason': 'TRAILING_STOP'})
-                    del self.positions[symbol]
-                    continue
-                
-                # EXIT 2: RSI Overbought (Take Profit)
-                # Stronger take profit in bear markets
-                exit_rsi = 75 if is_bull_market else 65
-                if rsi > exit_rsi:
-                    orders.append({'symbol': symbol, 'action': 'SELL', 'quantity': current_qty, 'reason': 'RSI_PEAK'})
-                    del self.positions[symbol]
-                    continue
+            # Calculate ATR proxy (Average of recent volatility)
+            avg_vol = statistics.mean(list(self.volatility_history[symbol])[-14:]) if len(self.volatility_history[symbol]) > 0 else 0
+            current_vol = abs(current_price - prev_price)
 
-            # --- Entry Logic ---
-            elif current_qty == 0 and cash > 10:
-                # Price Action Confirmation: Current > Prev (Tick Up)
-                tick_up = prices[-1] > prices[-2]
+            # --- 🧬 GENETIC LOGIC 🧬 ---
+            
+            # 1. FILTER: Oversold & Undervalued
+            is_oversold = rsi < 30
+            is_below_band = current_price < lower
+            
+            # 2. CONFIRMATION: Price Action (Tick Up)
+            # We want to see buyers stepping in. Current price > Previous Price
+            is_recovering = current_price > prev_price
+            
+            # 3. MUTATION: Panic Filter
+            # If current volatility is 3x the average, it's a crash. Don't buy unless RSI is EXTREME (<20).
+            is_panic = current_vol > (avg_vol * 3)
+            safe_to_enter = not is_panic or (is_panic and rsi < 20)
+
+            if is_oversold and is_below_band and is_recovering and safe_to_enter:
                 
-                # Dynamic Thresholds based on Regime
-                if is_bull_market:
-                    # Aggressive: Buy standard dips
-                    buy_signal = (price < lower_bb) and (rsi < 40) and tick_up
-                    tag = 'BULL_DIP'
-                else:
-                    # Defensive: Only buy extreme fear
-                    # Price must be significantly below Lower BB
-                    buy_signal = (price < lower_bb - (0.5 * std20)) and (rsi < 25) and tick_up
-                    tag = 'BEAR_CRASH'
-
-                if buy_signal:
-                    # Volatility Sizing: Lower size for higher volatility assets
-                    volatility_ratio = std20 / price
-                    risk_scalar = 0.02 / max(volatility_ratio, 0.01) # Target 2% volatility impact
-                    risk_scalar = min(max(risk_scalar, 0.5), 1.5) # Clamp between 0.5x and 1.5x
-                    
-                    # Calculate quantity
-                    allocation = cash * self.base_risk_per_trade * risk_scalar
-                    quantity = int(allocation / price)
-                    
-                    if quantity > 0:
-                        orders.append({'symbol': symbol, 'action': 'BUY', 'quantity': quantity, 'tag': tag})
-                        self.positions[symbol] = {'entry_price': price, 'highest_price': price}
-
-        return orders
+                # Dynamic Sizing based on Volatility (Risk Parity Logic)
+                # If volatility is high, buy less.
+                risk_per_share = (std_dev * self.stop_loss_atr_mult)
+                if risk_per_share == 0: continue
+                
+                # Risk 2% of current equity per trade
+                equity = context.portfolio.total_value
+                risk_amount = equity * 0.02
+                
+                shares_to_buy = math.floor(risk_amount / risk_per_share)
+                cost = shares_to_buy * current_price
+                
+                # Cap size at 15% of equity to ensure diversification
+                if cost > (equity * 0.15):
+                    shares_to_buy = math.floor((equity * 0.15) / current_price

@@ -1,19 +1,3 @@
-# Darwin SDK - User Strategy Template
-# 🧬 AGENT: Bo_Bot | GEN: 96 | CODENAME: ADAPTIVE_MEAN_REVERSION
-# -----------------------------------------------------------------------------
-# Evolution Log (Gen 96):
-# 1. INHERITANCE: Absorbed Agent_006's "Bollinger Mean Reversion" logic. 
-#    Fixed thresholds are dead; Volatility (StdDev) is king.
-# 2. MUTATION - "Knife Catcher Protection": Unlike the winner, we do not buy 
-#    on the immediate break of the Lower Band. We require a "V-Shape" confirmation 
-#    (Price > Previous Price) to ensure the falling knife has hit the floor.
-# 3. SURVIVAL - "Dynamic Risk": Stop Loss is no longer static. It is calculated 
-#    as 1.5x the current Volatility (StdDev) at entry. Noisy markets get wider stops; 
-#    calm markets get tight stops.
-# 4. FILTER - "Dead Zone": Added a Minimum Volatility threshold. If bands are too 
-#    tight, profit potential < fees. We sit on cash.
-# -----------------------------------------------------------------------------
-
 import random
 import statistics
 import math
@@ -21,157 +5,189 @@ from collections import deque
 
 class MyStrategy:
     def __init__(self):
-        print("🧠 Strategy Initialized (Gen 96: Adaptive Mean Reversion)")
+        print("🧬 AGENT: Bo_Bot | GEN: 97 | CODENAME: PHOENIX_MOMENTUM")
+        print("📝 Evolution: Inherited RSI+BB (Agent_008). Added Trend Filter & Time-Decay Exit.")
         
         # --- Configuration ---
-        self.HISTORY_WINDOW = 30        # Ticks to calculate Mean/StdDev
-        self.MAX_POSITIONS = 5          # Max concurrent trades
-        self.POSITION_PCT = 0.18        # 18% equity per trade (leave buffer)
+        self.balance = 1000.0  # Tracking locally if SDK doesn't provide
+        self.positions = {}    # {symbol: {'entry': float, 'size': float, 'ticks_held': int, 'stop': float}}
         
-        # --- Strategy Parameters ---
-        self.BB_STD_DEV = 2.2           # Bollinger Band width (Entry threshold)
-        self.MIN_VOLATILITY = 0.003     # Min band width % to justify fees
-        self.STOP_LOSS_STD = 1.5        # Stop Loss = Entry - (1.5 * StdDev)
-        self.TAKE_PROFIT_STD = 1.0      # Take Profit = Mean (Regression to mean)
+        # --- Hyperparameters ---
+        self.LOOKBACK_WINDOW = 50       # Increased for Trend Filter
+        self.RSI_PERIOD = 14
+        self.BB_PERIOD = 20
+        self.BB_STD = 2.0
+        self.MAX_POSITIONS = 5
+        self.BASE_RISK_PCT = 0.15       # 15% equity per trade
         
-        # --- State ---
-        self.history = {}               # {symbol: deque([prices])}
-        self.entry_stats = {}           # {symbol: {entry_price, entry_std, stop_price}}
-        self.cooldown = {}              # {symbol: ticks_remaining}
+        # --- Data Structures ---
+        self.history = {}               # {symbol: deque(maxlen=50)}
+        self.prev_prices = {}           # For "Tick Up" check
 
-    def get_indicators(self, symbol):
-        """Calculates Bollinger Bands and Volatility."""
-        prices = self.history[symbol]
-        if len(prices) < self.HISTORY_WINDOW:
+    def get_indicators(self, prices):
+        """Calculates SMA, Bollinger Bands, and RSI."""
+        if len(prices) < self.LOOKBACK_WINDOW:
             return None
+            
+        current_price = prices[-1]
         
-        # Use recent window
-        window = list(prices)[-self.HISTORY_WINDOW:]
-        mean = statistics.mean(window)
-        stdev = statistics.stdev(window) if len(window) > 1 else 0
+        # 1. Bollinger Bands (20, 2)
+        bb_slice = list(prices)[-self.BB_PERIOD:]
+        sma_20 = statistics.mean(bb_slice)
+        std_dev = statistics.stdev(bb_slice)
+        upper_band = sma_20 + (self.BB_STD * std_dev)
+        lower_band = sma_20 - (self.BB_STD * std_dev)
+        
+        # 2. RSI (14)
+        gains = []
+        losses = []
+        # Calculate changes for the last 14 periods
+        rsi_slice = list(prices)[-(self.RSI_PERIOD + 1):]
+        for i in range(1, len(rsi_slice)):
+            change = rsi_slice[i] - rsi_slice[i-1]
+            if change > 0:
+                gains.append(change)
+                losses.append(0)
+            else:
+                gains.append(0)
+                losses.append(abs(change))
+        
+        avg_gain = statistics.mean(gains) if gains else 0
+        avg_loss = statistics.mean(losses) if losses else 0
+        
+        if avg_loss == 0:
+            rsi = 100
+        else:
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
+            
+        # 3. Trend Filter (SMA 50)
+        sma_50 = statistics.mean(prices) # Since maxlen=50
         
         return {
-            "mean": mean,
-            "stdev": stdev,
-            "upper": mean + (self.BB_STD_DEV * stdev),
-            "lower": mean - (self.BB_STD_DEV * stdev),
-            "volatility_pct": (stdev / mean) if mean > 0 else 0
+            'sma_20': sma_20,
+            'sma_50': sma_50,
+            'upper': upper_band,
+            'lower': lower_band,
+            'std_dev': std_dev,
+            'rsi': rsi
         }
 
-    def next_action(self, state):
+    def next(self, tick):
         """
-        Main tick handler.
-        state: {
-            'balance': float,
-            'portfolio': {'SYMBOL': {'amount': float, 'entry_price': float, ...}},
-            'market_prices': {'SYMBOL': float, ...},
-            'time': int
-        }
+        Main execution loop.
+        tick: dict {symbol: price, ...}
         """
-        orders = []
-        current_balance = state['balance']
-        portfolio = state.get('portfolio', {})
-        prices = state.get('market_prices', {})
-        
-        # 1. Update Data & Cooldowns
-        for symbol, price in prices.items():
+        # 1. Update Data
+        for symbol, price in tick.items():
             if symbol not in self.history:
-                self.history[symbol] = deque(maxlen=self.HISTORY_WINDOW + 5)
+                self.history[symbol] = deque(maxlen=self.LOOKBACK_WINDOW)
             self.history[symbol].append(price)
-            
-            if symbol in self.cooldown and self.cooldown[symbol] > 0:
-                self.cooldown[symbol] -= 1
 
-        # 2. Manage Existing Positions (Exit Logic)
-        for symbol, pos_data in portfolio.items():
-            current_price = prices.get(symbol)
+        # 2. Manage Existing Positions (Risk Management)
+        # Iterate copy to allow deletion
+        for symbol in list(self.positions.keys()):
+            pos = self.positions[symbol]
+            current_price = tick.get(symbol)
+            
             if not current_price: continue
             
-            # Retrieve entry stats (or default if missing)
-            stats = self.entry_stats.get(symbol, {
-                'stop_price': pos_data['entry_price'] * 0.95,
-                'target_price': pos_data['entry_price'] * 1.05
-            })
+            pos['ticks_held'] += 1
+            entry_price = pos['entry']
             
-            indicators = self.get_indicators(symbol)
-            
-            should_sell = False
-            reason = ""
+            # Indicators for Exit
+            inds = self.get_indicators(self.history[symbol])
+            if not inds: continue
 
-            # A. Dynamic Stop Loss (Volatility Based)
-            if current_price <= stats['stop_price']:
-                should_sell = True
-                reason = "STOP_LOSS"
+            # --- EXIT LOGIC ---
             
-            # B. Mean Reversion Target (Price returned to Mean)
-            elif indicators and current_price >= indicators['mean']:
-                should_sell = True
-                reason = "TAKE_PROFIT_MEAN"
+            # A. Dynamic Stop Loss (Hard Risk Control)
+            if current_price <= pos['stop']:
+                print(f"🛑 STOP LOSS: {symbol} @ {current_price:.2f}")
+                self.close_position(symbol, current_price)
+                continue
+
+            # B. Mean Reversion Target (Take Profit)
+            # Winner Wisdom: Don't be greedy, exit at the mean
+            if current_price >= inds['sma_20']:
+                print(f"💰 TAKE PROFIT (Mean Reverted): {symbol} @ {current_price:.2f}")
+                self.close_position(symbol, current_price)
+                continue
+                
+            # C. Time Decay (Mutation)
+            # If trade is stale > 20 ticks and barely moving, cut it to free up capital
+            if pos['ticks_held'] > 20 and current_price < entry_price:
+                print(f"⌛ TIME DECAY EXIT: {symbol} (Stale)")
+                self.close_position(symbol, current_price)
+                continue
+
+        # 3. Scan for New Entries
+        if len(self.positions) >= self.MAX_POSITIONS:
+            return
+
+        for symbol, price in tick.items():
+            if symbol in self.positions: continue
+            if len(self.history[symbol]) < self.LOOKBACK_WINDOW: continue
             
-            # C. Hard Safety (Prevent total ruin)
-            elif current_price < pos_data['entry_price'] * 0.90:
-                should_sell = True
-                reason = "EMERGENCY_EXIT"
-
-            if should_sell:
-                orders.append({'type': 'sell', 'symbol': symbol, 'amount': pos_data['amount']})
-                self.cooldown[symbol] = 10  # 10 tick cooldown after exit
-                if symbol in self.entry_stats:
-                    del self.entry_stats[symbol]
-
-        # 3. Scan for New Entries (Entry Logic)
-        # Only if we have capital and slots
-        open_slots = self.MAX_POSITIONS - len(portfolio)
-        if open_slots > 0 and current_balance > 10:
+            inds = self.get_indicators(self.history[symbol])
+            prev_price = self.prev_prices.get(symbol, price)
             
-            candidates = []
+            # --- ENTRY LOGIC (The Filter Stack) ---
             
-            for symbol, price in prices.items():
-                # Skip if in portfolio or cooldown
-                if symbol in portfolio or self.cooldown.get(symbol, 0) > 0:
-                    continue
-                
-                indicators = self.get_indicators(symbol)
-                if not indicators: continue
-                
-                # Filter 1: Minimum Volatility (Don't trade flat lines)
-                if indicators['volatility_pct'] < self.MIN_VOLATILITY:
-                    continue
-                
-                # Filter 2: Price below Lower Bollinger Band (Oversold)
-                is_oversold = price < indicators['lower']
-                
-                # Filter 3: Confirmation (Price > Previous Price)
-                # Prevents catching a falling knife perfectly; waits for 1 tick of bounce
-                history_list = list(self.history[symbol])
-                if len(history_list) < 2: continue
-                prev_price = history_list[-2]
-                is_rebounding = price > prev_price
-
-                if is_oversold and is_rebounding:
-                    # Score candidate by how oversold it is (Z-Score approximation)
-                    z_score = (price - indicators['mean']) / indicators['stdev'] if indicators['stdev'] > 0 else 0
-                    candidates.append((symbol, z_score, indicators))
-
-            # Sort by most oversold (lowest negative Z-Score)
-            candidates.sort(key=lambda x: x[1])
+            # 1. Statistical Anomaly (Bollinger Lower Band)
+            is_cheap = price < inds['lower']
             
-            # Execute Trades
-            for symbol, z_score, ind in candidates[:open_slots]:
-                # Calculate Position Size
-                usd_amount = current_balance * self.POSITION_PCT
-                amount = usd_amount / prices[symbol]
+            # 2. Momentum Filter (RSI) - Inherited from Winner
+            # Prevent catching falling knives in a crash
+            is_oversold = inds['rsi'] < 30
+            
+            # 3. Trend Filter (Mutation)
+            # Only buy dips if the long-term trend is UP (Price > SMA50)
+            # OR if RSI is extremely oversold (< 20) implying a panic bounce
+            is_uptrend = price > inds['sma_50']
+            is_panic = inds['rsi'] < 20
+            trend_confirmed = is_uptrend or is_panic
+            
+            # 4. Price Action Confirmation (Tick Up) - Inherited from Winner
+            # Wait for the V-shape start
+            tick_up = price > prev_price
+            
+            if is_cheap and is_oversold and trend_confirmed and tick_up:
+                # --- DYNAMIC POSITION SIZING ---
+                # High Volatility = Smaller Position
+                volatility_ratio = inds['std_dev'] / price
+                size_scalar = 1.0
+                if volatility_ratio > 0.02: # High vol
+                    size_scalar = 0.5
                 
-                # Record Entry Statistics for Risk Management
-                self.entry_stats[symbol] = {
-                    'entry_price': prices[symbol],
-                    'entry_std': ind['stdev'],
-                    # Dynamic Stop Loss: Entry minus 1.5 standard deviations
-                    'stop_price': prices[symbol] - (self.STOP_LOSS_STD * ind['stdev']),
-                    'target_price': ind['mean']
-                }
+                # Dynamic Stop Loss: 2 StdDevs below entry
+                stop_loss = price - (2.0 * inds['std_dev'])
                 
-                orders.append({'type': 'buy', 'symbol': symbol, 'amount': amount})
-                current_balance -= usd_amount # Update virtual balance for loop
+                self.buy_position(symbol, price, size_scalar, stop_loss)
 
-        return orders
+            # Update previous price for next tick
+            self.prev_prices[symbol] = price
+
+    def buy_position(self, symbol, price, scalar, stop_loss):
+        """Executes buy and updates internal state."""
+        amount_usd = (self.balance * self.BASE_RISK_PCT) * scalar
+        if amount_usd < 10: return # Minimum trade size
+        
+        quantity = amount_usd / price
+        self.positions[symbol] = {
+            'entry': price,
+            'size': quantity,
+            'ticks_held': 0,
+            'stop': stop_loss
+        }
+        self.balance -= amount_usd
+        print(f"🚀 BUY: {symbol} @ {price:.2f} | RSI Confirmed | Stop: {stop_loss:.2f}")
+        # SDK Hook: self.buy(symbol, quantity)
+
+    def close_position(self, symbol, price):
+        """Executes sell and updates internal state."""
+        pos = self.positions[symbol]
+        revenue = pos['size'] * price
+        self.balance += revenue
+        del self.positions[symbol]
+        # SDK Hook: self.sell(symbol, pos['size'])
