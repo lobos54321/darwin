@@ -1104,7 +1104,8 @@
             const name = document.getElementById('agent-name-input').value.trim() || "MyAgent";
             // Sanitize name a bit
             const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '');
-            document.getElementById('start-cmd-display')?.innerText = `darwin start --agent_id="${safeName}"`;
+            const el = document.getElementById('start-cmd-display');
+            if (el) el.innerText = `darwin start --agent_id="${safeName}"`;
         }
 
         function copyStartCmd() {
