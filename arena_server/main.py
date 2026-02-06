@@ -512,7 +512,7 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
 
 @app.get("/")
 async def root():
-    """Root now serves the Frontend directly"""
+    """Root now serves the Frontend directly (Zeabur Entry Point)"""
     index_path = os.path.join(FRONTEND_DIR, "index.html")
     if not os.path.exists(index_path):
         return {"error": "Frontend not found", "hint": "Please check FRONTEND_DIR configuration"}
