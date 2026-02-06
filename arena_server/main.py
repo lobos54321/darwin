@@ -486,7 +486,9 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
             
             if data["type"] == "order":
                 symbol = data["symbol"]
-                side = OrderSide.BUY if data["side"] == "BUY" else OrderSide.SELL
+                # Support both uppercase and lowercase side values
+                side_str = data["side"].upper()
+                side = OrderSide.BUY if side_str == "BUY" else OrderSide.SELL
                 amount = float(data["amount"])
                 reason = data.get("reason", []) # 🏷️ Get tags
                 
