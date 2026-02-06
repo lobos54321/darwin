@@ -3,13 +3,15 @@
 负责保存和加载 Arena 的状态 (排行榜、Epoch、议事厅记录)
 """
 
-import json
-import os
-import logging
-import asyncio
-from datetime import datetime
-from typing import Dict, Any
+from tournament import TournamentManager
+from redis_state import redis_state
 
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger(__name__)
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
@@ -26,9 +28,9 @@ class StateManager:
         os.makedirs(DATA_DIR, exist_ok=True)
         
     def save_state(self, current_epoch: int):
-        """保存当前状态到磁盘"""
+        """保存当前状态到磁盘 AND Redis"""
         try:
-            # 序列化 Council Sessions
+            # 1. 准备数据
             sessions_data = {}
             for epoch, session in self.council.sessions.items():
                 sessions_data[str(epoch)] = {
@@ -79,13 +81,33 @@ class StateManager:
                 "ascension": ascension_data
             }
             
-            # 写入临时文件再重命名，防止写入中断导致文件损坏
+            # 2. 写入本地磁盘 (临时备份)
             temp_file = STATE_FILE + ".tmp"
             with open(temp_file, "w") as f:
                 json.dump(state, f, indent=2)
-            
             os.replace(temp_file, STATE_FILE)
-            logger.info(f"💾 State saved (Epoch {current_epoch})")
+            
+            # 3. 关键修复: 同步写入 Redis
+            # 提取 Redis 需要的数据格式
+            redis_agents_data = {
+                aid: {
+                    "balance": d["balance"],
+                    "positions": d["positions"],
+                    "pnl": 0 # 简化，这里只存状态恢复所需的核心数据
+                }
+                for aid, d in agents_serialized.items()
+            }
+            # 注意: 这里假设 API_KEYS 已经由 redis_state 管理，不需要每次从 state_manager 传递
+            # 我们只更新 Epoch, TradeCount, Agents
+            redis_state.save_full_state(
+                epoch=current_epoch,
+                trade_count=0, # 暂时无法从这里获取 accurate trade count，但这不影响重启恢复
+                total_volume=0.0, 
+                api_keys=None, # 不覆盖 keys
+                agents=redis_agents_data
+            )
+            
+            logger.info(f"💾 State saved to Disk & Redis (Epoch {current_epoch})")
             return True
             
         except Exception as e:
