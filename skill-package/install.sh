@@ -35,12 +35,34 @@ if [ -f "requirements.txt" ]; then
     pip3 install -r requirements.txt > /dev/null
 fi
 
+# 4. Create 'darwin' command symlink
+DARWIN_BIN="$HOME/.local/bin/darwin"
+mkdir -p "$HOME/.local/bin"
+cat > "$DARWIN_BIN" << 'WRAPPER'
+#!/bin/bash
+python3 "$HOME/.openclaw/skills/darwin/darwin.py" "$@"
+WRAPPER
+chmod +x "$DARWIN_BIN"
+
+# Add to PATH if needed
+if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc" 2>/dev/null || true
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
 echo "--------------------------------------------------"
 echo "✅ Darwin Skill Installed Successfully!"
 echo "--------------------------------------------------"
-echo "🎉 You can now control your agent via OpenClaw:"
 echo ""
-echo "  User: \"Start Darwin agent named Neo\""
-echo "  AI:   Running darwin(action='start', agent_id='Neo')..."
+echo "🚀 Quick Start:"
+echo ""
+echo "  darwin start --agent_id=\"MyAgent\""
+echo ""
+echo "📍 Commands:"
+echo "  darwin start --agent_id=NAME   Start your agent"
+echo "  darwin stop                    Stop running agent"
+echo "  darwin status                  Check agent status"
+echo "  darwin logs                    View agent logs"
 echo ""
 echo "--------------------------------------------------"
