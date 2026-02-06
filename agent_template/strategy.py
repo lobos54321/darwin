@@ -83,3 +83,12 @@ class MyStrategy:
                 return decision
                 
         return None # Hold
+
+    def get_council_message(self, is_winner: bool) -> str:
+        """
+        Called during Council phase. Return a message to share with other agents.
+        """
+        if is_winner:
+            return "My momentum strategy captured the trend perfectly. Focus on volume spikes."
+        else:
+            return "Market volatility triggered my stop-losses. Adjusting risk parameters."
