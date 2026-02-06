@@ -31,6 +31,7 @@ from council import Council, MessageRole
 from chain import ChainIntegration, AscensionTracker
 from state_manager import StateManager
 from hive_mind import HiveMind
+from tournament import TournamentManager
 
 # 配置日志
 logging.basicConfig(
@@ -56,6 +57,7 @@ hive_mind = HiveMind(engine) # 🧠 初始化蜂巢大脑
 chain = ChainIntegration(testnet=True)
 ascension_tracker = AscensionTracker()
 state_manager = StateManager(engine, council, ascension_tracker)
+tournament_manager = TournamentManager()  # 🏆 锦标赛管理器
 
 # --- Persistence: API Keys ---
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
@@ -999,6 +1001,64 @@ async def get_champion_strategy():
         raise HTTPException(status_code=404, detail="No champion strategy available yet")
     
     return FileResponse(champion_path, media_type="text/x-python", filename="champion_strategy.py")
+
+
+# ========== 锦标赛 API ==========
+
+@app.get("/tournament")
+async def get_active_tournament():
+    """获取当前活跃的锦标赛信息"""
+    active = tournament_manager.get_active()
+    if not active:
+        return {"status": "no_active_tournament", "message": "No tournament currently running"}
+    
+    return {
+        "status": "active",
+        "tournament": {
+            "id": active.id,
+            "name": active.name,
+            "sponsor": active.sponsor,
+            "sponsor_logo": active.sponsor_logo,
+            "sponsor_link": active.sponsor_link,
+            "start_date": active.start_date,
+            "end_date": active.end_date,
+            "prize_pool_usd": active.prize_pool_usd,
+            "tokens": active.tokens,
+            "participants_count": len(active.participants)
+        }
+    }
+
+@app.get("/tournament/leaderboard")
+async def get_tournament_leaderboard():
+    """获取锦标赛排行榜"""
+    active = tournament_manager.get_active()
+    if not active:
+        return {"status": "no_active_tournament", "leaderboard": []}
+    
+    return {
+        "tournament_id": active.id,
+        "tournament_name": active.name,
+        "leaderboard": active.get_leaderboard()[:50]  # Top 50
+    }
+
+@app.post("/tournament/register")
+async def register_for_tournament(agent_id: str, wallet: str, exchange_uid: str = None):
+    """报名参加当前锦标赛"""
+    result = tournament_manager.register_for_active(agent_id, wallet, exchange_uid)
+    return result
+
+@app.get("/tournament/prizes")
+async def get_tournament_prizes():
+    """获取锦标赛奖金分配（预览）"""
+    active = tournament_manager.get_active()
+    if not active:
+        return {"status": "no_active_tournament", "prizes": []}
+    
+    return {
+        "tournament_id": active.id,
+        "prize_pool_usd": active.prize_pool_usd,
+        "prizes": active.calculate_prizes()
+    }
 
 
 # ========== 前端静态文件 ==========

@@ -15,17 +15,21 @@ ELIMINATION_THRESHOLD = 0.1  # 底部 10% 淘汰
 ASCENSION_THRESHOLD = 0.01  # 顶部 1% 可发币
 SIMULATED_SLIPPAGE = 0.01  # 1% 模拟滑点
 
-# === 经济模型 ===
-# L1 训练场 (免费)
+# === 经济模型 (阶段二启用，当前免费) ===
+# 阶段一(当前): 完全免费，通过交易所赞助大赛盈利
+# 阶段二(10K+用户): 启用付费竞技场
+
+# L1 训练场 (永久免费)
 L1_ENTRY_FEE = 0  # 免费
 
-# L2 竞技场 (付费)
+# L2 竞技场 (阶段二启用，暂时禁用)
+L2_ENABLED = False  # 当前禁用付费模式
 L2_ENTRY_FEE_ETH = 0.01  # 0.01 ETH 入场费
 L2_PRIZE_POOL_RATIO = 0.70  # 70% 奖池给 Top 10%
 L2_PLATFORM_FEE_RATIO = 0.20  # 20% 给平台
 L2_BURN_RATIO = 0.10  # 10% 烧毁
 
-# L3 发币
+# L3 发币 (阶段二启用)
 TOKEN_LAUNCH_FEE_ETH = 0.1  # 发币手续费
 
 # 税率 (冠军代币交易)

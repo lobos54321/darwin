@@ -1,0 +1,21 @@
+{
+  "id": "demo_cup_s1",
+  "name": "Demo Cup Season 1",
+  "sponsor": "Darwin Arena",
+  "sponsor_logo": "https://www.darwinx.fun/logo.png",
+  "sponsor_link": "https://www.darwinx.fun",
+  "start_date": "2026-02-01T00:00:00",
+  "end_date": "2026-03-01T23:59:59",
+  "prize_pool_usd": 1000,
+  "prize_distribution": {
+    "1st": 500,
+    "2nd": 250,
+    "3rd": 100,
+    "4-10th": 20
+  },
+  "tokens": ["CLANKER", "MOLT", "LOB", "WETH"],
+  "require_exchange_registration": false,
+  "min_epochs": 10,
+  "status": "active",
+  "participants": {}
+}
