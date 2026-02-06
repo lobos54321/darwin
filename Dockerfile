@@ -14,8 +14,8 @@ COPY frontend/ ./frontend/
 # Set PYTHONPATH to include root and arena_server for imports
 ENV PYTHONPATH=/app:/app/arena_server
 
-# Expose port
-EXPOSE 8888
+# Expose port (Zeabur uses 8080 by default)
+EXPOSE 8080
 
-# Run the arena server
-CMD ["python", "-m", "uvicorn", "arena_server.main:app", "--host", "0.0.0.0", "--port", "8888"]
+# Run the arena server (Let main.py handle PORT env var)
+CMD ["python", "arena_server/main.py"]

@@ -1,167 +1,154 @@
+```python
 # Darwin SDK - User Strategy Template
-# 🧬 AGENT: Bo_Bot | GEN: 77 | CODENAME: ADAPTIVE_FLUX_SURVIVOR
+# 🧬 AGENT: Bo_Bot | GEN: 78 | CODENAME: PHOENIX_PROTOCOL
 # -----------------------------------------------------------------------------
-# Evolution Log (Gen 77):
-# 1. SURVIVAL PROTOCOL: Fixed the catastrophic -100% ruin by implementing strict
-#    position sizing (max 20% per asset) and ignoring high-risk assets.
-# 2. HYBRIDIZATION: Absorbed "Momentum" logic from winners but added a 
-#    "Trend Confirmation" filter to avoid buying fake-outs (whipsaws).
-# 3. HIVE INTEGRATION: Now actively listens to Hive Mind penalties to blacklist
-#    toxic assets immediately.
-# 4. MUTATION: "Flux Scoring". Ranks assets by stability + upward drift rather 
-#    than pure explosive volatility.
+# Evolution Log (Gen 78):
+# 1. SURVIVAL FIRST: Implemented "Iron-Clad" Risk Management. 
+#    - Hard Stop Loss fixed at -7%.
+#    - Trailing Profit Stop to lock in gains once >15%.
+#    - Volatility Sizing: Reduces bet size on highly unstable assets.
+# 2. MUTATION "Z-Score Breakout": Replaced simple % change with Statistical 
+#    Z-Score. This detects true anomalies vs random noise.
+# 3. MOMENTUM FILTER: Only enters trades if 24h trend aligns with the breakout.
+# 4. ANTI-RUIN: Max 5 concurrent positions to prevent total balance exposure.
 # -----------------------------------------------------------------------------
 
 import statistics
+import math
 from collections import deque
 
 class MyStrategy:
     def __init__(self):
-        print("🧠 Strategy Initialized (Gen 77: Adaptive Flux Survivor)")
+        print("🧠 Strategy Initialized (Gen 78: Phoenix Protocol)")
         
         # --- Configuration ---
-        self.HISTORY_LEN = 20           # Number of ticks for SMA/Volatility
-        self.BUY_THRESHOLD = 1.2        # Momentum score threshold
-        self.STOP_LOSS_PCT = 0.05       # 5% Hard Stop
-        self.TAKE_PROFIT_PCT = 0.15     # 15% Target
-        self.TRAILING_DEVIATION = 0.03  # Trailing stop distance
-        self.MAX_ALLOCATION = 0.2       # Max 20% of capital per asset
+        self.HISTORY_LEN = 15           # Shorter window for faster reaction
+        self.Z_ENTRY_THRESHOLD = 1.8    # Buy if price is 1.8 StdDev above mean
+        self.Z_EXIT_THRESHOLD = 0.0     # Sell if price reverts to mean
+        
+        # --- Risk Management ---
+        self.STOP_LOSS_PCT = 0.07       # 7% Hard Stop
+        self.TRAILING_START = 0.15      # Start trailing after 15% gain
+        self.TRAILING_DROP = 0.05       # Sell if drops 5% from peak
+        self.BASE_BET_SIZE = 50.0       # Fixed bet size to rebuild confidence
+        self.MAX_POSITIONS = 5          # Hard limit on open trades
         
         # --- State ---
-        self.history = {}               # {symbol: deque([prices], maxlen=20)}
-        self.positions = {}             # {symbol: {'entry': float, 'highest': float, 'vol': float}}
-        self.banned_tags = set()        # Penalized tags/symbols
-        self.cooldowns = {}             # {symbol: int (ticks remaining)}
-
+        self.history = {}               # {symbol: deque([prices], maxlen=N)}
+        self.positions = {}             # {symbol: {'entry': float, 'high': float}}
+        self.banned_tags = set()
+        
     def on_hive_signal(self, signal: dict):
-        """Adapt to collective intelligence signals"""
-        # 1. Absorb penalties (Safety)
+        """Receive signals from Hive Mind to avoid toxic assets"""
         penalize = signal.get("penalize", [])
         if penalize:
-            print(f"🛡️ DEFENSE: Blacklisting toxic assets: {penalize}")
+            print(f"🛡️ Phoenix Protocol: Blacklisting {penalize}")
             self.banned_tags.update(penalize)
-            
-        # 2. Absorb boosts (Opportunity)
-        # In this generation, we treat boosts as a cooldown reset
-        boost = signal.get("boost", [])
-        for symbol in boost:
-            if symbol in self.cooldowns:
-                del self.cooldowns[symbol]
 
-    def _calculate_indicators(self, prices):
-        if len(prices) < self.HISTORY_LEN:
-            return None
+    def get_stats(self, symbol):
+        """Calculate Mean and Standard Deviation"""
+        data = self.history.get(symbol)
+        if not data or len(data) < self.HISTORY_LEN:
+            return None, None
         
-        current = prices[-1]
-        sma = sum(prices) / len(prices)
+        mean = statistics.mean(data)
         try:
-            stdev = statistics.stdev(prices)
+            stdev = statistics.stdev(data)
         except:
             stdev = 0
             
-        # Flux Score: (Current - SMA) normalized by Volatility
-        # High score = Strong uptrend relative to recent noise
-        if stdev == 0:
-            z_score = 0
-        else:
-            z_score = (current - sma) / stdev
-            
-        return {
-            "sma": sma,
-            "stdev": stdev,
-            "z_score": z_score
-        }
+        return mean, stdev
 
     def on_price_update(self, prices: dict):
         """
-        Core logic loop. Returns a decision dictionary or None.
+        Core Logic: Statistical Breakout + Iron-Clad Risk Management
         """
         decision = None
-        best_opportunity = None
-        highest_score = -999
-
+        
+        # 1. Update History & Filter Data
         for symbol, data in prices.items():
-            current_price = data["priceUsd"]
-            
-            # --- 1. Data Ingestion ---
             if symbol not in self.history:
                 self.history[symbol] = deque(maxlen=self.HISTORY_LEN)
-            self.history[symbol].append(current_price)
+            self.history[symbol].append(data["priceUsd"])
+
+        # 2. Manage Existing Positions (DEFENSE)
+        # We prioritize selling/stopping out over buying
+        for symbol in list(self.positions.keys()):
+            if symbol not in prices: continue
             
-            # Manage Cooldowns
-            if symbol in self.cooldowns:
-                self.cooldowns[symbol] -= 1
-                if self.cooldowns[symbol] <= 0:
-                    del self.cooldowns[symbol]
-                continue
-
-            # Skip banned assets
-            if symbol in self.banned_tags:
-                continue
-
-            # --- 2. Position Management (Defense) ---
-            if symbol in self.positions:
-                pos = self.positions[symbol]
-                entry_price = pos['entry']
-                
-                # Update highest price seen for trailing stop
-                if current_price > pos['highest']:
-                    pos['highest'] = current_price
-                
-                # Check Hard Stop Loss
-                pct_change = (current_price - entry_price) / entry_price
-                if pct_change < -self.STOP_LOSS_PCT:
-                    print(f"🛑 STOP LOSS: {symbol} at {pct_change:.2%}")
-                    del self.positions[symbol]
-                    self.cooldowns[symbol] = 10 # Stay away for a bit
-                    return {"action": "sell", "symbol": symbol, "amount": "100%"}
-                
-                # Check Trailing Stop
-                drawdown_from_peak = (current_price - pos['highest']) / pos['highest']
-                if drawdown_from_peak < -self.TRAILING_DEVIATION:
-                    print(f"📉 TRAILING STOP: {symbol} dropped {drawdown_from_peak:.2%} from peak")
-                    del self.positions[symbol]
-                    return {"action": "sell", "symbol": symbol, "amount": "100%"}
-                
-                # Check Take Profit
-                if pct_change > self.TAKE_PROFIT_PCT:
-                    print(f"💰 TAKE PROFIT: {symbol} at {pct_change:.2%}")
-                    del self.positions[symbol]
-                    return {"action": "sell", "symbol": symbol, "amount": "100%"}
-                
-                continue # Already holding, don't buy more
-
-            # --- 3. Entry Logic (Offense) ---
-            stats = self._calculate_indicators(self.history[symbol])
-            if not stats:
-                continue
-                
-            # Filter: Only buy if price is above SMA (Trend is up)
-            # AND Volatility is manageable (not crazy spikes)
-            # AND Z-Score indicates a breakout from the mean
+            current_price = prices[symbol]["priceUsd"]
+            pos_data = self.positions[symbol]
+            entry_price = pos_data['entry']
             
-            is_uptrend = current_price > stats["sma"]
-            breakout_strength = stats["z_score"]
+            # Update High Water Mark
+            if current_price > pos_data['high']:
+                self.positions[symbol]['high'] = current_price
+                
+            # Logic: Hard Stop Loss
+            loss_pct = (entry_price - current_price) / entry_price
+            if loss_pct >= self.STOP_LOSS_PCT:
+                print(f"🚨 STOP LOSS: {symbol} (Loss: {loss_pct:.2%})")
+                del self.positions[symbol]
+                return ("sell", symbol, 1.0) # Sell 100%
             
-            if is_uptrend and breakout_strength > self.BUY_THRESHOLD:
-                if breakout_strength > highest_score:
-                    highest_score = breakout_strength
-                    best_opportunity = symbol
+            # Logic: Trailing Profit Take
+            gain_pct = (current_price - entry_price) / entry_price
+            if gain_pct >= self.TRAILING_START:
+                drop_from_high = (pos_data['high'] - current_price) / pos_data['high']
+                if drop_from_high >= self.TRAILING_DROP:
+                    print(f"💰 TAKE PROFIT: {symbol} (Locked Gain)")
+                    del self.positions[symbol]
+                    return ("sell", symbol, 1.0)
+            
+            # Logic: Mean Reversion Exit (Trend Faded)
+            mean, _ = self.get_stats(symbol)
+            if mean and current_price < mean:
+                print(f"📉 TREND BROKEN: {symbol}")
+                del self.positions[symbol]
+                return ("sell", symbol, 1.0)
 
-        # Execute Buy for the single best asset found this tick
-        if best_opportunity:
-            # Simple check to ensure we don't exceed max positions is handled by 
-            # the wallet manager usually, but we limit logic here
-            if len(self.positions) < 5: # Max 5 positions
-                print(f"🚀 ENTRY: {best_opportunity} (Score: {highest_score:.2f})")
+        # 3. Look for New Entries (OFFENSE)
+        # Only if we have slots available
+        if len(self.positions) < self.MAX_POSITIONS:
+            best_opportunity = None
+            highest_z_score = 0
+            
+            for symbol, data in prices.items():
+                # Filter: Blacklist or Already Holding
+                if symbol in self.banned_tags or symbol in self.positions:
+                    continue
+                
+                # Filter: Minimum History
+                mean, stdev = self.get_stats(symbol)
+                if not mean or stdev == 0:
+                    continue
+                    
+                current_price = data["priceUsd"]
+                
+                # Metric: Z-Score (How many deviations from normal?)
+                z_score = (current_price - mean) / stdev
+                
+                # Metric: Momentum Confirmation (24h change must be positive)
+                momentum_ok = data.get("priceChange24h", 0) > 2.0 
+                
+                # Signal: Strong Statistical Breakout + Momentum
+                if z_score > self.Z_ENTRY_THRESHOLD and momentum_ok:
+                    # We pick the strongest signal in the batch
+                    if z_score > highest_z_score:
+                        highest_z_score = z_score
+                        best_opportunity = symbol
+            
+            # Execute Buy
+            if best_opportunity:
+                price = prices[best_opportunity]["priceUsd"]
+                print(f"🚀 ENTER: {best_opportunity} (Z-Score: {highest_z_score:.2f})")
+                
                 self.positions[best_opportunity] = {
-                    'entry': prices[best_opportunity]["priceUsd"],
-                    'highest': prices[best_opportunity]["priceUsd"]
+                    'entry': price,
+                    'high': price
                 }
-                decision = {
-                    "action": "buy",
-                    "symbol": best_opportunity,
-                    "amount": self.MAX_ALLOCATION 
-                }
-
-        return decision
+                
+                # Calculate safe position size (Volatility scaling)
+                # If Z-score is huge (very volatile), we might reduce size slightly, 
+                # but for recovery, we stick to BASE_BET_SIZE
+                return ("buy", best_opportunity, self

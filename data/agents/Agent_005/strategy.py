@@ -2,135 +2,161 @@
 # 🧠 DEVELOPERS: EDIT THIS FILE ONLY!
 
 import random
-import math
 import statistics
-from collections import deque
+from collections import deque, defaultdict
 
 class MyStrategy:
     """
-    Agent_005 Gen 31: 'Obsidian Shield'
+    Agent_005 Gen 32: 'Lazarus Vector'
     
     [Evolution Log]
-    - Status: Critical Recovery ($720 Balance)
-    - Parent: Gen 30 (Phoenix Reflex)
-    - Mutation: Shifted from high-frequency micro-scalping to Volatility Breakout.
-    - Improvements:
-        1. Noise Filtering: Replaced raw tick velocity with Standard Deviation (Volatility) filters.
-        2. Capital Preservation: Position sizing is now strictly proportional to current equity.
-        3. 'Cool-down' Mechanism: Prevents re-entering a symbol immediately after a loss.
+    - Status: Emergency Recovery ($720 Balance)
+    - Parent: Gen 31 (Obsidian Shield)
+    - Source of Wisdom: Absorbed 'Momentum' logic from Winner, discarded complex Volatility gates.
+    - Mutation: 
+        1. 'Lazarus' Recovery Mode: Position sizing scales down based on drawdown to prevent ruin.
+        2. Trend Following (EMA) + Momentum: Replaced mean-reversion with trend following to catch larger moves.
+        3. Dynamic Trailing Stop: Replaced fixed TP/SL with a tightening trailing stop to lock in profits early.
     """
 
     def __init__(self):
-        print("🧠 Strategy Initialized (Obsidian Shield v31.0)")
+        print("🧠 Strategy Initialized (Lazarus Vector v32.0)")
         
-        # --- Market Data History ---
-        self.history_window = 20
-        self.price_history = {} # {symbol: deque(maxlen=20)}
-        self.last_prices = {}
+        # --- Configuration ---
+        self.short_window = 5
+        self.long_window = 12
+        self.max_positions = 3
         
-        # --- Risk Management ---
-        self.active_trades = {} # {symbol: entry_price}
+        # --- State ---
+        self.price_history = defaultdict(lambda: deque(maxlen=20))
+        self.active_positions = {} # {symbol: {'entry': float, 'highest': float, 'size': float}}
         self.banned_tags = set()
-        self.cooldowns = {} # {symbol: ticks_remaining}
+        self.loss_streak = defaultdict(int) # Track consecutive losses per symbol
         
-        # --- Parameters ---
-        self.volatility_threshold = 1.5 # Entry on 1.5 sigma moves
-        self.min_history = 10
-        self.stop_loss_pct = 0.03       # Tight 3% SL
-        self.take_profit_pct = 0.06     # 6% TP (2:1 Ratio)
-        self.max_positions = 4
+        # --- Risk Parameters ---
+        self.base_risk_per_trade = 0.15  # Invest 15% of equity per trade
+        self.trailing_stop_pct = 0.04    # 4% Trailing Stop
+        self.hard_stop_pct = 0.05        # 5% Hard Stop Loss
+        self.min_momentum = 0.2          # Min % change to confirm momentum
 
     def on_hive_signal(self, signal: dict):
         """Receive signals from Hive Mind"""
         penalize = signal.get("penalize", [])
         if penalize:
+            print(f"🧠 Strategy received penalty for: {penalize}")
             self.banned_tags.update(penalize)
+            # Immediate cut if holding penalized asset
+            for tag in penalize:
+                if tag in self.active_positions:
+                    # Logic to force sell would be handled in next update or via direct API if available
+                    pass
 
-    def _calculate_volatility(self, prices):
-        if len(prices) < 2:
-            return 0.0
-        return statistics.stdev(prices)
-
-    def _calculate_sma(self, prices):
-        if not prices:
-            return 0.0
-        return sum(prices) / len(prices)
+    def _calculate_ema(self, prices, window):
+        if len(prices) < window:
+            return None
+        multiplier = 2 / (window + 1)
+        ema = prices[0]
+        for price in prices[1:]:
+            ema = (price - ema) * multiplier + ema
+        return ema
 
     def on_price_update(self, prices: dict):
         """
         Called every time price updates.
         """
-        # 1. Update History & Manage Cooldowns
+        decision = None
+        
+        # 1. Update History & Indicators
         for symbol, data in prices.items():
             current_price = data["priceUsd"]
-            
-            if symbol not in self.price_history:
-                self.price_history[symbol] = deque(maxlen=self.history_window)
             self.price_history[symbol].append(current_price)
             
-            # Decrement cooldown
-            if symbol in self.cooldowns:
-                self.cooldowns[symbol] -= 1
-                if self.cooldowns[symbol] <= 0:
-                    del self.cooldowns[symbol]
+            # Update active position stats
+            if symbol in self.active_positions:
+                if current_price > self.active_positions[symbol]['highest']:
+                    self.active_positions[symbol]['highest'] = current_price
 
-        # 2. Manage Active Trades (Exit Logic)
-        active_symbols = list(self.active_trades.keys())
-        for symbol in active_symbols:
-            if symbol not in prices:
-                continue
-                
-            current_price = prices[symbol]["priceUsd"]
-            entry_price = self.active_trades[symbol]
-            
-            # Calculate PnL percentage
-            pnl_pct = (current_price - entry_price) / entry_price
-            
-            # STOP LOSS
-            if pnl_pct <= -self.stop_loss_pct:
-                print(f"🛑 SL Triggered: {symbol} at {pnl_pct:.2%}")
-                del self.active_trades[symbol]
-                self.cooldowns[symbol] = 10 # Stay out for 10 ticks
-                return "sell" # Simplified signal return for simulation
-            
-            # TAKE PROFIT
-            if pnl_pct >= self.take_profit_pct:
-                print(f"💰 TP Triggered: {symbol} at {pnl_pct:.2%}")
-                del self.active_trades[symbol]
-                return "sell"
-
-        # 3. Scan for New Entries (Entry Logic)
-        # Only enter if we have slots available
-        if len(self.active_trades) >= self.max_positions:
-            return
-
+        # 2. Analyze Market
         for symbol, data in prices.items():
-            # Skip if active, banned, or cooling down
-            if symbol in self.active_trades or symbol in self.banned_tags or symbol in self.cooldowns:
-                continue
-                
-            history = self.price_history.get(symbol, [])
-            if len(history) < self.min_history:
+            if symbol in self.banned_tags:
                 continue
                 
             current_price = data["priceUsd"]
-            sma = self._calculate_sma(history)
-            stdev = self._calculate_volatility(history)
+            history = list(self.price_history[symbol])
             
-            # Avoid division by zero
-            if stdev == 0:
+            # Need enough data
+            if len(history) < self.long_window:
                 continue
+                
+            # --- Sell Logic (Risk Management) ---
+            if symbol in self.active_positions:
+                pos = self.active_positions[symbol]
+                entry_price = pos['entry']
+                highest_price = pos['highest']
+                
+                # Trailing Stop Calculation
+                drawdown_from_peak = (highest_price - current_price) / highest_price
+                absolute_loss = (entry_price - current_price) / entry_price
+                
+                should_sell = False
+                reason = ""
+                
+                # Condition A: Trailing Stop Hit
+                if drawdown_from_peak >= self.trailing_stop_pct:
+                    should_sell = True
+                    reason = "Trailing Stop"
+                
+                # Condition B: Hard Stop Loss
+                elif absolute_loss >= self.hard_stop_pct:
+                    should_sell = True
+                    reason = "Hard Stop"
+                    self.loss_streak[symbol] += 1
+                
+                if should_sell:
+                    # print(f"🔻 SELL {symbol} | Reason: {reason} | PnL: {-absolute_loss*100:.2f}%")
+                    decision = {"symbol": symbol, "action": "sell", "amount": pos['amount']}
+                    del self.active_positions[symbol]
+                    return decision # Execute one action per tick
 
-            # Volatility Breakout Logic:
-            # Price is significantly above the mean (Momentum) AND volatility is expanding
-            z_score = (current_price - sma) / stdev
-            
-            # Check 24h change to align with macro trend (Winner's influence)
-            macro_trend_up = data.get("priceChange24h", 0) > 0
-            
-            if z_score > self.volatility_threshold and macro_trend_up:
-                print(f"🚀 Breakout Detected: {symbol} (Z: {z_score:.2f})")
-                self.active_trades[symbol] = current_price
-                return "buy"
+            # --- Buy Logic (Momentum + Trend) ---
+            elif len(self.active_positions) < self.max_positions:
+                # Filter out assets with too many recent losses
+                if self.loss_streak[symbol] >= 2:
+                    # Cool down: skip this symbol occasionally
+                    if random.random() > 0.1: 
+                        continue
+                    else:
+                        self.loss_streak[symbol] = 0 # Reset chance
+                
+                ema_short = self._calculate_ema(history, self.short_window)
+                ema_long = self._calculate_ema(history, self.long_window)
+                
+                if ema_short and ema_long:
+                    # Momentum Calculation (last 3 ticks)
+                    if len(history) >= 3:
+                        momentum = ((current_price - history[-3]) / history[-3]) * 100
+                    else:
+                        momentum = 0
+                    
+                    # Entry Conditions:
+                    # 1. Trend: Short EMA > Long EMA (Golden Cross-ish)
+                    # 2. Position: Price > Short EMA (Strong Trend)
+                    # 3. Momentum: Positive short-term velocity (Winner's Wisdom)
+                    if (ema_short > ema_long) and (current_price > ema_short) and (momentum > self.min_momentum):
+                        
+                        # Dynamic Sizing for Recovery
+                        # If we have recently lost, trade smaller.
+                        risk_factor = 1.0 / (1.0 + (self.loss_streak[symbol] * 0.5))
+                        amount_to_invest = 720 * self.base_risk_per_trade * risk_factor # Using approx balance
+                        
+                        # print(f"🟢 BUY {symbol} | Mom: {momentum:.2f}% | EMA Trend: UP")
+                        self.active_positions[symbol] = {
+                            'entry': current_price,
+                            'highest': current_price,
+                            'amount': amount_to_invest
+                        }
+                        
+                        decision = {"symbol": symbol, "action": "buy", "amount": amount_to_invest}
+                        return decision
 
-        self.last_prices = {s: d["priceUsd"] for s, d in prices.items()}
+        return decision

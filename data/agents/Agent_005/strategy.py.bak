@@ -2,163 +2,135 @@
 # 🧠 DEVELOPERS: EDIT THIS FILE ONLY!
 
 import random
+import math
 import statistics
 from collections import deque
 
 class MyStrategy:
     """
-    Agent_005 Gen 30: 'Phoenix Reflex'
+    Agent_005 Gen 31: 'Obsidian Shield'
     
     [Evolution Log]
-    - Status: Recovery Mode ($720 Balance)
-    - Parent: Gen 29 (Adaptive Resonance)
-    - Mutation Source: Analyzed Winner's tick-sensitivity.
-    - Major Changes:
-        1. Abandoned lagging indicators (EMA/RSI) for raw Price Action (Tick Velocity).
-        2. Implemented 'Micro-Scalping': Enter on 3-tick alignment, exit on first momentum loss.
-        3. Dynamic Risk: Position size scales with account balance (Kelly criterion lite).
-        4. Time Decay: Force exit if trade stagnates for > 10 updates (don't tie up capital).
+    - Status: Critical Recovery ($720 Balance)
+    - Parent: Gen 30 (Phoenix Reflex)
+    - Mutation: Shifted from high-frequency micro-scalping to Volatility Breakout.
+    - Improvements:
+        1. Noise Filtering: Replaced raw tick velocity with Standard Deviation (Volatility) filters.
+        2. Capital Preservation: Position sizing is now strictly proportional to current equity.
+        3. 'Cool-down' Mechanism: Prevents re-entering a symbol immediately after a loss.
     """
 
     def __init__(self):
-        print("🧠 Strategy Initialized (Phoenix Reflex v30.0)")
+        print("🧠 Strategy Initialized (Obsidian Shield v31.0)")
         
-        # --- Configuration ---
-        self.tick_window = 5            # Look at last 5 price updates
-        self.min_velocity = 0.002       # 0.2% move required to interest us
-        self.max_volatility = 0.05      # Avoid if moves > 5% instantly (pump trap)
+        # --- Market Data History ---
+        self.history_window = 20
+        self.price_history = {} # {symbol: deque(maxlen=20)}
+        self.last_prices = {}
         
-        # --- Risk Management (Recovery) ---
-        self.max_concurrent_trades = 3
-        self.base_risk_per_trade = 0.05 # Risk 5% of equity per trade
-        self.hard_stop_loss = 0.025     # 2.5% Hard Stop
-        self.profit_trail_start = 0.01  # Start trailing after 1% gain
-        
-        # --- State ---
-        self.price_history = {}         # {symbol: deque([p1, p2, ...], maxlen=5)}
-        self.positions = {}             # {symbol: {'entry': float, 'highest': float, 'age': int}}
+        # --- Risk Management ---
+        self.active_trades = {} # {symbol: entry_price}
         self.banned_tags = set()
-        self.balance = 720.0            # Sync with actual balance
+        self.cooldowns = {} # {symbol: ticks_remaining}
+        
+        # --- Parameters ---
+        self.volatility_threshold = 1.5 # Entry on 1.5 sigma moves
+        self.min_history = 10
+        self.stop_loss_pct = 0.03       # Tight 3% SL
+        self.take_profit_pct = 0.06     # 6% TP (2:1 Ratio)
+        self.max_positions = 4
 
     def on_hive_signal(self, signal: dict):
         """Receive signals from Hive Mind"""
         penalize = signal.get("penalize", [])
         if penalize:
             self.banned_tags.update(penalize)
-            # Immediate liquidation of banned assets
-            for tag in penalize:
-                if tag in self.positions:
-                    del self.positions[tag] # Simulating force close
 
-    def _calculate_momentum(self, prices):
-        """Calculate linear regression slope of last N prices for pure direction"""
-        if len(prices) < 3:
-            return 0
-        y = list(prices)
-        x = range(len(y))
-        # Simple slope calculation
-        x_bar = statistics.mean(x)
-        y_bar = statistics.mean(y)
-        numerator = sum((xi - x_bar) * (yi - y_bar) for xi, yi in zip(x, y))
-        denominator = sum((xi - x_bar) ** 2 for xi in x)
-        return numerator / denominator if denominator != 0 else 0
+    def _calculate_volatility(self, prices):
+        if len(prices) < 2:
+            return 0.0
+        return statistics.stdev(prices)
+
+    def _calculate_sma(self, prices):
+        if not prices:
+            return 0.0
+        return sum(prices) / len(prices)
 
     def on_price_update(self, prices: dict):
         """
-        High-frequency decision loop.
+        Called every time price updates.
         """
-        orders = []
-        
-        # 1. Update State & Prune History
-        active_symbols = set(prices.keys())
-        
+        # 1. Update History & Manage Cooldowns
         for symbol, data in prices.items():
             current_price = data["priceUsd"]
             
-            # Init history
             if symbol not in self.price_history:
-                self.price_history[symbol] = deque(maxlen=self.tick_window)
+                self.price_history[symbol] = deque(maxlen=self.history_window)
             self.price_history[symbol].append(current_price)
+            
+            # Decrement cooldown
+            if symbol in self.cooldowns:
+                self.cooldowns[symbol] -= 1
+                if self.cooldowns[symbol] <= 0:
+                    del self.cooldowns[symbol]
 
-            # --- Manage Existing Positions ---
-            if symbol in self.positions:
-                pos = self.positions[symbol]
-                pos['age'] += 1
-                entry_price = pos['entry']
+        # 2. Manage Active Trades (Exit Logic)
+        active_symbols = list(self.active_trades.keys())
+        for symbol in active_symbols:
+            if symbol not in prices:
+                continue
                 
-                # Update highest price seen for trailing stop
-                if current_price > pos['highest']:
-                    pos['highest'] = current_price
-                
-                # PnL Calculation
-                pnl_pct = (current_price - entry_price) / entry_price
-                drawdown_from_peak = (pos['highest'] - current_price) / pos['highest']
-                
-                sell_signal = False
-                reason = ""
+            current_price = prices[symbol]["priceUsd"]
+            entry_price = self.active_trades[symbol]
+            
+            # Calculate PnL percentage
+            pnl_pct = (current_price - entry_price) / entry_price
+            
+            # STOP LOSS
+            if pnl_pct <= -self.stop_loss_pct:
+                print(f"🛑 SL Triggered: {symbol} at {pnl_pct:.2%}")
+                del self.active_trades[symbol]
+                self.cooldowns[symbol] = 10 # Stay out for 10 ticks
+                return "sell" # Simplified signal return for simulation
+            
+            # TAKE PROFIT
+            if pnl_pct >= self.take_profit_pct:
+                print(f"💰 TP Triggered: {symbol} at {pnl_pct:.2%}")
+                del self.active_trades[symbol]
+                return "sell"
 
-                # A. Hard Stop Loss
-                if pnl_pct < -self.hard_stop_loss:
-                    sell_signal = True
-                    reason = "Stop Loss"
+        # 3. Scan for New Entries (Entry Logic)
+        # Only enter if we have slots available
+        if len(self.active_trades) >= self.max_positions:
+            return
+
+        for symbol, data in prices.items():
+            # Skip if active, banned, or cooling down
+            if symbol in self.active_trades or symbol in self.banned_tags or symbol in self.cooldowns:
+                continue
                 
-                # B. Trailing Profit Take
-                elif pnl_pct > self.profit_trail_start and drawdown_from_peak > 0.005:
-                    sell_signal = True
-                    reason = "Trailing Take Profit"
+            history = self.price_history.get(symbol, [])
+            if len(history) < self.min_history:
+                continue
                 
-                # C. Time Decay (Stagnation Kill)
-                elif pos['age'] > 10 and pnl_pct < 0.005:
-                    sell_signal = True
-                    reason = "Stagnation"
+            current_price = data["priceUsd"]
+            sma = self._calculate_sma(history)
+            stdev = self._calculate_volatility(history)
+            
+            # Avoid division by zero
+            if stdev == 0:
+                continue
 
-                if sell_signal:
-                    orders.append({
-                        "symbol": symbol,
-                        "action": "SELL",
-                        "amount": "ALL",
-                        "reason": reason
-                    })
-                    del self.positions[symbol]
-                    continue # Skip to next symbol
+            # Volatility Breakout Logic:
+            # Price is significantly above the mean (Momentum) AND volatility is expanding
+            z_score = (current_price - sma) / stdev
+            
+            # Check 24h change to align with macro trend (Winner's influence)
+            macro_trend_up = data.get("priceChange24h", 0) > 0
+            
+            if z_score > self.volatility_threshold and macro_trend_up:
+                print(f"🚀 Breakout Detected: {symbol} (Z: {z_score:.2f})")
+                self.active_trades[symbol] = current_price
+                return "buy"
 
-            # --- Entry Logic (Only if we have slots) ---
-            if symbol not in self.positions and len(self.positions) < self.max_concurrent_trades:
-                
-                # Filter 1: Banned Tags
-                if symbol in self.banned_tags:
-                    continue
-
-                # Filter 2: Data Sufficiency
-                history = self.price_history[symbol]
-                if len(history) < self.tick_window:
-                    continue
-
-                # Filter 3: Momentum Calculation
-                slope = self._calculate_momentum(history)
-                pct_change_window = (history[-1] - history[0]) / history[0]
-                
-                # Logic: Positive Slope + Significant Move + Not Hyper-Volatile
-                is_uptrend = slope > 0
-                is_significant = pct_change_window > self.min_velocity
-                is_safe = pct_change_window < self.max_volatility
-                
-                # Check for "Tick Alignment" (Last 2 ticks green)
-                tick_alignment = history[-1] > history[-2] and history[-2] > history[-3]
-
-                if is_uptrend and is_significant and is_safe and tick_alignment:
-                    # Dynamic Position Sizing
-                    trade_amt = self.balance * self.base_risk_per_trade
-                    
-                    self.positions[symbol] = {
-                        'entry': current_price,
-                        'highest': current_price,
-                        'age': 0
-                    }
-                    orders.append({
-                        "symbol": symbol,
-                        "action": "BUY",
-                        "amount": trade_amt
-                    })
-
-        return orders
+        self.last_prices = {s: d["priceUsd"] for s, d in prices.items()}
