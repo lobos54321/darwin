@@ -1302,6 +1302,28 @@ async def debug_force_champion():
     return {"status": "ok", "message": f"{top_agent} is now ready for launch!", "agent_id": top_agent}
 
 
+@app.post("/debug/deposit")
+async def debug_deposit(agent_id: str, amount: float = 1000.0):
+    """(Debug) Add funds to an agent's account"""
+    account = engine.accounts.get(agent_id)
+    if not account:
+        # Register if doesn't exist
+        account = engine.register_agent(agent_id)
+    
+    old_balance = account.balance
+    account.balance += amount
+    account.initial_balance = account.balance  # Reset initial for clean PnL
+    
+    logger.info(f"💰 [DEBUG] Deposited ${amount} to {agent_id}: ${old_balance:.2f} -> ${account.balance:.2f}")
+    return {
+        "status": "ok", 
+        "agent_id": agent_id, 
+        "old_balance": old_balance,
+        "deposited": amount,
+        "new_balance": account.balance
+    }
+
+
 @app.post("/debug/force-ascension/{agent_id}")
 async def debug_force_ascension(agent_id: str):
     """(Debug) Force an agent to appear as Ready to Launch"""
