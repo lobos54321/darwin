@@ -20,8 +20,8 @@ echo "⬇️ Downloading Darwin Skill..."
 curl -sL "$REPO_URL/skill-package/SKILL.md" -o "$DARWIN_DIR/SKILL.md"
 curl -sL "$REPO_URL/skill-package/darwin.py" -o "$DARWIN_DIR/darwin.py"
 
-# 下载 Agent Core (无需用户感知 SDK 概念)
-curl -sL "https://github.com/lobos54321/darwin/raw/main/darwin-sdk.zip" -o "$DARWIN_DIR/core.zip"
+# 下载 Agent Core (Skill Resources)
+curl -sL "https://github.com/lobos54321/darwin/raw/main/skill-core.zip" -o "$DARWIN_DIR/core.zip"
 
 echo "📦 Unpacking Agent Resources..."
 cd "$DARWIN_DIR"
