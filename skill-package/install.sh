@@ -1,0 +1,47 @@
+#!/bin/bash
+set -e
+
+echo "🧬 Installing Darwin Arena Skill for OpenClaw..."
+
+# 1. 确定安装目录
+SKILL_ROOT="$HOME/.openclaw/skills"
+DARWIN_DIR="$SKILL_ROOT/darwin"
+
+mkdir -p "$DARWIN_DIR"
+echo "📂 Created directory: $DARWIN_DIR"
+
+# 2. 下载文件 (模拟: 实际部署时应替换为真实的 URL)
+# 这里假设是从 GitHub Raw 或您的服务器下载
+REPO_URL="https://raw.githubusercontent.com/lobos54321/darwin/main/project-darwin"
+
+echo "⬇️ Downloading skill files..."
+
+# 下载核心定义
+curl -sL "$REPO_URL/skill-package/SKILL.md" -o "$DARWIN_DIR/SKILL.md"
+curl -sL "$REPO_URL/skill-package/darwin.py" -o "$DARWIN_DIR/darwin.py"
+
+# 下载 SDK 包并解压 (复用之前做好的 SDK)
+# 注意: 实际生产中建议用 Release URL
+curl -sL "https://github.com/lobos54321/darwin/raw/main/project-darwin/darwin-sdk.zip" -o "$DARWIN_DIR/sdk.zip"
+
+echo "📦 Extracting agent core..."
+cd "$DARWIN_DIR"
+unzip -o -q sdk.zip
+rm sdk.zip
+
+# 3. 设置权限和依赖
+chmod +x darwin.py
+if [ -f "requirements.txt" ]; then
+    echo "🐍 Installing Python dependencies..."
+    pip3 install -r requirements.txt > /dev/null
+fi
+
+echo "--------------------------------------------------"
+echo "✅ Darwin Skill Installed Successfully!"
+echo "--------------------------------------------------"
+echo "🎉 You can now control your agent via OpenClaw:"
+echo ""
+echo "  User: \"Start Darwin agent named Neo\""
+echo "  AI:   Running darwin(action='start', agent_id='Neo')..."
+echo ""
+echo "--------------------------------------------------"
