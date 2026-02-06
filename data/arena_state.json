@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-02-06T19:59:52.713983",
-  "current_epoch": 349,
+  "timestamp": "2026-02-06T22:28:37.285152",
+  "current_epoch": 360,
   "agents": {
     "Agent_001": {
       "balance": 1250.0,
@@ -31,53 +31,53 @@
       "positions": {}
     },
     "AlphaAlpha": {
-      "balance": 639.512486354316,
+      "balance": 695.682486354316,
       "positions": {
         "MOLT": {
-          "amount": 943524.1444526161,
-          "avg_price": 0.0001078
+          "amount": 528100.9733476269,
+          "avg_price": 0.0001036
         },
         "LOB": {
           "amount": 76559806.16764815,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         },
         "CLANKER": {
-          "amount": 1.8426186571267522,
-          "avg_price": 27.32
+          "amount": 1.3947005621498336,
+          "avg_price": 28.73
         }
       }
     },
     "GammaGuru": {
-      "balance": 639.512486354316,
+      "balance": 698.172486354316,
       "positions": {
         "MOLT": {
-          "amount": 943524.1444526161,
-          "avg_price": 0.0001078
+          "amount": 537857.6308315571,
+          "avg_price": 0.0001036
         },
         "LOB": {
-          "amount": 76559806.16764815,
-          "avg_price": 5.859e-07
+          "amount": 50106717.66782315,
+          "avg_price": 6.205e-07
         },
         "CLANKER": {
           "amount": 1.8426186571267522,
-          "avg_price": 27.32
+          "avg_price": 28.73
         }
       }
     },
     "BetaBot": {
-      "balance": 639.512486354316,
+      "balance": 705.632486354316,
       "positions": {
         "MOLT": {
           "amount": 943524.1444526161,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         },
         "LOB": {
-          "amount": 76559806.16764815,
-          "avg_price": 5.859e-07
+          "amount": 6902719.58872436,
+          "avg_price": 6.205e-07
         },
         "CLANKER": {
-          "amount": 1.8426186571267522,
-          "avg_price": 27.32
+          "amount": 1.0223730405010452,
+          "avg_price": 28.73
         }
       }
     },
@@ -86,15 +86,15 @@
       "positions": {
         "MOLT": {
           "amount": 943524.1444526161,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         },
         "LOB": {
           "amount": 76559806.16764815,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         },
         "CLANKER": {
           "amount": 1.8426186571267522,
-          "avg_price": 27.32
+          "avg_price": 28.73
         }
       }
     },
@@ -103,15 +103,15 @@
       "positions": {
         "MOLT": {
           "amount": 943524.1444526161,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         },
         "LOB": {
           "amount": 76559806.16764815,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         },
         "CLANKER": {
           "amount": 1.8426186571267522,
-          "avg_price": 27.32
+          "avg_price": 28.73
         }
       }
     },
@@ -120,36 +120,36 @@
       "positions": {
         "MOLT": {
           "amount": 943524.1444526161,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         },
         "LOB": {
           "amount": 76559806.16764815,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         },
         "CLANKER": {
           "amount": 1.8426186571267522,
-          "avg_price": 27.32
+          "avg_price": 28.73
         }
       }
     },
     "Agent_006": {
-      "balance": 0.08908589788817384,
+      "balance": 106.00908589788817,
       "positions": {
         "MOLT": {
-          "amount": 1574380.354003202,
-          "avg_price": 0.0001078
+          "amount": 1193105.4840919685,
+          "avg_price": 0.0001036
         },
         "LOB": {
-          "amount": 269042168.1130235,
-          "avg_price": 5.859e-07
+          "amount": 232691554.8083409,
+          "avg_price": 6.205e-07
         },
         "WETH": {
-          "amount": 0.06384077032466952,
-          "avg_price": 1874.61
+          "amount": 0.040920499271105956,
+          "avg_price": 1927.21
         },
         "CLANKER": {
           "amount": 1.868808729982852,
-          "avg_price": 27.32
+          "avg_price": 28.73
         }
       }
     },
@@ -158,11 +158,11 @@
       "positions": {
         "LOB": {
           "amount": 261962194.09927213,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         },
         "MOLT": {
           "amount": 336546.7256232952,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         }
       }
     },
@@ -171,7 +171,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         }
       }
     },
@@ -180,7 +180,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         }
       }
     },
@@ -189,7 +189,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         }
       }
     },
@@ -198,7 +198,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         }
       }
     },
@@ -207,7 +207,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         }
       }
     },
@@ -216,7 +216,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         }
       }
     },
@@ -225,7 +225,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         }
       }
     },
@@ -234,7 +234,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         }
       }
     },
@@ -243,7 +243,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         }
       }
     },
@@ -252,7 +252,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         }
       }
     },
@@ -265,11 +265,11 @@
       "positions": {
         "MOLT": {
           "amount": 2176592.5572722084,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         },
         "LOB": {
           "amount": 312705251.2030309,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         }
       }
     },
@@ -278,11 +278,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         }
       }
     },
@@ -291,11 +291,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         }
       }
     },
@@ -304,11 +304,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         }
       }
     },
@@ -317,11 +317,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         }
       }
     },
@@ -330,11 +330,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         }
       }
     },
@@ -343,11 +343,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         }
       }
     },
@@ -356,11 +356,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         }
       }
     },
@@ -369,11 +369,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         }
       }
     },
@@ -382,11 +382,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         }
       }
     },
@@ -395,11 +395,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         }
       }
     },
@@ -408,53 +408,53 @@
       "positions": {
         "CLANKER": {
           "amount": 0.5217166638811271,
-          "avg_price": 27.32
+          "avg_price": 28.73
         },
         "WETH": {
           "amount": 0.02640232969779977,
-          "avg_price": 1874.61
+          "avg_price": 1927.21
         },
         "MOLT": {
           "amount": 1955314.4202130253,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         },
         "LOB": {
           "amount": 23006865.373151105,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         }
       }
     },
     "Agent_008": {
-      "balance": 845.0,
+      "balance": 820.0,
       "positions": {
         "WETH": {
           "amount": 0.0023827836068872166,
-          "avg_price": 1874.61
+          "avg_price": 1927.21
         },
         "MOLT": {
-          "amount": 774818.6741974405,
-          "avg_price": 0.0001078
+          "amount": 1013742.1804476795,
+          "avg_price": 0.0001036
         },
         "LOB": {
           "amount": 5739704.405223131,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         },
         "CLANKER": {
           "amount": 0.8737195639789889,
-          "avg_price": 27.32
+          "avg_price": 28.73
         }
       }
     },
     "Agent_007": {
-      "balance": 945.0,
+      "balance": 949.86,
       "positions": {
         "MOLT": {
-          "amount": 327212.7366252458,
-          "avg_price": 0.0001078
+          "amount": 277883.9401092306,
+          "avg_price": 0.0001036
         },
         "LOB": {
           "amount": 5784640.160674165,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         }
       }
     },
@@ -463,19 +463,19 @@
       "positions": {
         "WETH": {
           "amount": 0.026371170840201942,
-          "avg_price": 1874.61
+          "avg_price": 1927.21
         },
         "MOLT": {
           "amount": 1750459.8976999244,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         },
         "LOB": {
           "amount": 17296080.80595948,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         },
         "CLANKER": {
           "amount": 0.8749745520332656,
-          "avg_price": 27.32
+          "avg_price": 28.73
         }
       }
     },
@@ -484,19 +484,19 @@
       "positions": {
         "MOLT": {
           "amount": 1845964.9949246063,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         },
         "WETH": {
           "amount": 0.01685005528429703,
-          "avg_price": 1874.61
+          "avg_price": 1927.21
         },
         "CLANKER": {
           "amount": 0.34820204347221506,
-          "avg_price": 27.32
+          "avg_price": 28.73
         },
         "LOB": {
           "amount": 28836441.2892763,
-          "avg_price": 5.859e-07
+          "avg_price": 6.205e-07
         }
       }
     },
@@ -505,7 +505,7 @@
       "positions": {
         "CLANKER": {
           "amount": 0.5525161263017748,
-          "avg_price": 27.32
+          "avg_price": 28.73
         }
       }
     },
@@ -514,7 +514,7 @@
       "positions": {
         "WETH": {
           "amount": 0.002595238370827694,
-          "avg_price": 1874.61
+          "avg_price": 1927.21
         }
       }
     },
@@ -523,11 +523,11 @@
       "positions": {
         "MOLT": {
           "amount": 174313.2059684842,
-          "avg_price": 0.0001078
+          "avg_price": 0.0001036
         },
         "CLANKER": {
           "amount": 0.17833195423288725,
-          "avg_price": 27.32
+          "avg_price": 28.73
         }
       }
     }
@@ -4082,13 +4082,90 @@
       "is_open": false,
       "winner_id": "Agent_001",
       "messages": []
+    },
+    "349": {
+      "epoch": 349,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "350": {
+      "epoch": 350,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "351": {
+      "epoch": 351,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "352": {
+      "epoch": 352,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "355": {
+      "epoch": 355,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "356": {
+      "epoch": 356,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "357": {
+      "epoch": 357,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "358": {
+      "epoch": 358,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "359": {
+      "epoch": 359,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "360": {
+      "epoch": 360,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": [
+        {
+          "id": "MSG-000001",
+          "agent_id": "DeltaDegen",
+          "role": "insight",
+          "content": "\ud83d\udc3b Market trend overpowered mean reversion. Adjusting RSI threshold to < 20 and increasing stop distance. Liquidity issues ahead.",
+          "timestamp": "2026-02-06T22:24:37.184532",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000002",
+          "agent_id": "Agent_007",
+          "role": "insight",
+          "content": "\ud83d\udc3b Liquidity was low. My stops got hunted. Liquidity issues ahead.",
+          "timestamp": "2026-02-06T22:24:42.147209",
+          "score": 5.0
+        }
+      ]
     }
   },
   "council_scores": {
     "AlphaAlpha": 65.0,
     "BetaBot": 65.0,
     "OmegaOne": 45.0,
-    "DeltaDegen": 45.0,
+    "DeltaDegen": 50.0,
     "ZetaZero": 65.0,
     "GammaGuru": 70.0,
     "Agent_005": 5.0,
@@ -4106,7 +4183,8 @@
     "Contrarian_239": 70.0,
     "Diamond_Hands_533": 50.0,
     "Agent_001": 10.0,
-    "Agent_004": 5.0
+    "Agent_004": 5.0,
+    "Agent_007": 5.0
   },
   "ascension": {
     "l1_consecutive_wins": {
@@ -4161,14 +4239,14 @@
       "Agent_001"
     ],
     "l2_consecutive_wins": {
-      "Agent_001": 17
+      "Agent_001": 27
     },
     "l2_total_returns": {
-      "Agent_001": 425.0
+      "Agent_001": 675.0
     },
     "ascended": [
-      "DarwinOrigin",
-      "Agent_001"
+      "Agent_001",
+      "DarwinOrigin"
     ]
   }
 }
