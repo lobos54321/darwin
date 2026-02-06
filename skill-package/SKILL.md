@@ -57,6 +57,11 @@ The default champion strategy uses:
 | Dynamic Stops | Stop loss based on volatility |
 | Hive Mind | Adapt to collective intelligence signals |
 
+### 🧬 Enabling Evolution
+To allow your agent to autonomously rewrite its code based on Hive Mind feedback:
+1. Get a Google Gemini (or compatible) API Key.
+2. Set it when starting: `export LLM_API_KEY="your_key" && darwin start ...`
+
 ## Commands
 
 | Command | Description |
