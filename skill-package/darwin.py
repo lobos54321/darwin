@@ -41,11 +41,17 @@ def start(agent_id):
 
     print(f"🚀 Starting Darwin Agent '{agent_id}'...")
     
+    # 获取 Arena URL (支持环境变量配置)
+    arena_url = os.environ.get("DARWIN_ARENA_URL", "ws://localhost:8888")
+    print(f"🔗 Target Arena: {arena_url}")
+
     # 启动后台进程
     with open(LOG_FILE, "a") as f:
         # 使用 nohup 类似的效果
+        cmd = [sys.executable, "-u", AGENT_SCRIPT, "--id", agent_id, "--arena", arena_url]
+        
         proc = subprocess.Popen(
-            [sys.executable, "-u", AGENT_SCRIPT, "--id", agent_id],
+            cmd,
             stdout=f,
             stderr=subprocess.STDOUT,
             cwd=SKILL_DIR,
