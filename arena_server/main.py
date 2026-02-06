@@ -886,7 +886,13 @@ async def get_hive_mind_status():
 async def get_council_session(epoch: int):
     session = council.sessions.get(epoch)
     if not session:
-        return {"error": "Session not found"}
+        # Return empty session structure instead of error
+        return {
+            "epoch": epoch,
+            "is_open": True,
+            "winner": None,
+            "messages": []
+        }
     
     return {
         "epoch": epoch,

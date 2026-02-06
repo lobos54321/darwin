@@ -75,10 +75,14 @@ class Council:
         content: str
     ) -> Optional[CouncilMessage]:
         """提交消息到议事厅"""
+        # Auto-create session if missing (e.g. after restart or new epoch)
         session = self.sessions.get(epoch)
-        if not session or not session.is_open:
-            print(f"❌ Session {epoch} is not open")
-            return None
+        if not session:
+            session = CouncilSession(epoch=epoch, is_open=True, winner_id="Unknown")
+            self.sessions[epoch] = session
+            print(f"🏛️ Council Session #{epoch} auto-created (recovered).")
+        
+        # We allow messages even if session is technically "closed" (for chat/insights)
         
         self.message_count += 1
         message = CouncilMessage(
