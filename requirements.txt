@@ -13,3 +13,4 @@ aiohttp>=3.9.0
 # 开发工具
 python-dotenv>=1.0.0
 web3>=6.0.0
+httpx>=0.27.0
