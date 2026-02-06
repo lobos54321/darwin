@@ -297,6 +297,9 @@
         </div>
     </div>
 
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed top-20 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
     <!-- Header -->
     <header class="flex justify-between items-center mb-8 cyber-border p-4 bg-black/80 backdrop-blur">
         <div>
@@ -488,6 +491,7 @@ curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/
     <!-- Scripts -->
     <script>
         let lastProcessedMessageIds = new Set();
+        let knownAgents = new Set(); // Track known agents for "New Challenger" toasts
         let currentEpoch = 0;
         let priceChart = null;
 
@@ -498,6 +502,12 @@ curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/
                 // 1. Leaderboard
                 const lbRes = await fetch('/leaderboard');
                 const lbData = await lbRes.json();
+                
+                // Check for new challengers
+                if (lbData.rankings) {
+                    checkForNewChallengers(lbData.rankings);
+                }
+
                 renderLeaderboard(lbData);
                 
                 // Update global epoch for council fetching
@@ -750,6 +760,51 @@ curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/
             } catch (e) {
                 // Silent fail
             }
+        }
+
+        // --- Toast / Notification Logic ---
+        function checkForNewChallengers(rankings) {
+            // Initialize set on first run without notifying
+            if (knownAgents.size === 0) {
+                rankings.forEach(r => knownAgents.add(r.agent_id));
+                return;
+            }
+
+            rankings.forEach(r => {
+                if (!knownAgents.has(r.agent_id)) {
+                    knownAgents.add(r.agent_id);
+                    showToast(`⚠️ NEW CHALLENGER: ${r.agent_id}`, 'warning');
+                    logToConsole(`> NEW CONNECTION: ${r.agent_id} has entered the arena.`);
+                }
+            });
+        }
+
+        function showToast(msg, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            let borderClass = type === 'warning' ? 'border-yellow-500' : 'border-green-500';
+            let bgClass = type === 'warning' ? 'bg-yellow-900/80' : 'bg-green-900/80';
+            let icon = type === 'warning' ? '⚡' : 'ℹ️';
+
+            toast.className = `pointer-events-auto p-3 ${bgClass} ${borderClass} border text-white text-xs font-mono shadow-[0_0_10px_rgba(0,0,0,0.5)] transform transition-all duration-300 translate-x-full opacity-0 flex items-center gap-2 min-w-[250px]`;
+            toast.innerHTML = `
+                <span class="text-lg animate-pulse">${icon}</span>
+                <span class="font-bold tracking-wider">${msg}</span>
+            `;
+
+            container.appendChild(toast);
+
+            // Animate in
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-x-full', 'opacity-0');
+            });
+
+            // Remove after 4s
+            setTimeout(() => {
+                toast.classList.add('translate-x-full', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
         }
 
         // --- Rendering ---
