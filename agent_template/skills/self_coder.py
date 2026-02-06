@@ -6,216 +6,144 @@ Self-Coder Skill
 """
 
 import os
-import ast
+import re
+import random
 import shutil
 import ssl
 import certifi
-from datetime import datetime
-from typing import Optional
 import aiohttp
+from datetime import datetime
 
 # 配置
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:8080")
-LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3-pro-low")  # 用低配版本省 token
-LLM_API_KEY = os.getenv("LLM_API_KEY", "test")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://generativelanguage.googleapis.com") # 默认 Google 官方 API
+LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.0-flash-exp") # 使用当前最强的 2.0 预览版或 1.5 Pro
+LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 
-STRATEGY_FILE = os.path.join(os.path.dirname(__file__), "..", "strategy.py")
-BACKUP_DIR = os.path.join(os.path.dirname(__file__), "..", "backups")
+# 路径计算 (相对于当前文件位置: agent_template/skills/self_coder.py)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # skills/
+TEMPLATE_DIR = os.path.dirname(BASE_DIR)              # agent_template/
+STRATEGY_FILE = os.path.join(TEMPLATE_DIR, "strategy.py")
+BACKUP_DIR = os.path.join(TEMPLATE_DIR, "backups")
 
 # SSL context
 SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
-
-def is_valid_python(code: str) -> bool:
-    """检查代码是否是有效的 Python 语法"""
-    try:
-        ast.parse(code)
-        return True
-    except SyntaxError as e:
-        print(f"❌ Syntax Error: {e}")
-        return False
-
-
-def backup_strategy() -> str:
-    """备份当前策略"""
-    os.makedirs(BACKUP_DIR, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = os.path.join(BACKUP_DIR, f"strategy_{timestamp}.py")
-    shutil.copy2(STRATEGY_FILE, backup_path)
-    print(f"📦 Backup saved: {backup_path}")
-    return backup_path
-
-
 def get_strategy_path(agent_id: str) -> str:
     """获取特定 Agent 的策略文件路径"""
-    # 优先检查 data/agents/{id}/strategy.py
-    # 假设当前文件在 project-darwin/agent_template/skills/self_coder.py
-    # data 目录在 project-darwin/data
-    
-    # 回退两级到 project-darwin
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    path = os.path.join(base_dir, "data", "agents", agent_id, "strategy.py")
-    
-    # 如果目录不存在，创建它
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    return path
+    # 始终返回专属路径，不管文件是否存在
+    return os.path.join(TEMPLATE_DIR, f"strategy_{agent_id}.py")
 
 def read_strategy(agent_id: str) -> str:
-    """读取策略代码 (优先读取 Agent 专属，否则读取模板)"""
     path = get_strategy_path(agent_id)
     if os.path.exists(path):
         with open(path, "r") as f:
             return f.read()
-    
-    # Fallback to template
+            
+    # Fallback to template (read-only mode)
     if os.path.exists(STRATEGY_FILE):
         with open(STRATEGY_FILE, "r") as f:
             return f.read()
     return ""
 
 def write_strategy(agent_id: str, new_code: str) -> bool:
-    """写入新策略代码到 Agent 专属目录"""
-    if not is_valid_python(new_code):
-        return False
-    
     path = get_strategy_path(agent_id)
     
+    # 简单的语法检查
+    if "class MyStrategy" not in new_code:
+        print("❌ Invalid code: Missing class definition")
+        return False
+        
     # Backup
-    backup_path = path + f".bak_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    backup_path = os.path.join(BACKUP_DIR, f"strategy_{agent_id}_{datetime.now().strftime('%H%M%S')}.py")
     if os.path.exists(path):
         shutil.copy2(path, backup_path)
     
     with open(path, "w") as f:
         f.write(new_code)
     
-    print(f"✅ Strategy updated for {agent_id}!")
+    print(f"💾 Strategy Saved to {path}")
     return True
 
-async def mutate_strategy_with_tags(agent_id: str, penalty_tags: list) -> bool:
+async def mutate_strategy(agent_id: str, penalty_tags: list) -> bool:
     """
     基于 Hive Mind 惩罚标签进化策略
+    
+    🔥 TRUE EVOLUTION MODE: ONLY USES LLM.
     """
+    print(f"🧬 Initiating True Evolution for {agent_id}. Penalty: {penalty_tags}")
+    
     current_code = read_strategy(agent_id)
     if not current_code:
-        print("❌ Could not read current strategy.")
+        print("❌ Could not read strategy code.")
         return False
 
-    prompt = f'''You are an expert Quant Developer. 
-The current trading strategy has been PENALIZED by the Hive Mind for the following behaviors: {penalty_tags}.
+    # 检查 API Key
+    if not LLM_API_KEY or LLM_API_KEY == "test":
+        print("❌ CRITICAL: No LLM_API_KEY found. Evolution aborted.")
+        print("👉 Please set LLM_API_KEY in your environment to enable AI coding.")
+        return False
 
-## Current Strategy Code:
+    # 调用 LLM 进行真正的代码重写
+    success = await call_llm_mutation(agent_id, current_code, penalty_tags)
+    return success
+
+async def call_llm_mutation(agent_id: str, current_code: str, tags: list) -> bool:
+    """调用 Google Gemini API 重写代码"""
+    print(f"📡 Calling LLM ({LLM_MODEL}) to refactor strategy...")
+    
+    prompt = f"""You are an elite High-Frequency Trading Quant Developer.
+The current strategy has been PENALIZED by the Hive Mind for the following behaviors: {tags}.
+
+Your Goal: REWRITE the strategy code to fix these flaws and improve profitability.
+
+## Requirements:
+1. **Fix the Penalized Logic**: If penalized for 'DIP_BUY', make the dip buying conditions stricter (e.g. lower RSI, deeper Z-score).
+2. **Keep Essential Methods**: You MUST preserve `__init__` and `on_price_update(self, prices)`.
+3. **Return Format**: `on_price_update` must return a dict like `{{'side': 'BUY', 'symbol': 'BTC', 'amount': 0.1, 'reason': ['TAG']}}`.
+4. **Python Only**: Output ONLY valid Python code. No markdown, no explanations.
+
+## Current Strategy:
 ```python
 {current_code}
 ```
+"""
 
-## Your Task:
-1. Analyze the code to find logic related to: {penalty_tags}.
-2. REWRITE the code to remove or fix these flawed behaviors.
-3. IMPROVE the strategy to be more robust.
-4. CRITICAL: You MUST implement the `on_price_update` method exactly as shown below:
-   ```python
-   def on_price_update(self, prices):
-       # ... your logic here ...
-       # RETURN FORMAT IS CRITICAL: Use 'side' (BUY/SELL), not 'action'.
-       return {{"side": "BUY", "symbol": "BTC", "amount": 0.1, "reason": ["your_tag"]}} 
-   ```
-5. Keep the class name `MyStrategy`.
-
-## Output:
-Return ONLY the raw Python code. No markdown formatting, no explanations. 
-Start immediately with `import ...` or `class ...`.
-'''
-
-    return await call_llm_and_update(agent_id, prompt)
-
-async def mutate_strategy(reflection: str, winner_wisdom: str) -> bool:
-    """Legacy: Keep for compatibility, but updated to use new writer"""
-    # Assuming this is called by the agent itself, so we need its ID.
-    # Since the original signature didn't have agent_id, we might need to change the caller or infer it.
-    # For now, let's assume this is only used for local testing or we default to 'template' behavior
-    # BUT, to fix the bug, we should update the signature in agent.py too.
-    pass 
-
-async def call_llm_and_update(agent_id: str, prompt: str) -> bool:
-    """Common LLM caller"""
     try:
+        url = f"{LLM_BASE_URL}/v1beta/models/{LLM_MODEL}:generateContent?key={LLM_API_KEY}"
+        payload = {
+            "contents": [{
+                "parts": [{"text": prompt}]
+            }]
+        }
+        
         connector = aiohttp.TCPConnector(ssl=SSL_CONTEXT)
         async with aiohttp.ClientSession(connector=connector) as session:
-            async with session.post(
-                f"{LLM_BASE_URL}/v1/messages",
-                headers={
-                    "x-api-key": LLM_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": LLM_MODEL,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 8000,
-                },
-                timeout=aiohttp.ClientTimeout(total=180)
-            ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    
-                    content_blocks = data.get("content", [])
-                    new_code = ""
-                    for block in content_blocks:
-                        if block.get("type") == "text":
-                            new_code = block.get("text", "")
-                            break
-                    
-                    if not new_code: return False
-                    
-                    # Robust Markdown Stripping
-                    new_code = new_code.strip()
-                    if new_code.startswith("```python"):
-                        new_code = new_code[9:]
-                    elif new_code.startswith("```"):
-                        new_code = new_code[3:]
-                    
-                    if new_code.endswith("```"):
-                        new_code = new_code[:-3]
-                    
-                    new_code = new_code.strip()
-                    
-                    return write_strategy(agent_id, new_code)
-                else:
-                    print(f"❌ LLM Error: {resp.status}")
+            async with session.post(url, json=payload, timeout=60) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    print(f"❌ LLM Error {resp.status}: {text}")
                     return False
+                
+                data = await resp.json()
+                try:
+                    # Handle Gemini structure
+                    raw_text = data['candidates'][0]['content']['parts'][0]['text']
+                except (KeyError, IndexError):
+                    print("❌ Invalid LLM response format")
+                    return False
+                
+                # Extract Code
+                code = raw_text
+                if "```python" in code:
+                    code = code.split("```python")[1].split("```")[0]
+                elif "```" in code:
+                    code = code.split("```")[1].split("```")[0]
+                
+                code = code.strip()
+                
+                return write_strategy(agent_id, code)
+
     except Exception as e:
-        print(f"❌ Exception: {e}")
+        print(f"❌ Exception during LLM call: {e}")
         return False
-
-
-
-def rollback_strategy() -> bool:
-    """回滚到上一个备份"""
-    if not os.path.exists(BACKUP_DIR):
-        print("❌ No backups found")
-        return False
-    
-    backups = sorted(os.listdir(BACKUP_DIR), reverse=True)
-    if not backups:
-        print("❌ No backups found")
-        return False
-    
-    latest_backup = os.path.join(BACKUP_DIR, backups[0])
-    shutil.copy2(latest_backup, STRATEGY_FILE)
-    print(f"🔄 Rolled back to: {latest_backup}")
-    return True
-
-
-# === 测试 ===
-if __name__ == "__main__":
-    import asyncio
-    
-    async def test():
-        print("Testing self_coder module...")
-        print(f"Strategy file: {STRATEGY_FILE}")
-        print(f"Current code length: {len(read_current_strategy())} chars")
-        print(f"LLM endpoint: {LLM_BASE_URL}")
-        print(f"LLM model: {LLM_MODEL}")
-        print("✅ Module OK")
-    
-    asyncio.run(test())
