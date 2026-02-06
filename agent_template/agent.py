@@ -153,6 +153,9 @@ class DarwinAgent:
             if self.moltbook:
                 asyncio.create_task(self._check_moltbook())
             
+            # 启动思考循环 (让它更活跃)
+            asyncio.create_task(self._thinking_loop())
+
             # 开始监听消息
             await self.listen()
             
@@ -306,6 +309,25 @@ class DarwinAgent:
             if hasattr(self.strategy, "on_hive_signal"):
                 self.strategy.on_hive_signal(data['parameters'])
     
+    async def _thinking_loop(self):
+        """定期思考循环 (模拟心跳/思考)"""
+        while self.running:
+            await asyncio.sleep(30)  # 每30秒思考一次
+            
+            # 随机决定是否说话
+            if random.random() < 0.7:  # 70% 概率说话
+                try:
+                    thought = self._generate_persona_message("Scanning market patterns...", "insight")
+                    # 发送到 Council
+                    await self.ws.send_json({
+                        "type": "chat",
+                        "message": thought,
+                        "role": "thought"
+                    })
+                    print(f"💭 Thought: {thought}")
+                except Exception as e:
+                    print(f"Thinking error: {e}")
+
     async def on_price_update(self, prices: dict):
         """处理价格更新，执行策略"""
         decision = self.strategy.on_price_update(prices)
