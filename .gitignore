@@ -40,3 +40,4 @@ cache/
 # agent_template/backups/
 accounts.json
 .moltbook_env
+data/arena_state.json
