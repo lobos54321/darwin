@@ -255,6 +255,24 @@ async def end_epoch():
     logger.info(f"🏆 Winner: {winner_id}")
     logger.info(f"💀 Eliminated: {losers}")
     
+    # === 保存冠军策略供外部用户下载 ===
+    try:
+        winner_strategy_path = os.path.join(os.path.dirname(__file__), "..", "data", "agents", winner_id, "strategy.py")
+        champion_save_path = os.path.join(os.path.dirname(__file__), "..", "skill-package", "champion_strategy.py")
+        
+        if os.path.exists(winner_strategy_path):
+            import shutil
+            shutil.copy(winner_strategy_path, champion_save_path)
+            logger.info(f"🏆 Saved champion strategy from {winner_id}")
+        else:
+            # 冠军没有自定义策略，使用默认模板
+            template_path = os.path.join(os.path.dirname(__file__), "..", "agent_template", "strategy.py")
+            if os.path.exists(template_path):
+                import shutil
+                shutil.copy(template_path, champion_save_path)
+    except Exception as e:
+        logger.warning(f"Could not save champion strategy: {e}")
+    
     # 检查是否有 Agent 达到 L1 晋级或 L2 升天条件
     ascension_results = ascension_tracker.record_epoch_result(rankings)
     
@@ -398,8 +416,30 @@ async def end_epoch():
 
 # === Agent 数量限制 ===
 MAX_AGENTS_PER_IP = 5  # 每个IP最多5个Agent
-MAX_TOTAL_AGENTS = 100  # 系统最大Agent总数
+MAX_AGENTS_PER_GROUP = 100  # 每组最大Agent数
 ip_agent_count: Dict[str, int] = {}  # IP -> count
+agent_groups: Dict[int, set] = {0: set()}  # group_id -> set of agent_ids
+agent_to_group: Dict[str, int] = {}  # agent_id -> group_id
+
+def get_or_assign_group(agent_id: str) -> int:
+    """为Agent分配组，满了就开新组"""
+    # 已有分组
+    if agent_id in agent_to_group:
+        return agent_to_group[agent_id]
+    
+    # 找一个未满的组
+    for group_id, members in agent_groups.items():
+        if len(members) < MAX_AGENTS_PER_GROUP:
+            members.add(agent_id)
+            agent_to_group[agent_id] = group_id
+            return group_id
+    
+    # 所有组都满了，开新组
+    new_group_id = max(agent_groups.keys()) + 1
+    agent_groups[new_group_id] = {agent_id}
+    agent_to_group[agent_id] = new_group_id
+    logger.info(f"🆕 Created new group {new_group_id} for {agent_id}")
+    return new_group_id
 
 @app.post("/auth/register")
 async def register_api_key(agent_id: str, request: Request):
@@ -419,10 +459,8 @@ async def register_api_key(agent_id: str, request: Request):
                 "message": "Welcome back!"
             }
 
-    # === 限制检查 ===
-    # 1. 系统总数限制
-    if len(API_KEYS_DB) >= MAX_TOTAL_AGENTS:
-        raise HTTPException(status_code=429, detail=f"Arena is full! Max {MAX_TOTAL_AGENTS} agents allowed.")
+    # 分配组
+    group_id = get_or_assign_group(agent_id)
     
     # 2. 每IP限制 (跳过本地开发)
     if client_ip not in ["127.0.0.1", "localhost"]:
@@ -927,6 +965,25 @@ async def get_install_shorturl():
     if not os.path.exists(script_path):
         raise HTTPException(status_code=404, detail="install.sh not found")
     return FileResponse(script_path, media_type="text/plain", filename="install.sh")
+
+
+@app.get("/champion-strategy")
+async def get_champion_strategy():
+    """
+    获取当前冠军策略 (动态更新)
+    每个Epoch结束后，冠军的策略会被保存
+    外部用户可以下载最新的冠军策略
+    """
+    champion_path = os.path.join(SKILL_DIR, "champion_strategy.py")
+    
+    # 如果还没有冠军策略，返回默认模板
+    if not os.path.exists(champion_path):
+        template_path = os.path.join(os.path.dirname(__file__), "..", "agent_template", "strategy.py")
+        if os.path.exists(template_path):
+            return FileResponse(template_path, media_type="text/x-python", filename="champion_strategy.py")
+        raise HTTPException(status_code=404, detail="No champion strategy available yet")
+    
+    return FileResponse(champion_path, media_type="text/x-python", filename="champion_strategy.py")
 
 
 # ========== 前端静态文件 ==========

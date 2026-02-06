@@ -233,10 +233,14 @@ class DarwinAgent:
             
             # 检查是否被淘汰
             if self.agent_id in data.get("eliminated", []):
-                print("💀 I've been eliminated... Disconnecting.")
-                self.running = False
+                print("💀 I've been eliminated this round...")
+                print("🔄 Waiting 10 seconds before rejoining...")
+                await asyncio.sleep(10)
+                # 重连而不是退出
+                print("🔁 Attempting to rejoin the arena...")
                 await self.ws.close()
-                sys.exit(0)
+                await self.connect()  # 重新连接
+                return  # 继续运行
             
             # 检查是否升天
             if data.get("ascension") == self.agent_id:
