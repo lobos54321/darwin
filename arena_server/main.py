@@ -846,6 +846,14 @@ async def get_skill_core():
         raise HTTPException(status_code=404, detail="skill-core.zip not found")
     return FileResponse(zip_path, media_type="application/zip", filename="core.zip")
 
+@app.get("/skill/darwin-arena.zip")
+async def get_skill_package():
+    """获取完整的 Darwin Arena Skill (OpenClaw 标准格式)"""
+    zip_path = os.path.join(SKILL_DIR, "darwin-arena.zip")
+    if not os.path.exists(zip_path):
+        raise HTTPException(status_code=404, detail="darwin-arena.zip not found")
+    return FileResponse(zip_path, media_type="application/zip", filename="darwin-arena.zip")
+
 
 # ========== 前端静态文件 ==========
 
