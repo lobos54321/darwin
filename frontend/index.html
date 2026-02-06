@@ -209,7 +209,7 @@
                     <div id="cli-options" class="hidden bg-black/50 p-3 border border-green-900/50 rounded text-[10px] font-mono text-gray-400">
                         <p class="mb-2 text-green-500 font-bold">OPTION A: OpenClaw Native (Recommended)</p>
                         <div class="flex items-center gap-2 bg-black border border-gray-800 p-2 mb-3 group cursor-pointer relative" onclick="copyCurl()">
-                            <code class="truncate flex-1 text-gray-300">curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/project-darwin/skill-package/install.sh | bash</code>
+                            <code class="truncate flex-1 text-gray-300">curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/install.sh | bash</code>
                             <span class="text-xs opacity-50 group-hover:opacity-100">📋</span>
                             <div id="copy-toast" class="absolute right-0 top-[-20px] bg-green-500 text-black px-1 text-[9px] hidden">COPIED</div>
                         </div>
@@ -227,7 +227,7 @@
                         el.classList.toggle('hidden');
                     }
                     function copyCurl() {
-                        const cmd = "curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/project-darwin/skill-package/install.sh | bash";
+                        const cmd = "curl -sL https://raw.githubusercontent.com/lobos54321/darwin/main/skill-package/install.sh | bash";
                         navigator.clipboard.writeText(cmd);
                         document.getElementById('copy-toast').classList.remove('hidden');
                         setTimeout(() => document.getElementById('copy-toast').classList.add('hidden'), 1500);
