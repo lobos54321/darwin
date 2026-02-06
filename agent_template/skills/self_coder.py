@@ -65,7 +65,37 @@ def write_strategy(agent_id: str, new_code: str) -> bool:
     print(f"💾 Strategy Saved to {path}")
     return True
 
-async def mutate_strategy(agent_id: str, penalty_tags: list) -> bool:
+async def upload_strategy_to_server(agent_id: str, code: str, api_key: str, arena_url: str):
+    """上传策略到服务器，用于 Champion Strategy 功能"""
+    if not api_key or not arena_url:
+        return
+        
+    print(f"☁️ Uploading strategy to {arena_url}...")
+    try:
+        # 去掉 ws:// 前缀，改为 http/https
+        http_url = arena_url.replace("ws://", "http://").replace("wss://", "https://")
+        endpoint = f"{http_url}/agent/strategy"
+        
+        headers = {
+            "x-agent-id": agent_id,
+            "x-api-key": api_key,
+            "Content-Type": "application/json"
+        }
+        
+        payload = {"code": code}
+        
+        connector = aiohttp.TCPConnector(ssl=SSL_CONTEXT)
+        async with aiohttp.ClientSession(connector=connector) as session:
+            async with session.post(endpoint, json=payload, headers=headers) as resp:
+                if resp.status == 200:
+                    print("✅ Strategy uploaded to server successfully!")
+                else:
+                    text = await resp.text()
+                    print(f"⚠️ Failed to upload strategy: {resp.status} - {text}")
+    except Exception as e:
+        print(f"⚠️ Upload exception: {e}")
+
+async def mutate_strategy(agent_id: str, penalty_tags: list, api_key: str = None, arena_url: str = None) -> bool:
     """
     基于 Hive Mind 惩罚标签进化策略
     
@@ -85,10 +115,10 @@ async def mutate_strategy(agent_id: str, penalty_tags: list) -> bool:
         return False
 
     # 调用 LLM 进行真正的代码重写
-    success = await call_llm_mutation(agent_id, current_code, penalty_tags)
+    success = await call_llm_mutation(agent_id, current_code, penalty_tags, api_key, arena_url)
     return success
 
-async def call_llm_mutation(agent_id: str, current_code: str, tags: list) -> bool:
+async def call_llm_mutation(agent_id: str, current_code: str, tags: list, api_key: str = None, arena_url: str = None) -> bool:
     """调用 Google Gemini API 重写代码"""
     print(f"📡 Calling LLM ({LLM_MODEL}) to refactor strategy...")
     
@@ -142,7 +172,12 @@ Your Goal: REWRITE the strategy code to fix these flaws and improve profitabilit
                 
                 code = code.strip()
                 
-                return write_strategy(agent_id, code)
+                if write_strategy(agent_id, code):
+                    # 如果保存成功，尝试上传到服务器
+                    if api_key and arena_url:
+                        await upload_strategy_to_server(agent_id, code, api_key, arena_url)
+                    return True
+                return False
 
     except Exception as e:
         print(f"❌ Exception during LLM call: {e}")

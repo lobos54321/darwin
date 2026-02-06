@@ -154,6 +154,7 @@ class DarwinAgent:
                 asyncio.create_task(self._check_moltbook())
             
             # 启动思考循环 (让它更活跃)
+            print("🚀 Starting thinking loop task...")
             asyncio.create_task(self._thinking_loop())
 
             # 开始监听消息
@@ -295,7 +296,15 @@ class DarwinAgent:
                 # === TRUE EVOLUTION: Self-Rewrite Code ===
                 # If we are being penalized, our strategy logic is flawed.
                 # We invoke the self_coder to fix the source code immediately.
-                success = await mutate_strategy(self.agent_id, penalize)
+                
+                # Pass API key and Arena URL to allow uploading the new strategy
+                success = await mutate_strategy(
+                    self.agent_id, 
+                    penalize, 
+                    api_key=self.api_key, 
+                    arena_url=self.arena_url
+                )
+                
                 if success:
                     print(f"🧬 Genetic Mutation Successful! Reloading Strategy...")
                     # Reload the strategy instance to apply new logic without restarting
@@ -311,22 +320,35 @@ class DarwinAgent:
     
     async def _thinking_loop(self):
         """定期思考循环 (模拟心跳/思考)"""
+        print("🧠 Thinking loop started...")
+        # 立即发送一条，确认工作正常
+        await asyncio.sleep(2)
+        try:
+            initial_thought = self._generate_persona_message("I am connected and analyzing the market.", "insight")
+            await self.ws.send_json({
+                "type": "chat",
+                "message": initial_thought,
+                "role": "thought"
+            })
+            print(f"💭 Initial Thought: {initial_thought}")
+        except Exception as e:
+            print(f"❌ Initial thought error: {e}")
+
         while self.running:
-            await asyncio.sleep(30)  # 每30秒思考一次
+            await asyncio.sleep(15)  # 加快频率：每15秒思考一次
             
-            # 随机决定是否说话
-            if random.random() < 0.7:  # 70% 概率说话
-                try:
-                    thought = self._generate_persona_message("Scanning market patterns...", "insight")
-                    # 发送到 Council
-                    await self.ws.send_json({
-                        "type": "chat",
-                        "message": thought,
-                        "role": "thought"
-                    })
-                    print(f"💭 Thought: {thought}")
-                except Exception as e:
-                    print(f"Thinking error: {e}")
+            # 100% 概率说话 (测试用)
+            try:
+                thought = self._generate_persona_message("Scanning market patterns...", "insight")
+                # 发送到 Council
+                await self.ws.send_json({
+                    "type": "chat",
+                    "message": thought,
+                    "role": "thought"
+                })
+                print(f"💭 Thought: {thought}")
+            except Exception as e:
+                print(f"Thinking error: {e}")
 
     async def on_price_update(self, prices: dict):
         """处理价格更新，执行策略"""

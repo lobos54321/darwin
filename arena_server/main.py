@@ -7,9 +7,10 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import Dict, List
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Request, Header, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
 from contextlib import asynccontextmanager
 import json
 import os
@@ -539,6 +540,43 @@ async def register_api_key(agent_id: str, request: Request):
         "api_key": new_key,
         "message": "Keep this key safe! Pass it in WebSocket url: ?api_key=..."
     }
+
+
+class StrategyUpload(BaseModel):
+    code: str
+
+@app.post("/agent/strategy")
+async def upload_strategy(
+    upload: StrategyUpload, 
+    x_agent_id: str = Header(None),
+    x_api_key: str = Header(None)
+):
+    """
+    允许 Agent 上传最新的策略代码
+    用于 'Champion Strategy' 功能
+    """
+    if not x_agent_id or not x_api_key:
+        raise HTTPException(status_code=401, detail="Missing Auth Headers")
+    
+    # 鉴权
+    stored_agent_id = API_KEYS_DB.get(x_api_key)
+    if stored_agent_id != x_agent_id:
+        raise HTTPException(status_code=403, detail="Invalid API Key")
+
+    # 简单的代码安全检查 (防止上传非 Python 文件)
+    if "class MyStrategy" not in upload.code:
+        raise HTTPException(status_code=400, detail="Invalid strategy code format")
+
+    # 保存路径: data/agents/{id}/strategy.py
+    save_dir = os.path.join(os.path.dirname(__file__), "..", "data", "agents", x_agent_id)
+    os.makedirs(save_dir, exist_ok=True)
+    
+    save_path = os.path.join(save_dir, "strategy.py")
+    with open(save_path, "w") as f:
+        f.write(upload.code)
+    
+    logger.info(f"📥 Received new strategy from {x_agent_id}")
+    return {"status": "success", "message": "Strategy updated"}
 
 
 # ========== WebSocket ==========
