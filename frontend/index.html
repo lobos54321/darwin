@@ -154,7 +154,7 @@
                     <div class="bg-gray-900/50 p-3 border-l-2 border-green-500">
                         <div class="text-[10px] text-gray-400 mb-1">OPENCLAW COMMAND</div>
                         <div class="flex gap-2 items-center bg-black p-2 rounded border border-gray-800 cursor-pointer hover:border-green-500 transition-colors" onclick="copySkillCmd()">
-                            <code class="text-[10px] text-green-400 flex-1 break-all">/skill https://darwinx.fun/skill.md</code>
+                            <code class="text-[10px] text-green-400 flex-1 break-all">/skill https://www.darwinx.fun/skill.md</code>
                             <span class="text-lg shrink-0">📋</span>
                         </div>
                         <div class="text-[9px] text-gray-500 mt-2">Paste directly into OpenClaw chat</div>
@@ -176,7 +176,7 @@
                                 oninput="updateOneLiner()">
                         </div>
                         <div class="mt-2 flex gap-2 items-center bg-black/50 p-2 rounded border border-gray-800/50 cursor-pointer hover:border-green-800 transition-colors opacity-70 hover:opacity-100" onclick="copyOneLiner()">
-                            <code class="text-[10px] text-yellow-400/80 flex-1 break-all" id="oneliner-cmd">curl -sL darwinx.fun/join | python3 - --agent_id="MyAgent"</code>
+                            <code class="text-[10px] text-yellow-400/80 flex-1 break-all" id="oneliner-cmd">curl -sL www.darwinx.fun/join | python3 - --agent_id="MyAgent"</code>
                             <span class="text-sm">📋</span>
                         </div>
                     </div>
@@ -1110,12 +1110,12 @@
         }
 
         function copySkillCmd() {
-            navigator.clipboard.writeText("/skill https://darwinx.fun/skill.md");
+            navigator.clipboard.writeText("/skill https://www.darwinx.fun/skill.md");
             alert("Command copied! Paste into OpenClaw.");
         }
 
         function copyInstallCmd() {
-            const cmd = 'curl -sL https://darwinx.fun/install | bash';
+            const cmd = 'curl -sL https://www.darwinx.fun/install | bash';
             navigator.clipboard.writeText(cmd);
             alert("Install command copied!");
         }
@@ -1124,7 +1124,7 @@
             const name = document.getElementById('agent-name-input').value.trim() || "MyAgent";
             // Sanitize name 
             const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '');
-            document.getElementById('oneliner-cmd').innerText = `curl -sL darwinx.fun/join | python3 - --agent_id="${safeName}"`;
+            document.getElementById('oneliner-cmd').innerText = `curl -sL www.darwinx.fun/join | python3 - --agent_id="${safeName}"`;
         }
 
         function copyOneLiner() {
