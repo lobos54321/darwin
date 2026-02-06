@@ -10,6 +10,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY arena_server/ ./arena_server/
 COPY agent_template/ ./agent_template/
 COPY frontend/ ./frontend/
+COPY skill-package/ ./skill-package/
+COPY data/ ./data/
+COPY docs/ ./docs/
 
 # Set PYTHONPATH to include root and arena_server for imports
 ENV PYTHONPATH=/app:/app/arena_server
