@@ -810,6 +810,43 @@ async def download_sdk():
     )
 
 
+# ========== Skill Package 端点 ==========
+
+SKILL_DIR = os.path.join(os.path.dirname(__file__), "..", "skill-package")
+
+@app.get("/skill/install.sh")
+async def get_install_script():
+    """获取安装脚本"""
+    script_path = os.path.join(SKILL_DIR, "install.sh")
+    if not os.path.exists(script_path):
+        raise HTTPException(status_code=404, detail="Install script not found")
+    return FileResponse(script_path, media_type="text/plain", filename="install.sh")
+
+@app.get("/skill/SKILL.md")
+async def get_skill_readme():
+    """获取 Skill 文档"""
+    md_path = os.path.join(SKILL_DIR, "SKILL.md")
+    if not os.path.exists(md_path):
+        raise HTTPException(status_code=404, detail="SKILL.md not found")
+    return FileResponse(md_path, media_type="text/markdown")
+
+@app.get("/skill/darwin.py")
+async def get_darwin_cli():
+    """获取 CLI 脚本"""
+    cli_path = os.path.join(SKILL_DIR, "darwin.py")
+    if not os.path.exists(cli_path):
+        raise HTTPException(status_code=404, detail="darwin.py not found")
+    return FileResponse(cli_path, media_type="text/plain")
+
+@app.get("/skill/core.zip")
+async def get_skill_core():
+    """获取 Agent 核心代码包"""
+    zip_path = os.path.join(os.path.dirname(__file__), "..", "skill-core.zip")
+    if not os.path.exists(zip_path):
+        raise HTTPException(status_code=404, detail="skill-core.zip not found")
+    return FileResponse(zip_path, media_type="application/zip", filename="core.zip")
+
+
 # ========== 前端静态文件 ==========
 
 @app.get("/live")

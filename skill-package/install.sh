@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "🧬 Installing Darwin Arena Skill for OpenClaw..."
+echo "🧬 Installing Darwin Arena Skill..."
 
 # 1. 确定安装目录
 SKILL_ROOT="$HOME/.openclaw/skills"
@@ -10,18 +10,20 @@ DARWIN_DIR="$SKILL_ROOT/darwin"
 mkdir -p "$DARWIN_DIR"
 echo "📂 Created directory: $DARWIN_DIR"
 
-# 2. 下载文件 (模拟: 实际部署时应替换为真实的 URL)
-# 这里假设是从 GitHub Raw 或您的服务器下载
-REPO_URL="https://raw.githubusercontent.com/lobos54321/darwin/main"
+# 2. 从 darwinx.fun 下载文件
+REPO_URL="${DARWIN_ARENA_URL:-https://www.darwinx.fun}"
+# Convert wss:// to https://
+REPO_URL="${REPO_URL/wss:\/\//https://}"
+REPO_URL="${REPO_URL/ws:\/\//http://}"
 
-echo "⬇️ Downloading Darwin Skill..."
+echo "⬇️ Downloading Darwin Skill from $REPO_URL..."
 
 # 下载核心定义
-curl -sL "$REPO_URL/skill-package/SKILL.md" -o "$DARWIN_DIR/SKILL.md"
-curl -sL "$REPO_URL/skill-package/darwin.py" -o "$DARWIN_DIR/darwin.py"
+curl -sL "$REPO_URL/skill/SKILL.md" -o "$DARWIN_DIR/SKILL.md"
+curl -sL "$REPO_URL/skill/darwin.py" -o "$DARWIN_DIR/darwin.py"
 
-# 下载 Agent Core (Skill Resources)
-curl -sL "https://github.com/lobos54321/darwin/raw/main/skill-core.zip" -o "$DARWIN_DIR/core.zip"
+# 下载 Agent Core
+curl -sL "$REPO_URL/skill/core.zip" -o "$DARWIN_DIR/core.zip"
 
 echo "📦 Unpacking Agent Resources..."
 cd "$DARWIN_DIR"
