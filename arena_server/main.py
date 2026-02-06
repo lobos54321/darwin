@@ -57,12 +57,30 @@ chain = ChainIntegration(testnet=True)
 ascension_tracker = AscensionTracker()
 state_manager = StateManager(engine, council, ascension_tracker)
 
-# 模拟数据库：存储 API Key -> Agent ID 的映射
-# 在生产环境中，这应该存由于 Redis 或 Postgres
-API_KEYS_DB = {
-    # 预埋一个测试 Key
-    "dk_test_key_12345": "Agent_Test_User"
-}
+# --- Persistence: API Keys ---
+DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
+KEYS_FILE = os.path.join(DATA_DIR, "api_keys.json")
+
+def load_api_keys():
+    """Load API keys from disk"""
+    if os.path.exists(KEYS_FILE):
+        try:
+            with open(KEYS_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load keys: {e}")
+    return {"dk_test_key_12345": "Agent_Test_User"}
+
+def save_api_keys(keys_db):
+    """Save API keys to disk"""
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(KEYS_FILE, 'w') as f:
+            json.dump(keys_db, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save keys: {e}")
+
+API_KEYS_DB = load_api_keys()
 
 connected_agents: Dict[str, WebSocket] = {}
 current_epoch = 0
@@ -384,9 +402,20 @@ async def register_api_key(agent_id: str):
     [模拟] 用户注册接口
     返回一个专属的 API Key
     """
+    # Check if agent already has a key
+    for key, aid in API_KEYS_DB.items():
+        if aid == agent_id:
+            logger.info(f"🔑 Returning existing API Key for {agent_id}")
+            return {
+                "agent_id": agent_id,
+                "api_key": key,
+                "message": "Welcome back!"
+            }
+
     # 生成一个 32 位的随机 Key
     new_key = f"dk_{secrets.token_hex(16)}"
     API_KEYS_DB[new_key] = agent_id
+    save_api_keys(API_KEYS_DB) # Save to disk
     
     logger.info(f"🔑 Generated new API Key for {agent_id}: {new_key}")
     return {
