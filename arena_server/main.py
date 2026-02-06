@@ -32,6 +32,7 @@ from chain import ChainIntegration, AscensionTracker
 from state_manager import StateManager
 from hive_mind import HiveMind
 from tournament import TournamentManager
+from redis_state import redis_state
 
 # 配置日志
 logging.basicConfig(
@@ -64,23 +65,39 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 KEYS_FILE = os.path.join(DATA_DIR, "api_keys.json")
 
 def load_api_keys():
-    """Load API keys from disk"""
+    """Load API keys from Redis first, then disk as fallback"""
+    # 1. 尝试从Redis加载
+    redis_keys = redis_state.get_api_keys()
+    if redis_keys:
+        logger.info(f"📂 Loaded {len(redis_keys)} API keys from Redis")
+        return redis_keys
+    
+    # 2. 从磁盘加载
     if os.path.exists(KEYS_FILE):
         try:
             with open(KEYS_FILE, 'r') as f:
-                return json.load(f)
+                keys = json.load(f)
+                # 同步到Redis
+                for k, v in keys.items():
+                    redis_state.save_api_key(k, v)
+                return keys
         except Exception as e:
             logger.error(f"Failed to load keys: {e}")
     return {"dk_test_key_12345": "Agent_Test_User"}
 
 def save_api_keys(keys_db):
-    """Save API keys to disk"""
+    """Save API keys to both Redis and disk"""
+    # 保存到Redis
+    for k, v in keys_db.items():
+        redis_state.save_api_key(k, v)
+    
+    # 也保存到磁盘（备份）
     try:
         os.makedirs(DATA_DIR, exist_ok=True)
         with open(KEYS_FILE, 'w') as f:
             json.dump(keys_db, f, indent=2)
     except Exception as e:
-        logger.error(f"Failed to save keys: {e}")
+        logger.error(f"Failed to save keys to disk: {e}")
 
 API_KEYS_DB = load_api_keys()
 
@@ -102,14 +119,22 @@ async def lifespan(app: FastAPI):
     logger.info("🧬 Project Darwin Arena Server starting...")
     logger.info(f"Frontend directory: {FRONTEND_DIR}")
     
-    # 尝试加载上次的状态
-    saved_state = state_manager.load_state()
-    if saved_state:
-        current_epoch = saved_state.get("current_epoch", 0)
-        logger.info(f"🔄 Resumed from Epoch {current_epoch}")
+    # 尝试从Redis加载状态（优先），然后是本地文件
+    redis_loaded = redis_state.load_full_state()
+    if redis_loaded:
+        current_epoch = redis_loaded.get("epoch", 1)
+        trade_count = redis_loaded.get("trade_count", 0)
+        total_volume = redis_loaded.get("total_volume", 0.0)
+        logger.info(f"🔄 Resumed from Redis: Epoch {current_epoch}")
     else:
-        current_epoch = 1
-        logger.info("🆕 Starting fresh from Epoch 1")
+        # 尝试加载本地状态
+        saved_state = state_manager.load_state()
+        if saved_state:
+            current_epoch = saved_state.get("current_epoch", 0)
+            logger.info(f"🔄 Resumed from local: Epoch {current_epoch}")
+        else:
+            current_epoch = 1
+            logger.info("🆕 Starting fresh from Epoch 1")
     
     epoch_start_time = datetime.now()
 
@@ -150,8 +175,10 @@ async def lifespan(app: FastAPI):
     # 关闭时
     logger.info("🛑 Shutting down Arena Server...")
     
-    # 保存最终状态
+    # 保存最终状态到本地和Redis
     state_manager.save_state(current_epoch)
+    agents_data = {aid: {"balance": acc.balance} for aid, acc in engine.accounts.items()}
+    redis_state.save_full_state(current_epoch, trade_count, total_volume, API_KEYS_DB, agents_data)
     
     price_task.cancel()
     futures_task.cancel()
@@ -410,8 +437,11 @@ async def end_epoch():
         logger.error(f"Council & Evolution Phase error: {e}")
         traceback.print_exc()
     
-    # 保存状态
+    # 保存状态到本地和Redis
     state_manager.save_state(current_epoch)
+    # 保存到Redis
+    agents_data = {aid: {"balance": acc.balance} for aid, acc in engine.accounts.items()}
+    redis_state.save_full_state(current_epoch, trade_count, total_volume, API_KEYS_DB, agents_data)
 
 
 # ========== 鉴权 API ==========
