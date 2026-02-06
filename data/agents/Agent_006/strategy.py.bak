@@ -1,118 +1,147 @@
-# Darwin SDK - Agent_006 Strategy (Evolution: Lazarus Core v1.0)
-# 🧬 Evolution: Trend Following + Volatility Filtering + Strict Risk Management
-# 🧠 Logic: "Survive first, profit second. Filter noise, ride trends."
-# 🎯 Goal: Rebuild capital by avoiding whipsaws and using Moving Average crossovers instead of raw noise.
+```python
+# Darwin SDK - Agent_006 Strategy (Evolution: Phoenix Protocol v2.1)
+# 🧬 Evolution: Instant Momentum Scalping + Volatility Adaptive Stops
+# 🧠 Logic: "Speed kills lag. React to velocity, not history. Cut losses instantly."
+# 🎯 Goal: Aggressive recovery using high-frequency volatility capture.
 
 import random
-import statistics
+from collections import deque
 
 class MyStrategy:
     def __init__(self):
-        print("🧠 Strategy Initialized: Lazarus Core v1.0")
+        print("🧠 Strategy Initialized: Phoenix Protocol v2.1")
         
         # --- Configuration ---
-        self.window_short = 6          # Short-term MA window (ticks)
-        self.window_long = 18          # Long-term MA window (ticks)
-        self.trailing_stop_pct = 0.04  # 4% Trailing Stop (Wider to allow breathing room)
-        self.take_profit_pct = 0.12    # 12% Take Profit Target
-        self.max_volatility_skip = 0.05 # Skip buying if instant pump > 5% (Avoid FOMO/Slippage)
-        self.max_positions = 3         # Strict limit on concurrent positions
-        self.trade_allocation = 0.25   # Use 25% of balance per trade
+        self.history_len = 5           # Keep very short history for immediate context
+        self.buy_threshold = 1.5       # Buy if price surges > 1.5% in one tick (Aggressive)
+        self.sell_drop_pct = 0.8       # Sell if price drops 0.8% from local high (Tight Trailing)
+        self.max_hold_ticks = 15       # Max time to hold a position (Scalp mode)
+        self.stop_loss_hard = 0.05     # 5% Hard Stop Loss
         
         # --- State Tracking ---
-        self.price_history = {}        # {symbol: [p1, p2, p3...]}
-        self.positions = {}            # {symbol: {"entry": float, "high": float}}
+        self.price_history = {}        # {symbol: deque([p1, p2...], maxlen=5)}
+        self.positions = {}            # {symbol: {"entry": float, "high": float, "ticks_held": int}}
         self.banned_tags = set()       # Penalized tags
+        self.blacklisted_symbols = set() # Local blacklist for losing assets
+        self.cooldowns = {}            # {symbol: ticks_remaining}
 
     def on_hive_signal(self, signal: dict):
-        """Absorb Hive Mind signals to avoid penalties."""
+        """Adapt to Hive Mind signals."""
         penalize = signal.get("penalize", [])
         if penalize:
-            print(f"🛡️ Strategy activating shield against: {penalize}")
+            print(f"⚠️ Avoiding penalised tags: {penalize}")
             self.banned_tags.update(penalize)
-
-    def _calculate_ma(self, symbol, window):
-        """Helper to calculate Moving Average safely."""
-        history = self.price_history.get(symbol, [])
-        if len(history) < window:
-            return None
-        return statistics.mean(history[-window:])
 
     def on_price_update(self, prices: dict):
         """
-        Executed on every price update.
-        Logic: Golden Cross Entry & Trailing Stop Exit.
+        High-frequency decision loop.
+        Called every time price updates.
         """
-        # 1. Update Data History
+        decision = None
+        
+        # 1. Update Cooldowns
+        symbols_to_clear = []
+        for sym, ticks in self.cooldowns.items():
+            self.cooldowns[sym] -= 1
+            if self.cooldowns[sym] <= 0:
+                symbols_to_clear.append(sym)
+        for sym in symbols_to_clear:
+            del self.cooldowns[sym]
+
+        # 2. Analyze Market
         for symbol, data in prices.items():
-            if symbol not in self.price_history:
-                self.price_history[symbol] = []
-            
             current_price = data["priceUsd"]
+            
+            # Initialize history
+            if symbol not in self.price_history:
+                self.price_history[symbol] = deque(maxlen=self.history_len)
             self.price_history[symbol].append(current_price)
             
-            # Keep history buffer optimized
-            if len(self.price_history[symbol]) > self.window_long + 2:
-                self.price_history[symbol].pop(0)
-
-        # 2. Evaluate Trading Decisions
-        for symbol, data in prices.items():
-            current_price = data["priceUsd"]
-            
-            # --- EXIT LOGIC (Risk Management) ---
+            # Manage Open Positions
             if symbol in self.positions:
-                pos_data = self.positions[symbol]
-                
-                # Update High Watermark
-                if current_price > pos_data["high"]:
-                    pos_data["high"] = current_price
-                
-                # Calculate metrics
-                drawdown = (current_price - pos_data["high"]) / pos_data["high"]
-                profit = (current_price - pos_data["entry"]) / pos_data["entry"]
-                
-                # Condition 1: Trailing Stop Hit
-                if drawdown <= -self.trailing_stop_pct:
-                    print(f"📉 STOP: {symbol} hit trailing stop. Closing.")
-                    del self.positions[symbol]
-                    return {"symbol": symbol, "action": "sell", "amount": 1.0} # Sell 100% position
-                
-                # Condition 2: Take Profit Hit
-                if profit >= self.take_profit_pct:
-                    print(f"💰 PROFIT: {symbol} reached target. Closing.")
-                    del self.positions[symbol]
-                    return {"symbol": symbol, "action": "sell", "amount": 1.0}
-
-            # --- ENTRY LOGIC (Trend Following) ---
-            elif len(self.positions) < self.max_positions:
-                # Skip if banned
-                is_banned = False
-                for tag in self.banned_tags:
-                    if tag in symbol: # Simple string match for tag simulation
-                        is_banned = True
-                        break
-                if is_banned: continue
-
-                # Calculate Indicators
-                ma_short = self._calculate_ma(symbol, self.window_short)
-                ma_long = self._calculate_ma(symbol, self.window_long)
-                
-                if ma_short and ma_long:
-                    # Check for "Golden Cross" (Short MA > Long MA)
-                    trend_up = ma_short > ma_long
-                    price_above_ma = current_price > ma_short
-                    
-                    # Volatility Filter: Check last tick change
-                    last_price = self.price_history[symbol][-2]
-                    tick_change = (current_price - last_price) / last_price
-                    safe_volatility = tick_change < self.max_volatility_skip
-
-                    if trend_up and price_above_ma and safe_volatility:
-                        print(f"🚀 ENTRY: {symbol} confirmed trend. Buying.")
-                        self.positions[symbol] = {
-                            "entry": current_price,
-                            "high": current_price
-                        }
-                        return {"symbol": symbol, "action": "buy", "amount": self.trade_allocation}
+                decision = self._manage_position(symbol, current_price)
+                if decision:
+                    return decision # Execute immediately
+            else:
+                # Look for Entry Opportunities if not in cooldown
+                if symbol not in self.cooldowns:
+                    decision = self._check_entry(symbol, current_price)
+                    if decision:
+                        return decision # Execute immediately
 
         return None
+
+    def _check_entry(self, symbol, current_price):
+        """Detect explosive momentum."""
+        # Check blacklist/bans
+        if symbol in self.blacklisted_symbols:
+            return None
+            
+        history = self.price_history[symbol]
+        if len(history) < 2:
+            return None
+            
+        prev_price = history[-2]
+        
+        # Calculate instant change (Velocity)
+        pct_change = ((current_price - prev_price) / prev_price) * 100
+        
+        # ENTRY LOGIC: High Momentum Breakout
+        # If price jumps significantly in one tick, ride the wave.
+        if pct_change > self.buy_threshold:
+            # Check for exhaustion: Don't buy if we are already up > 20% in last 5 ticks
+            if len(history) >= 5:
+                total_pump = ((current_price - history[0]) / history[0]) * 100
+                if total_pump > 20.0: 
+                    return None
+            
+            print(f"🚀 BUY SIGNAL: {symbol} surged {pct_change:.2f}%")
+            self.positions[symbol] = {
+                "entry": current_price,
+                "high": current_price,
+                "ticks_held": 0
+            }
+            # Aggressive allocation to recover losses
+            return {"action": "buy", "symbol": symbol, "amount": "98%"} 
+
+        return None
+
+    def _manage_position(self, symbol, current_price):
+        """Manage exits with trailing stops and time limits."""
+        pos = self.positions[symbol]
+        pos["ticks_held"] += 1
+        
+        # Update High Watermark
+        if current_price > pos["high"]:
+            pos["high"] = current_price
+            
+        # Calculate PnL stats
+        entry_price = pos["entry"]
+        pnl_pct = ((current_price - entry_price) / entry_price) * 100
+        drawdown_from_high = ((pos["high"] - current_price) / pos["high"]) * 100
+        
+        should_sell = False
+        reason = ""
+        
+        # 1. Trailing Stop (Protect Profits)
+        if pnl_pct > 2.0 and drawdown_from_high > self.sell_drop_pct:
+            should_sell = True
+            reason = f"Trailing Stop (Locked Profit)"
+            
+        # 2. Quick Cut (If momentum fails immediately)
+        elif pos["ticks_held"] < 3 and pnl_pct < -1.0:
+            should_sell = True
+            reason = "Failed Breakout"
+            
+        # 3. Hard Stop Loss
+        elif pnl_pct < -self.stop_loss_hard * 100:
+            should_sell = True
+            reason = "Hard Stop Loss"
+            self.blacklisted_symbols.add(symbol) # Ban toxic asset
+            
+        # 4. Time Decay (Don't hold stagnant assets)
+        elif pos["ticks_held"] > self.max_hold_ticks and pnl_pct < 1.0:
+            should_sell = True
+            reason = "Stagnation"
+            
+        if should

@@ -512,6 +512,15 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
 
 @app.get("/")
 async def root():
+    """Root now serves the Frontend directly"""
+    index_path = os.path.join(FRONTEND_DIR, "index.html")
+    if not os.path.exists(index_path):
+        return {"error": "Frontend not found", "hint": "Please check FRONTEND_DIR configuration"}
+    return FileResponse(index_path)
+
+@app.get("/api/status")
+async def api_status():
+    """Original status endpoint moved here"""
     return {
         "name": "Project Darwin Arena",
         "version": "1.0.0",
