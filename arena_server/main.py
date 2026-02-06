@@ -131,7 +131,7 @@ async def lifespan(app: FastAPI):
         for agent_id, agent_data in saved_agents.items():
             balance = agent_data.get("balance", 1000)
             positions = agent_data.get("positions", {})
-            account = engine.get_or_create_account(agent_id)
+            account = engine.register_agent(agent_id)  # 使用正确的方法名
             account.balance = balance
             account.positions = positions
         
