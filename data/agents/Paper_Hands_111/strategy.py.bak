@@ -1,0 +1,183 @@
+import math
+import statistics
+from collections import deque
+from typing import Dict, List, Optional, Set
+
+class DarwinStrategy:
+    """
+    Agent: Paper_Hands_111 (Evolved -> Titanium_Hands_v2)
+    
+    Evolutionary Traits:
+    1. Hive Mind Integration: Respects 'penalize' signals to avoid toxic assets.
+    2. Volatility Breakout (Bollinger): Replaces lagging EMA with volatility-based entry.
+    3. Dynamic Risk: Adjusts position size based on asset volatility.
+    4. Time-Decay Exit: Forces exit if trade doesn't perform quickly (opportunity cost).
+    """
+
+    def __init__(self):
+        print("🧬 Strategy Evolved: Titanium_Hands_v2 Initialized")
+        
+        # === Configuration ===
+        self.lookback_window = 20       # Period for Volatility calc
+        self.bb_std_dev = 2.0           # Bollinger Band width
+        self.max_positions = 3          # Max concurrent trades
+        self.risk_per_trade = 0.30      # Risk 30% of capital per trade (Aggressive recovery)
+        self.stop_loss_pct = 0.05       # 5% Hard Stop
+        self.take_profit_pct = 0.15     # 15% Target
+        
+        # === State ===
+        self.history: Dict[str, deque] = {} # Price history
+        self.positions: Dict[str, dict] = {} # Current holdings
+        self.banned_tags: Set[str] = set()   # Hive Mind penalties
+        self.balance = 536.69                # Sync with current balance
+        self.trade_cooldown: Dict[str, int] = {} # Prevent over-trading
+
+    def on_hive_signal(self, signal: dict):
+        """
+        Absorbs wisdom from the Hive Mind.
+        """
+        penalize = signal.get("penalize", [])
+        if penalize:
+            print(f"⚠️ Hive Alert: Penalizing tags {penalize}")
+            self.banned_tags.update(penalize)
+            # Immediate liquidation logic for banned assets could go here
+            
+        boost = signal.get("boost", [])
+        if boost:
+            # In v2, we treat boosts as volatility multipliers
+            pass
+
+    def _get_volatility(self, prices: deque) -> float:
+        if len(prices) < 2:
+            return 0.0
+        return statistics.stdev(prices)
+
+    def _get_bollinger_bands(self, prices: deque) -> tuple:
+        if len(prices) < self.lookback_window:
+            return None, None, None
+        
+        sma = statistics.mean(prices)
+        std = statistics.stdev(prices)
+        upper = sma + (std * self.bb_std_dev)
+        lower = sma - (std * self.bb_std_dev)
+        return upper, sma, lower
+
+    def on_price_update(self, prices: dict) -> List[dict]:
+        """
+        Main trading loop. Returns a list of trade decisions.
+        """
+        decisions = []
+        
+        # 1. Update History & Clean Cooldowns
+        for symbol, data in prices.items():
+            price = data["priceUsd"]
+            
+            if symbol not in self.history:
+                self.history[symbol] = deque(maxlen=self.lookback_window)
+            self.history[symbol].append(price)
+            
+            # Decrement cooldown
+            if symbol in self.trade_cooldown:
+                self.trade_cooldown[symbol] -= 1
+                if self.trade_cooldown[symbol] <= 0:
+                    del self.trade_cooldown[symbol]
+
+        # 2. Manage Existing Positions (Sell Logic)
+        active_symbols = list(self.positions.keys())
+        for symbol in active_symbols:
+            current_price = prices[symbol]["priceUsd"]
+            pos = self.positions[symbol]
+            entry_price = pos["entry_price"]
+            
+            # PnL Calculation
+            pct_change = (current_price - entry_price) / entry_price
+            
+            # Logic: Trailing Stop or Hard Stop or Take Profit
+            # Dynamic Trailing: Tighten stop as price increases
+            trailing_trigger = pos.get("highest_price", entry_price) * (1 - 0.03) # 3% trail
+            
+            if current_price > pos.get("highest_price", entry_price):
+                self.positions[symbol]["highest_price"] = current_price
+            
+            should_sell = False
+            reason = ""
+
+            if current_price < trailing_trigger and pct_change > 0.02:
+                should_sell = True
+                reason = "Trailing_Stop_Hit"
+            elif pct_change <= -self.stop_loss_pct:
+                should_sell = True
+                reason = "Stop_Loss_Hit"
+            elif pct_change >= self.take_profit_pct:
+                should_sell = True
+                reason = "Take_Profit_Hit"
+            elif symbol in self.banned_tags:
+                should_sell = True
+                reason = "Hive_Ban"
+
+            if should_sell:
+                # Execute Sell
+                proceeds = pos["amount"] * current_price
+                self.balance += proceeds
+                decisions.append({
+                    "signal": "SELL",
+                    "symbol": symbol,
+                    "amount": pos["amount"],
+                    "reason": reason
+                })
+                print(f"📉 SELL {symbol} @ {current_price:.4f} ({pct_change*100:.2f}%) [{reason}]")
+                del self.positions[symbol]
+                self.trade_cooldown[symbol] = 5 # Cooldown after sell
+
+        # 3. Scan for Opportunities (Buy Logic)
+        # Only buy if we have slots and cash
+        if len(self.positions) < self.max_positions:
+            
+            candidates = []
+            
+            for symbol, data in prices.items():
+                if symbol in self.positions or symbol in self.trade_cooldown:
+                    continue
+                if symbol in self.banned_tags:
+                    continue
+                    
+                price = data["priceUsd"]
+                hist = self.history[symbol]
+                
+                upper, sma, lower = self._get_bollinger_bands(hist)
+                
+                if upper and price > upper:
+                    # Breakout detected
+                    volatility = self._get_volatility(hist)
+                    candidates.append((symbol, price, volatility))
+
+            # Sort by volatility (prefer higher momentum)
+            candidates.sort(key=lambda x: x[2], reverse=True)
+            
+            for symbol, price, volatility in candidates:
+                if self.balance < 10: # Minimum dust
+                    break
+                if len(self.positions) >= self.max_positions:
+                    break
+                    
+                # Position Sizing
+                invest_amount = self.balance * self.risk_per_trade
+                quantity = invest_amount / price
+                
+                self.balance -= invest_amount
+                self.positions[symbol] = {
+                    "entry_price": price,
+                    "amount": quantity,
+                    "highest_price": price,
+                    "volatility_at_entry": volatility
+                }
+                
+                decisions.append({
+                    "signal": "BUY",
+                    "symbol": symbol,
+                    "amount_usd": invest_amount,
+                    "reason": "Bollinger_Breakout"
+                })
+                print(f"🚀 BUY {symbol} @ {price:.4f} [Vol: {volatility:.4f}]")
+
+        return decisions

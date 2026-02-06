@@ -1,0 +1,191 @@
+import math
+import statistics
+from typing import Dict, List, Optional, Any
+from dataclasses import dataclass, field
+from enum import Enum
+from collections import deque
+
+# === 基础数据结构定义 (保持兼容性) ===
+
+class Signal(Enum):
+    BUY = "BUY"
+    SELL = "SELL"
+    HOLD = "HOLD"
+
+@dataclass
+class TradeDecision:
+    signal: Signal
+    symbol: str
+    amount_usd: float
+    reason: str
+
+@dataclass
+class Position:
+    symbol: str
+    entry_price: float
+    amount_usd: float
+    timestamp: int  # 这里的 timestamp 模拟 tick 计数
+    highest_price: float
+
+# === 进化后的策略核心 ===
+
+class DarwinStrategy:
+    """
+    Agent: Diamond_Hands_533 (Gen 3 - "Phoenix")
+    
+    进化日志:
+    1. 抛弃滞后的 EMA 交叉，改用瞬时动量 (Instant Momentum) 和波动率突破。
+    2. 引入 "时间止损 (Time Stop)"：如果持仓 n 个周期不盈利，强制平仓，拒绝死拿。
+    3. 动态仓位：基于波动率调整仓位大小，波动越大仓位越小。
+    4. 听从 Hive Mind：严格执行惩罚信号 (banned_tags)。
+    """
+
+    def __init__(self):
+        print("🧠 Strategy Initialized: Phoenix v3.0 (Evolutionary)")
+        
+        # === 核心参数 ===
+        self.lookback_window = 20      # 价格回溯窗口
+        self.momentum_threshold = 0.008 # 0.8% 瞬时突破阈值
+        self.stop_loss_pct = 0.025     # 2.5% 硬止损
+        self.take_profit_pct = 0.06    # 6% 止盈
+        self.trailing_arm = 0.015      # 1.5% 激活移动止损
+        self.max_hold_ticks = 15       # 时间止损：15个tick不涨就跑
+        
+        # === 资金管理 ===
+        self.balance = 536.69          # 当前余额
+        self.base_bet_size = 0.20      # 基础仓位 20%
+        
+        # === 内部状态 ===
+        self.tick_counter = 0
+        self.price_history: Dict[str, deque] = {}
+        self.positions: Dict[str, Position] = {}
+        self.banned_tags: set = set()
+        self.volatility_map: Dict[str, float] = {}
+
+    def on_hive_signal(self, signal: dict):
+        """处理 Hive Mind 信号 (吸收赢家智慧)"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            # 立即将惩罚标签加入黑名单
+            self.banned_tags.update(penalize)
+            # 如果持有被惩罚的资产，强制清仓
+            for symbol in list(self.positions.keys()):
+                if symbol in self.banned_tags:
+                    # 这里的逻辑通常需要主循环处理，标记为待卖出
+                    pass 
+
+    def _calculate_volatility(self, prices: deque) -> float:
+        if len(prices) < 5:
+            return 0.0
+        return statistics.stdev(list(prices)) / statistics.mean(list(prices))
+
+    def on_price_update(self, prices: dict) -> List[TradeDecision]:
+        """
+        主交易循环，每 ~3s 调用一次
+        """
+        self.tick_counter += 1
+        decisions = []
+        
+        # 1. 更新数据与计算指标
+        for symbol, data in prices.items():
+            current_price = data["priceUsd"]
+            
+            # 初始化历史记录
+            if symbol not in self.price_history:
+                self.price_history[symbol] = deque(maxlen=self.lookback_window)
+            self.price_history[symbol].append(current_price)
+            
+            # 计算波动率
+            self.volatility_map[symbol] = self._calculate_volatility(self.price_history[symbol])
+
+        # 2. 遍历资产做出决策
+        for symbol, data in prices.items():
+            if symbol in self.banned_tags:
+                continue
+                
+            current_price = data["priceUsd"]
+            history = self.price_history[symbol]
+            
+            # --- 平仓逻辑 (Sell Logic) ---
+            if symbol in self.positions:
+                pos = self.positions[symbol]
+                
+                # 更新最高价用于移动止损
+                if current_price > pos.highest_price:
+                    pos.highest_price = current_price
+                
+                # 计算收益率
+                pnl_pct = (current_price - pos.entry_price) / pos.entry_price
+                drawdown_from_high = (pos.highest_price - current_price) / pos.highest_price
+                
+                sell_reason = None
+                
+                # A. 硬止损
+                if pnl_pct < -self.stop_loss_pct:
+                    sell_reason = f"STOP_LOSS: {pnl_pct:.2%}"
+                
+                # B. 移动止损 (盈利超过一定幅度后，回撤卖出)
+                elif pnl_pct > self.trailing_arm and drawdown_from_high > 0.01:
+                    sell_reason = f"TRAILING_STOP: Locked Profit {pnl_pct:.2%}"
+                
+                # C. 止盈
+                elif pnl_pct > self.take_profit_pct:
+                    sell_reason = f"TAKE_PROFIT: Target Hit {pnl_pct:.2%}"
+                
+                # D. 时间止损 (Time Stop - 进化点)
+                # 如果持仓超过 N 个 tick 且收益微薄 (< 1%)，为了资金效率卖出
+                elif (self.tick_counter - pos.timestamp) > self.max_hold_ticks and pnl_pct < 0.01:
+                    sell_reason = "TIME_DECAY: Stagnant trade"
+
+                if sell_reason:
+                    decisions.append(TradeDecision(
+                        signal=Signal.SELL,
+                        symbol=symbol,
+                        amount_usd=0, # Sell all
+                        reason=sell_reason
+                    ))
+                    del self.positions[symbol] # 模拟立即平仓更新状态
+                    self.balance += pos.amount_usd * (1 + pnl_pct) # 粗略更新余额
+            
+            # --- 开仓逻辑 (Buy Logic) ---
+            else:
+                if len(history) < self.lookback_window:
+                    continue
+                    
+                # 策略：波动率压缩后的突破 (Volatility Squeeze Breakout)
+                # 如果最近价格剧烈上涨，且波动率之前较低
+                
+                start_price = history[0]
+                pct_change_window = (current_price - start_price) / start_price
+                
+                # 简单动量检查：当前价格是窗口内最高价附近
+                is_breaking_out = current_price >= max(list(history)[:-1])
+                
+                # 避免追高：如果已经在短时间内涨了太多 (>5%) 就不追了
+                is_overextended = pct_change_window > 0.05
+                
+                if is_breaking_out and not is_overextended and pct_change_window > self.momentum_threshold:
+                    # 动态仓位：波动率越高，买越少
+                    vol = self.volatility_map.get(symbol, 0.01)
+                    risk_factor = max(0.5, 1.0 - (vol * 10)) # 简单线性衰减
+                    
+                    # 检查余额
+                    invest_amount = self.balance * self.base_bet_size * risk_factor
+                    if invest_amount > 10 and self.balance > 10: # 最小交易额
+                        decisions.append(TradeDecision(
+                            signal=Signal.BUY,
+                            symbol=symbol,
+                            amount_usd=invest_amount,
+                            reason=f"MOMENTUM_BREAKOUT: +{pct_change_window:.2%}"
+                        ))
+                        # 模拟立即开仓更新状态
+                        self.positions[symbol] = Position(
+                            symbol=symbol,
+                            entry_price=current_price,
+                            amount_usd=invest_amount,
+                            timestamp=self.tick_counter,
+                            highest_price=current_price
+                        )
+                        self.balance -= invest_amount
+
+        return decisions

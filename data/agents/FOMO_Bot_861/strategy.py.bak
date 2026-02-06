@@ -1,104 +1,43 @@
 ```python
-import pandas as pd
-import numpy as np
+import random
+import math
+import statistics
+from collections import deque, defaultdict
+from typing import Dict, Optional, List, Any
 
-class FOMO_Bot_861_Evolved:
-    """
-    Agent: FOMO_Bot_861 (Evolved)
-    Evolution: Added Volatility-Adjusted Risk Management & Anti-FOMO filters.
-    Strategy: EMA Trend Following + RSI Momentum + ATR Dynamic Stops.
-    """
-    def __init__(self, initial_balance=536.69):
-        self.balance = initial_balance
-        self.position = None  # 'long', 'short', or None
-        self.entry_price = 0.0
-        self.qty = 0.0
+# -----------------------------------------------------------------------------
+# Darwin SDK - User Strategy: "Phoenix_Ascension_v2"
+# 🧬 Evolution: 
+# 1. Introduced "Regime-Adaptive Momentum" (Switches between Dip Buy & Breakout)
+# 2. Implemented "Capital Preservation Protocol" (Smaller sizing, tighter trailing stops)
+# 3. Added Volatility Compression detection (Squeeze) to catch moves early
+# -----------------------------------------------------------------------------
+
+class MyStrategy:
+    def __init__(self):
+        print("🧠 Strategy Initialized: Phoenix_Ascension_v2 (Recovery Mode)")
         
-        # Parameters (Mutated for stability)
-        self.ema_short_span = 13
-        self.ema_long_span = 48
+        # === Configuration ===
+        self.lookback_period = 30
         self.rsi_period = 14
-        self.atr_period = 14
         
-        # Risk Management (Strict)
-        self.risk_per_trade = 0.03  # Risk 3% of equity per trade
-        self.sl_atr_mult = 2.0      # Stop Loss distance in ATR
-        self.tp_atr_mult = 3.5      # Take Profit distance in ATR
-        self.trailing_trigger = 1.5 # Start trailing after 1.5 ATR profit
-
-    def preprocess_data(self, df):
-        """Calculates technical indicators."""
-        df = df.copy()
-        # Trend
-        df['ema_short'] = df['close'].ewm(span=self.ema_short_span, adjust=False).mean()
-        df['ema_long'] = df['close'].ewm(span=self.ema_long_span, adjust=False).mean()
+        # Risk Management (Strict for recovery)
+        self.max_position_size_usd = 80.0   # Reduced size to survive volatility
+        self.stop_loss_pct = 0.025          # Hard Stop: 2.5%
+        self.trailing_activation = 0.03     # Activate trailing after 3% profit
+        self.trailing_distance = 0.015      # Trail by 1.5%
         
-        # Momentum (RSI)
-        delta = df['close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=self.rsi_period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=self.rsi_period).mean()
-        rs = gain / loss
-        df['rsi'] = 100 - (100 / (1 + rs))
+        # === State ===
+        # Stores price history: { "SYMBOL": deque([p1, p2...], maxlen=50) }
+        self.history = defaultdict(lambda: deque(maxlen=50))
+        self.last_prices = {}
         
-        # Volatility (ATR)
-        df['tr'] = np.maximum(
-            df['high'] - df['low'],
-            np.maximum(
-                abs(df['high'] - df['close'].shift(1)),
-                abs(df['low'] - df['close'].shift(1))
-            )
-        )
-        df['atr'] = df['tr'].rolling(window=self.atr_period).mean()
+        # Portfolio State: { "SYMBOL": {"entry_price": float, "amount": float, "highest_price": float} }
+        self.positions = {}
         
-        return df.fillna(0)
-
-    def next(self, row):
-        """
-        Executes strategy logic for a single candle (row).
-        Returns: dict with action details.
-        """
-        action = "HOLD"
-        price = row['close']
-        atr = row['atr']
+        # Hive Mind Constraints
+        self.banned_tags = set()
+        self.boosted_tags = set()
         
-        # 1. Manage Existing Position
-        if self.position:
-            # Check Stop Loss
-            if (self.position == 'long' and price <= self.stop_loss) or \
-               (self.position == 'short' and price >= self.stop_loss):
-                action = "CLOSE"
-                self.position = None
-                
-            # Check Take Profit
-            elif (self.position == 'long' and price >= self.take_profit) or \
-                 (self.position == 'short' and price <= self.take_profit):
-                action = "CLOSE"
-                self.position = None
-                
-            # Trailing Stop Logic (Mutation: Protect Profits)
-            elif self.position == 'long':
-                if price > self.entry_price + (atr * self.trailing_trigger):
-                    new_sl = price - (atr * self.sl_atr_mult)
-                    self.stop_loss = max(self.stop_loss, new_sl)
-            elif self.position == 'short':
-                if price < self.entry_price - (atr * self.trailing_trigger):
-                    new_sl = price + (atr * self.sl_atr_mult)
-                    self.stop_loss = min(self.stop_loss, new_sl)
-                    
-            return {'action': action, 'price': price, 'sl': self.stop_loss}
-
-        # 2. Check for New Entry (If no position)
-        if atr == 0: return {'action': 'WAIT'} # Data warming up
-
-        # Trend Filter
-        trend_bullish = row['ema_short'] > row['ema_long']
-        trend_bearish = row['ema_short'] < row['ema_long']
-
-        # Anti-FOMO Filter (RSI)
-        not_overbought = row['rsi'] < 70
-        not_oversold = row['rsi'] > 30
-        momentum_up = row['rsi'] > 50
-        momentum_down = row['rsi'] < 50
-
-        signal = None
-        if
+        # Balance tracking (Simulation estimation)
+        self.estimated_

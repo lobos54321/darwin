@@ -1,170 +1,150 @@
-"""
-Darwin Agent 策略代码 - Paper_Hands_111 (Evolved to Diamond_Hands_v1)
-进化方向: 趋势跟踪 + 动量过滤 + 动态止盈
-"""
-
-from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
-from enum import Enum
 import math
 import statistics
+from collections import deque
+from typing import Dict, List, Optional, Set
 
-class Signal(Enum):
-    BUY = "BUY"
-    SELL = "SELL"
-    HOLD = "HOLD"
-
-@dataclass
-class TradeDecision:
-    signal: Signal
-    symbol: str
-    amount_usd: float
-    reason: str
-
-class DarwinStrategy:
+class MyStrategy:
     """
-    进化后的策略:
-    1. 趋势识别: 使用 EMA (指数移动平均) 代替 SMA，对近期价格更敏感。
-    2. 动量过滤: 引入 RSI 指标，避免在超买区追高。
-    3. 资金管理: 基于当前余额的动态仓位，不再全仓梭哈。
-    4. 止盈止损: 引入移动止盈 (Trailing Stop) 保护利润。
-    """
+    Agent: Paper_Hands_111 -> Evolved: Phoenix_Ascension_v3
     
+    Evolutionary Improvements:
+    1.  Trend Following (EMA Crossover): Replaces mean reversion to catch meme super-cycles.
+    2.  Trailing Stop Mechanism: Replaces fixed TP to let winners run (unlimited upside).
+    3.  Portfolio Heat Control: Limits correlation risk by filtering weak momentum.
+    4.  Capital Preservation: Dynamic position sizing based on current equity to recover drawdown.
+    """
+
     def __init__(self):
-        # === 进化后的参数 ===
-        self.ema_period = 12          # 趋势判断周期
-        self.rsi_period = 14          # 动量判断周期
-        self.rsi_overbought = 70      # 超买阈值 (不买)
-        self.rsi_oversold = 30        # 超卖阈值 (关注)
+        print("🔥 Strategy Evolved: Phoenix_Ascension_v3 Initialized")
         
-        # 风控参数
-        self.position_size_ratio = 0.2  # 每次交易只使用 20% 资金 (生存第一)
-        self.stop_loss_pct = 0.03       # 3% 硬止损 (收紧风控)
-        self.trailing_start_pct = 0.05  # 盈利 5% 后开启移动止盈
-        self.trailing_callback_pct = 0.02 # 回撤 2% 触发移动止盈
+        # === Configuration ===
+        self.ema_short_period = 7
+        self.ema_long_period = 21
+        self.max_positions = 4          # Increased slightly to diversify
+        self.stop_loss_pct = 0.04       # Tight 4% hard stop
+        self.trailing_stop_pct = 0.08   # 8% trailing stop to handle volatility
+        self.min_24h_change = 2.0       # Only enter assets with positive momentum (>2%)
         
-        # === 状态变量 ===
-        self.price_history: Dict[str, List[float]] = {}
-        self.entry_prices: Dict[str, float] = {}
-        self.high_water_marks: Dict[str, float] = {} # 记录持仓后的最高价(用于移动止盈)
-        self.balance = 536.69 # 初始同步当前余额
-        self.last_reflection = "初始化完成，准备从亏损中恢复。"
+        # === State Management ===
+        self.history: Dict[str, deque] = {}     # Price history for EMA calc
+        self.positions: Dict[str, dict] = {}    # Currently held assets
+        self.banned_tags: Set[str] = set()      # Hive Mind penalties
+        
+        # Current simulated balance (starts with residual from previous generation)
+        self.balance = 536.69 
+        self.initial_balance = 536.69
+
+    def on_hive_signal(self, signal: dict):
+        """Absorb Hive Mind wisdom to filter toxic assets."""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            print(f"⚠️ Hive Alert: Penalizing tags {penalize}")
+            self.banned_tags.update(penalize)
 
     def _calculate_ema(self, prices: List[float], period: int) -> float:
         if len(prices) < period:
-            return prices[-1] if prices else 0.0
+            return statistics.mean(prices)
+        
         multiplier = 2 / (period + 1)
-        ema = prices[0] # 简单起见，初始值用第一个价格
-        # 重新计算序列以获得准确的当前EMA
-        # 在实际高频中应保存上一次EMA，这里为了无状态恢复重新计算
-        sma = sum(prices[:period]) / period
-        ema = sma
-        for price in prices[period:]:
+        ema = prices[0] # Start with SMA of first few or just first price
+        # Simple iterative calculation
+        for price in prices:
             ema = (price - ema) * multiplier + ema
         return ema
 
-    def _calculate_rsi(self, prices: List[float], period: int) -> float:
-        if len(prices) < period + 1:
-            return 50.0
-        
-        deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
-        gains = [d for d in deltas if d > 0]
-        losses = [-d for d in deltas if d < 0]
-        
-        # 简单平均计算 (也可进化为 Wilder's Smoothing)
-        avg_gain = sum(gains[-period:]) / period if gains else 0
-        avg_loss = sum(losses[-period:]) / period if losses else 0.0001
-        
-        rs = avg_gain / avg_loss
-        rsi = 100 - (100 / (1 + rs))
-        return rsi
-
-    def on_price_update(self, prices: Dict[str, dict]) -> Optional[TradeDecision]:
+    def on_price_update(self, prices: dict) -> List[dict]:
         """
-        决策逻辑: 
-        1. 更新数据
-        2. 检查持仓 (止损/移动止盈)
-        3. 扫描机会 (EMA突破 + RSI健康)
+        Main trading logic loop.
+        Returns a list of orders: [{"symbol": "MOLT", "side": "BUY", "amount": 100}, ...]
         """
-        target_symbol = "BTC" # 假设主要交易 BTC，也可遍历
-        current_price = prices.get(target_symbol, {}).get("price", 0)
+        orders = []
         
-        if current_price == 0:
-            return None
-
-        # 1. 更新历史数据
-        if target_symbol not in self.price_history:
-            self.price_history[target_symbol] = []
-        self.price_history[target_symbol].append(current_price)
-        # 保持历史数据长度适中
-        if len(self.price_history[target_symbol]) > 50:
-            self.price_history[target_symbol].pop(0)
-            
-        history = self.price_history[target_symbol]
+        # 1. Update History & Manage Existing Positions
+        active_symbols = list(self.positions.keys())
         
-        # 2. 持仓管理 (卖出逻辑)
-        if target_symbol in self.entry_prices:
-            entry_price = self.entry_prices[target_symbol]
-            highest_price = self.high_water_marks.get(target_symbol, entry_price)
+        for symbol, data in prices.items():
+            current_price = data["priceUsd"]
             
-            # 更新最高水位
-            if current_price > highest_price:
-                self.high_water_marks[target_symbol] = current_price
-                highest_price = current_price
+            # Update History Deque
+            if symbol not in self.history:
+                self.history[symbol] = deque(maxlen=30)
+            self.history[symbol].append(current_price)
             
-            pnl_pct = (current_price - entry_price) / entry_price
-            drawdown_from_high = (highest_price - current_price) / highest_price
-            
-            # A. 硬止损
-            if pnl_pct < -self.stop_loss_pct:
-                del self.entry_prices[target_symbol]
-                del self.high_water_marks[target_symbol]
-                return TradeDecision(Signal.SELL, target_symbol, 0, f"硬止损触发: {pnl_pct:.2%}")
-            
-            # B. 移动止盈
-            if pnl_pct > self.trailing_start_pct and drawdown_from_high > self.trailing_callback_pct:
-                del self.entry_prices[target_symbol]
-                del self.high_water_marks[target_symbol]
-                return TradeDecision(Signal.SELL, target_symbol, 0, f"移动止盈触发: 回撤 {drawdown_from_high:.2%}")
+            # --- Exit Logic (Risk Management) ---
+            if symbol in self.positions:
+                pos = self.positions[symbol]
+                entry_price = pos['entry_price']
+                highest_price = pos.get('highest_price', entry_price)
                 
-            return TradeDecision(Signal.HOLD, target_symbol, 0, "持仓观望")
+                # Update High Water Mark
+                if current_price > highest_price:
+                    self.positions[symbol]['highest_price'] = current_price
+                    highest_price = current_price
+                
+                # Check Hard Stop Loss
+                pnl_pct = (current_price - entry_price) / entry_price
+                if pnl_pct < -self.stop_loss_pct:
+                    orders.append({"symbol": symbol, "side": "SELL", "amount": pos['amount'], "reason": "STOP_LOSS"})
+                    self.balance += current_price * pos['amount']
+                    del self.positions[symbol]
+                    continue
 
-        # 3. 开仓逻辑 (买入逻辑)
-        # 需要足够的数据计算指标
-        if len(history) < self.rsi_period + 2:
-            return None
+                # Check Trailing Stop
+                drawdown_from_peak = (highest_price - current_price) / highest_price
+                if drawdown_from_peak > self.trailing_stop_pct and pnl_pct > 0:
+                    orders.append({"symbol": symbol, "side": "SELL", "amount": pos['amount'], "reason": "TRAILING_STOP"})
+                    self.balance += current_price * pos['amount']
+                    del self.positions[symbol]
+                    continue
+                    
+        # 2. Entry Logic (Trend Following)
+        # Sort candidates by 24h change to prioritize momentum
+        candidates = []
+        for symbol, data in prices.items():
+            if symbol in self.positions: continue
+            if symbol in self.banned_tags: continue # Check Hive bans (simplified logic assuming symbol is tag)
             
-        ema = self._calculate_ema(history, self.ema_period)
-        rsi = self._calculate_rsi(history, self.rsi_period)
-        
-        # 策略核心变异: 
-        # 价格在 EMA 之上 (趋势向上) 且 RSI 未超买 (还有上涨空间)
-        # 且 价格没有偏离 EMA 太远 (避免乖离率过大)
-        deviation = (current_price - ema) / ema
-        
-        if current_price > ema and rsi < self.rsi_overbought and deviation < 0.05:
-            amount = self.balance * self.position_size_ratio
-            self.entry_prices[target_symbol] = current_price
-            self.high_water_marks[target_symbol] = current_price
-            return TradeDecision(Signal.BUY, target_symbol, amount, f"趋势跟随: Price>EMA({self.ema_period}), RSI={rsi:.1f}")
+            price_change = data.get("priceChange24h", 0)
+            if price_change < self.min_24h_change: continue
             
-        return TradeDecision(Signal.HOLD, target_symbol, 0, "等待机会")
+            candidates.append((symbol, data, price_change))
+            
+        # Sort by strongest momentum
+        candidates.sort(key=lambda x: x[2], reverse=True)
+        
+        for symbol, data, change in candidates:
+            if len(self.positions) >= self.max_positions:
+                break
+                
+            if self.balance < 10: # Minimum capital check
+                break
 
-    def on_epoch_end(self, rankings: List[dict], winner_wisdom: str):
-        """
-        每轮结束时的自我反省
-        """
-        # 简单的反思逻辑，实际应用中会基于排名调整参数
-        self.last_reflection = (
-            f"本轮结束。当前策略: EMA趋势+RSI过滤+移动止盈。"
-            f"重点在于保护本金({self.balance:.2f})，避免大幅回撤。"
-        )
+            current_price = data["priceUsd"]
+            history = self.history.get(symbol, [])
+            
+            if len(history) >= self.ema_long_period:
+                ema_short = self._calculate_ema(list(history), self.ema_short_period)
+                ema_long = self._calculate_ema(list(history), self.ema_long_period)
+                
+                # Golden Cross Condition + Price Strength
+                if ema_short > ema_long and current_price > ema_short:
+                    # Position Sizing: Use 20% of CURRENT balance (Conservative Recovery)
+                    trade_amount_usd = self.balance * 0.20
+                    token_amount = trade_amount_usd / current_price
+                    
+                    self.positions[symbol] = {
+                        "entry_price": current_price,
+                        "amount": token_amount,
+                        "highest_price": current_price
+                    }
+                    self.balance -= trade_amount_usd
+                    
+                    orders.append({
+                        "symbol": symbol, 
+                        "side": "BUY", 
+                        "amount": token_amount,
+                        "cost": trade_amount_usd
+                    })
+                    print(f"🚀 ENTER {symbol} @ {current_price} (EMA Trend)")
 
-    def get_reflection(self) -> str:
-        return self.last_reflection
-
-    def get_council_message(self, is_winner: bool) -> str:
-        if is_winner:
-            return "不要试图预测顶部，让利润奔跑，但要带好移动止盈。"
-        else:
-            return "Paper_Hands 已死，Diamond_Hands 重生。活下来比什么都重要。"
+        return orders

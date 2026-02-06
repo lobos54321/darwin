@@ -1,204 +1,170 @@
+# Darwin SDK - Agent_006 Strategy (Evolution: Phoenix Protocol v1.0)
+# 🧬 Evolution: Adaptive Trend Following + Risk-First Architecture
+# 🧠 Logic: "Survival is the prerequisite for success. Protect downside, let winners run."
+# 🎯 Goal: Recover from bankruptcy through disciplined trend following and strict cut-loss mechanisms.
+
 import math
-import statistics
-from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
-from enum import Enum
+from collections import deque
+from statistics import mean
 
-class Signal(Enum):
-    BUY = "BUY"
-    SELL = "SELL"
-    HOLD = "HOLD"
-
-@dataclass
-class TradeDecision:
-    signal: Signal
-    symbol: str
-    amount_usd: float
-    reason: str
-
-class DarwinStrategy:
-    """
-    Agent_006 进化版: "Lazarus Momentum" (拉撒路动量)
-    
-    【策略重构思路 - 绝境求生】
-    当前余额 $16.49 (PnL -98.4%)。常规的分散投资和稳健策略已无法挽回局面。
-    本策略吸收赢家 "右侧交易" 的核心思想，结合高波动率突破逻辑，
-    试图通过捕捉单边强趋势实现资产的快速复苏。
-    
-    进化特征:
-    1. 极简趋势过滤 (Winner's DNA): 放弃复杂的预测，只在价格站稳 SMA20 之上且 RSI 处于强势区时入场。
-    2. 狙击手仓位管理 (Mutation): 
-       - 资金 < $50 时，单标的梭哈模式 (95% 仓位)。
-       - 只有当胜率极高（形态完美）时才开枪。
-    3. 动态波动率止损: 使用 ATR (平均真实波幅) 的简化版来设定止损，而非固定百分比，避免被噪音震出。
-    """
-
+class MyStrategy:
     def __init__(self):
-        # === 核心参数 ===
-        self.sma_window = 20          # 趋势基准线
-        self.rsi_window = 14          # 动量指标
-        self.min_history = 25         # 最小数据需求
+        print("🧠 Strategy Initialized: Phoenix Protocol v1.0")
         
-        # === 风险参数 ===
-        self.risk_per_trade = 0.95    # 绝境模式：单笔投入 95% 余额
-        self.hard_stop_loss = 0.03    # 强制止损 3% (保护仅剩的本金)
-        self.trailing_trigger = 0.05  # 盈利 5% 后开启追踪止损
-        self.trailing_gap = 0.02      # 追踪回撤 2%
+        # --- Configuration ---
+        self.history_window = 20        # Number of ticks to keep for analysis
+        self.fast_ma_period = 5         # Fast Moving Average
+        self.slow_ma_period = 15        # Slow Moving Average
         
-        # === 状态变量 ===
-        self.price_history: Dict[str, List[float]] = {}
-        self.current_positions: Dict[str, float] = {}  # symbol -> amount_usd
-        self.entry_prices: Dict[str, float] = {}       # symbol -> entry_price
-        self.highest_prices: Dict[str, float] = {}     # symbol -> peak_price
-        self.balance = 16.49
+        # --- Risk Management ---
+        self.stop_loss_pct = 0.04       # Hard Stop Loss (-4%)
+        self.trailing_stop_pct = 0.02   # Trailing Stop distance (2%)
+        self.take_profit_pct = 0.15     # Initial Take Profit target (+15%)
+        self.max_positions = 5          # Max concurrent positions to spread risk
         
-        # === 调试/反思 ===
-        self.last_decision_reason = ""
+        # --- State Tracking ---
+        self.price_history = {}         # {symbol: deque(maxlen=20)}
+        self.positions = {}             # {symbol: {'entry': float, 'high': float, 'volatility': float}}
+        self.banned_tags = set()        # Hive Mind compliance
+        self.cooldowns = {}             # {symbol: int (ticks remaining)}
 
-    def _calculate_sma(self, prices: List[float], window: int) -> float:
-        if len(prices) < window:
-            return 0.0
-        return sum(prices[-window:]) / window
+    def on_hive_signal(self, signal: dict):
+        """Receive signals from Hive Mind"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            print(f"🛡️ Compliance: Banning tags {penalize}")
+            self.banned_tags.update(penalize)
 
-    def _calculate_rsi(self, prices: List[float], window: int) -> float:
-        if len(prices) < window + 1:
-            return 50.0
-        
-        deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
-        gains = [d for d in deltas if d > 0]
-        losses = [-d for d in deltas if d < 0]
-        
-        avg_gain = sum(gains[-window:]) / window if gains else 0
-        avg_loss = sum(losses[-window:]) / window if losses else 0.0001 # 避免除零
-        
-        rs = avg_gain / avg_loss
-        return 100 - (100 / (1 + rs))
-
-    def on_price_update(self, prices: Dict[str, dict]) -> Optional[TradeDecision]:
-        """
-        决策逻辑:
-        1. 更新价格历史。
-        2. 检查持仓：触发止损或移动止盈则卖出。
-        3. 检查空仓：寻找最强趋势标的买入。
-        """
-        # 更新余额 (模拟，实际由外部传入，这里主要用于仓位计算)
-        # 假设每次update都能获取最新价格，这里简化处理
-        
-        # 1. 数据清洗与更新
-        valid_symbols = []
-        for symbol, data in prices.items():
-            if 'price' not in data:
-                continue
-            
-            price = float(data['price'])
-            if symbol not in self.price_history:
-                self.price_history[symbol] = []
-            self.price_history[symbol].append(price)
-            
-            # 保持历史长度适中
-            if len(self.price_history[symbol]) > 50:
-                self.price_history[symbol].pop(0)
-            
-            if len(self.price_history[symbol]) >= self.min_history:
-                valid_symbols.append(symbol)
-
-        # 2. 持仓管理 (卖出逻辑)
-        # 优先处理卖出，释放资金
-        for symbol in list(self.current_positions.keys()):
-            current_price = prices[symbol]['price']
-            entry_price = self.entry_prices.get(symbol, current_price)
-            peak_price = self.highest_prices.get(symbol, entry_price)
-            
-            # 更新最高价
-            if current_price > peak_price:
-                self.highest_prices[symbol] = current_price
-                peak_price = current_price
-            
-            pct_change = (current_price - entry_price) / entry_price
-            drawdown_from_peak = (peak_price - current_price) / peak_price
-            
-            # 逻辑 A: 硬止损 (保命)
-            if pct_change <= -self.hard_stop_loss:
-                self._close_position(symbol)
-                return TradeDecision(Signal.SELL, symbol, self.current_positions[symbol], f"硬止损触发: {pct_change:.2%}")
-            
-            # 逻辑 B: 移动止盈 (锁利)
-            # 只有当盈利超过阈值后，才激活回撤卖出
-            is_profitable = (peak_price - entry_price) / entry_price > self.trailing_trigger
-            if is_profitable and drawdown_from_peak >= self.trailing_gap:
-                self._close_position(symbol)
-                return TradeDecision(Signal.SELL, symbol, self.current_positions[symbol], f"移动止盈触发: 高点回撤 {drawdown_from_peak:.2%}")
-
-        # 3. 开仓管理 (买入逻辑)
-        # 如果已经满仓 (对于微小资金，持有一个就算满仓)，则不买入
-        if len(self.current_positions) > 0:
+    def _calculate_sma(self, symbol, period):
+        """Calculate Simple Moving Average"""
+        if symbol not in self.price_history or len(self.price_history[symbol]) < period:
             return None
-            
-        best_candidate = None
-        best_score = -1.0
+        # Get last 'period' prices
+        slice_data = list(self.price_history[symbol])[-period:]
+        return mean(slice_data)
+
+    def _get_volatility(self, symbol):
+        """Calculate recent volatility (Standard Deviation approximation)"""
+        if symbol not in self.price_history or len(self.price_history[symbol]) < 5:
+            return 0.0
+        prices = list(self.price_history[symbol])
+        avg = mean(prices)
+        variance = sum([((x - avg) ** 2) for x in prices]) / len(prices)
+        return math.sqrt(variance)
+
+    def on_price_update(self, prices: dict):
+        """
+        Core logic loop.
+        """
+        decision = None
         
-        for symbol in valid_symbols:
-            history = self.price_history[symbol]
-            current_p = history[-1]
-            sma20 = self._calculate_sma(history, self.sma_window)
-            rsi = self._calculate_rsi(history, self.rsi_window)
+        # 1. Update Data & Manage Existing Positions
+        for symbol, data in prices.items():
+            current_price = data["priceUsd"]
             
-            # 赢家智慧: 右侧交易
-            # 必须在均线之上
-            if current_p <= sma20:
-                continue
+            # Update History
+            if symbol not in self.price_history:
+                self.price_history[symbol] = deque(maxlen=self.history_window)
+            self.price_history[symbol].append(current_price)
+            
+            # Manage Cooldowns
+            if symbol in self.cooldowns:
+                self.cooldowns[symbol] -= 1
+                if self.cooldowns[symbol] <= 0:
+                    del self.cooldowns[symbol]
+
+            # --- Position Management (Exit Logic) ---
+            if symbol in self.positions:
+                pos = self.positions[symbol]
                 
-            # 动量过滤
-            # RSI > 55 表示进入强势区，但 < 80 避免极度超买
-            if 55 < rsi < 80:
-                # 评分系统: 结合 RSI 强度和 价格乖离率
-                # 我们希望买在趋势刚启动，而不是乖离率过大的时候
-                bias = (current_p - sma20) / sma20
-                if bias < 0.05: # 乖离率不要太大，防止追高
-                    score = rsi 
-                    if score > best_score:
-                        best_score = score
+                # Update High Watermark for Trailing Stop
+                if current_price > pos['high']:
+                    pos['high'] = current_price
+                
+                # Calculate PnL percentages
+                entry_delta = (current_price - pos['entry']) / pos['entry']
+                trail_delta = (current_price - pos['high']) / pos['high']
+                
+                exit_signal = False
+                reason = ""
+
+                # A. Hard Stop Loss
+                if entry_delta < -self.stop_loss_pct:
+                    exit_signal = True
+                    reason = "Hard Stop Loss"
+                
+                # B. Trailing Stop (protect profits)
+                elif trail_delta < -self.trailing_stop_pct:
+                    exit_signal = True
+                    reason = "Trailing Stop"
+                    
+                # C. Trend Reversal (Fast MA crosses below Slow MA)
+                else:
+                    sma_fast = self._calculate_sma(symbol, self.fast_ma_period)
+                    sma_slow = self._calculate_sma(symbol, self.slow_ma_period)
+                    if sma_fast and sma_slow and sma_fast < sma_slow:
+                        exit_signal = True
+                        reason = "Trend Broken"
+
+                if exit_signal:
+                    print(f"📉 SELL {symbol} | Reason: {reason} | PnL: {entry_delta*100:.2f}%")
+                    decision = {"action": "sell", "symbol": symbol, "amount": 1.0} # Sell 100%
+                    del self.positions[symbol]
+                    self.cooldowns[symbol] = 10 # Wait 10 ticks before re-entering
+                    return decision # Execute one action per tick
+
+        # 2. Scan for New Entries (Entry Logic)
+        # Only look for entries if we haven't sold anything this tick and have room
+        if len(self.positions) < self.max_positions:
+            best_candidate = None
+            highest_momentum = -1.0
+
+            for symbol, data in prices.items():
+                # Filter Checks
+                if symbol in self.positions: continue
+                if symbol in self.cooldowns: continue
+                if symbol in self.banned_tags: continue
+                
+                # Data Sufficiency
+                if len(self.price_history.get(symbol, [])) < self.slow_ma_period:
+                    continue
+
+                # Technical Analysis
+                current_price = data["priceUsd"]
+                sma_fast = self._calculate_sma(symbol, self.fast_ma_period)
+                sma_slow = self._calculate_sma(symbol, self.slow_ma_period)
+                
+                # Logic: Golden Cross + Momentum
+                # 1. Fast MA > Slow MA (Uptrend)
+                # 2. Price > Fast MA (Strong Momentum)
+                # 3. 24h Change is Positive (Macro filter from Winner's wisdom)
+                
+                price_change_24h = data.get("priceChange24h", 0)
+                
+                if sma_fast > sma_slow and current_price > sma_fast and price_change_24h > 0:
+                    # Score based on relative spread (Momentum strength)
+                    momentum_score = (sma_fast - sma_slow) / sma_slow
+                    
+                    if momentum_score > highest_momentum:
+                        highest_momentum = momentum_score
                         best_candidate = symbol
-        
-        if best_candidate:
-            # 计算买入金额: 梭哈
-            # 预留一点点 cash 避免精度问题
-            amount = self.balance * self.risk_per_trade 
-            if amount < 1.0: # 资金太少无法交易
-                return None
+
+            if best_candidate:
+                # Calculate Position Size (Dynamic Risk)
+                # If volatility is high, buy less. If low, buy standard size.
+                vol = self._get_volatility(best_candidate)
+                current_p = prices[best_candidate]["priceUsd"]
                 
-            self.current_positions[best_candidate] = amount
-            self.entry_prices[best_candidate] = prices[best_candidate]['price']
-            self.highest_prices[best_candidate] = prices[best_candidate]['price']
-            
-            return TradeDecision(Signal.BUY, best_candidate, amount, f"Lazarus策略: 突破SMA20, RSI={best_score:.1f}")
+                # Base size is 1/Max_Positions of portfolio (approx)
+                # Here we just signal "buy", assuming engine handles precise USD amounts
+                # But we return a weight factor if supported, or just a buy signal
+                
+                print(f"🚀 BUY {best_candidate} | Mom: {highest_momentum:.4f} | Vol: {vol:.4f}")
+                self.positions[best_candidate] = {
+                    'entry': current_p,
+                    'high': current_p,
+                    'volatility': vol
+                }
+                decision = {"action": "buy", "symbol": best_candidate, "amount": 0.15} # Invest 15% of capital
 
-        return None
-
-    def _close_position(self, symbol):
-        if symbol in self.current_positions:
-            # 模拟余额回笼 (简易计算，实际依赖外部)
-            # 假设卖出后余额更新会在下一次循环前由系统完成，这里只清空记录
-            del self.current_positions[symbol]
-            del self.entry_prices[symbol]
-            del self.highest_prices[symbol]
-
-    def on_epoch_end(self, rankings: dict, winner_wisdom: str):
-        """
-        接收比赛结果和赢家建议
-        """
-        # 更新余额 (如果有接口，这里只是占位)
-        pass
-
-    def get_reflection(self) -> str:
-        return (
-            f"当前状态: 濒死 (Balance ${self.balance:.2f}). "
-            "策略调整: 采用 Lazarus Momentum，放弃分散投资，利用 SMA20+RSI 进行单标的右侧狙击。 "
-            "风控: 3% 硬止损，2% 移动回撤止盈。"
-        )
-
-    def get_council_message(self, is_winner: bool) -> str:
-        if is_winner:
-            return "绝境逢生：在极低本金下，集中火力打击高动量、低乖离的右侧标的是唯一出路。"
-        else:
-            return "资金不足限制了策略空间，正在尝试单点突破策略。"
+        return decision

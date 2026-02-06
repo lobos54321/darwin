@@ -1,154 +1,163 @@
-```python
+# Darwin SDK - User Strategy Template
+# 🧠 DEVELOPERS: EDIT THIS FILE ONLY!
+
+import random
 import statistics
-from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
-from enum import Enum
+from collections import deque
 
-# ==========================================
-# 基础数据结构
-# ==========================================
-
-class Signal(Enum):
-    BUY = "BUY"
-    SELL = "SELL"
-    HOLD = "HOLD"
-
-
-@dataclass
-class TradeDecision:
-    signal: Signal
-    symbol: str
-    amount_usd: float
-    reason: str
-
-
-class DarwinStrategy:
+class MyStrategy:
     """
-    Agent_005 进化版 (v9.0): "Fortress Rebuilder"
+    Agent_005 Gen 26: 'Darwin's Razor'
     
-    针对当前 -28% 的严重回撤，本策略放弃了激进的动量博弈，转向"右侧防御型趋势跟随"。
-    首要目标是止血保本，其次才是稳健增长。
-    
-    策略逻辑 (结合赢家智慧与自身变异):
-    1.  **趋势过滤器 (Winner's DNA)**: 使用 SMA_20 作为多空分水岭。价格在 SMA_20 之下绝对不抄底，严格执行"右侧交易"。
-    2.  **波动率确认 (Mutation)**: 引入标准差 (StdDev) 过滤。如果市场波动率过高（可能是暴跌或假突破），则暂停开仓，避免在混乱中亏损。
-    3.  **确认入场 (Confirmation)**: 仅当价格突破 SMA_20 且 连续两根K线收涨 时入场，防止假突破。
-    4.  **生存风控 (Survival Mode)**:
-        - 仓位限制: 20% (虽然需要回本，但不能孤注一掷)。
-        - 移动止盈: 当浮盈超过 3% 时，手动收紧止损到开仓价，确保"赢钱不变成亏钱"。
+    [Evolution Log]
+    - Status: Critical Recovery ($720 Balance)
+    - Source: Forked from 'Phoenix Rebound', absorbed 'Basic v1.0' simplicity.
+    - Diagnosis of Failure: Previous generation over-engineered 'velocity acceleration' and used 
+      stops that were too tight (-1.5%) for the asset volatility, causing 'death by noise'.
+    - New Mutation: 'Sustained Momentum' + 'Volatility Sizing'.
+      Instead of reacting to single-tick spikes, we require a trend confirmation over N ticks.
+      Stops are widened to breathe, but position sizing is dynamic based on volatility.
     """
-    
+
     def __init__(self):
-        # === 核心参数 ===
-        self.sma_period = 20           # 趋势判断周期 (稳健型)
-        self.volatility_period = 10    # 波动率计算周期
-        self.max_volatility = 0.03     # 波动率上限 (3%)，超过则不交易
+        print("🧠 Strategy Initialized (Darwin's Razor v26.0)")
         
-        # === 风控参数 ===
-        self.position_size = 0.2       # 单笔仓位 20%
-        self.stop_loss = -0.03         # 初始止损 -3.0% (给一点波动空间)
-        self.take_profit = 0.08        # 目标止盈 +8.0%
-        self.trailing_trigger = 0.03   # 浮盈 > 3% 时触发保本逻辑
+        # --- Configuration ---
+        self.lookback_window = 10       # Number of ticks to analyze trend
+        self.entry_threshold = 0.5      # % change required to consider entry
+        self.trend_confirmation = 3     # Number of positive ticks required in window
         
-        # === 状态变量 ===
-        self.price_history: Dict[str, List[float]] = {}
-        self.entry_prices: Dict[str, float] = {}
-        self.balance = 720.0           # 当前余额
-        self.cooldown: Dict[str, int] = {} # 交易冷却计数器
-        self.last_reflection = ""
+        # --- Risk Management ---
+        self.stop_loss_pct = 0.05       # Widened to 5% to avoid noise wicks
+        self.trailing_stop_pct = 0.025  # 2.5% Trailing Stop from local high
+        self.max_positions = 3          # Limit exposure
+        self.base_bet_pct = 0.15        # Bet 15% of equity per trade
+        
+        # --- State ---
+        self.last_prices = {}
+        self.price_history = {}         # {symbol: deque(maxlen=10)}
+        self.positions = {}             # {symbol: {'entry': float, 'high': float, 'amount': float}}
+        self.banned_tags = set()
+        self.equity = 720.0             # Estimated equity tracking
 
-    def _calculate_indicators(self, symbol: str) -> Tuple[Optional[float], Optional[float]]:
-        """计算 SMA 和 波动率"""
-        prices = self.price_history.get(symbol, [])
-        if len(prices) < self.sma_period:
-            return None, None
-        
-        # 计算 SMA
-        sma = statistics.mean(prices[-self.sma_period:])
-        
-        # 计算波动率 (标准差 / 均值)
-        recent_prices = prices[-self.volatility_period:]
-        if len(recent_prices) > 1:
-            stdev = statistics.stdev(recent_prices)
-            volatility = stdev / sma
-        else:
-            volatility = 0.0
-            
-        return sma, volatility
+    def on_hive_signal(self, signal: dict):
+        """Receive signals from Hive Mind"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            print(f"🧠 Penalty received for: {penalize}")
+            self.banned_tags.update(penalize)
+            # Immediate liquidation of penalized assets
+            for tag in penalize:
+                if tag in self.positions:
+                    # Logic to close would happen in on_price_update via return signal
+                    pass
 
-    def on_price_update(self, prices: Dict[str, dict]) -> Optional[TradeDecision]:
+    def get_position_size(self, symbol_volatility):
         """
-        核心决策逻辑
+        Mutation: Dynamic Sizing.
+        If volatility is high, reduce size. If low, increase size (up to cap).
         """
-        # 1. 更新价格历史
-        target_symbol = "BTC" # 假设主要交易 BTC，也可扩展为遍历
-        if target_symbol not in prices:
-            return None
-            
-        current_price = prices[target_symbol]['price']
+        base_size = self.equity * self.base_bet_pct
+        if symbol_volatility > 0.02: # High volatility (>2% std dev)
+            return base_size * 0.5
+        return base_size
+
+    def on_price_update(self, prices: dict):
+        """
+        Main Trading Logic Loop
+        """
+        decision = {}
         
-        if target_symbol not in self.price_history:
-            self.price_history[target_symbol] = []
-        self.price_history[target_symbol].append(current_price)
-        
-        # 保持历史数据长度适中
-        if len(self.price_history[target_symbol]) > 50:
-            self.price_history[target_symbol].pop(0)
-
-        # 冷却期处理
-        if self.cooldown.get(target_symbol, 0) > 0:
-            self.cooldown[target_symbol] -= 1
-            return None
-
-        # 2. 检查持仓状态 (卖出逻辑)
-        if target_symbol in self.entry_prices:
-            entry_price = self.entry_prices[target_symbol]
-            pnl_pct = (current_price - entry_price) / entry_price
+        # 1. Update History & Calculate Metrics
+        for symbol, data in prices.items():
+            current_price = data["priceUsd"]
             
-            # 止损
-            if pnl_pct <= self.stop_loss:
-                del self.entry_prices[target_symbol]
-                self.balance += self.balance * self.position_size * (1 + pnl_pct)
-                self.cooldown[target_symbol] = 5 # 亏损后冷静5个周期
-                return TradeDecision(Signal.SELL, target_symbol, 0, f"止损触发 ({pnl_pct:.2%})")
+            if symbol not in self.price_history:
+                self.price_history[symbol] = deque(maxlen=self.lookback_window)
+            self.price_history[symbol].append(current_price)
             
-            # 止盈
-            if pnl_pct >= self.take_profit:
-                del self.entry_prices[target_symbol]
-                self.balance += self.balance * self.position_size * (1 + pnl_pct)
-                return TradeDecision(Signal.SELL, target_symbol, 0, f"止盈落袋 ({pnl_pct:.2%})")
-            
-            # 移动保本逻辑: 如果浮盈超过 3%，且价格开始回落 (简单模拟)
-            if pnl_pct > self.trailing_trigger:
-                # 这里可以实现更复杂的移动止损，这里简化为：如果跌回 1% 就走
-                if pnl_pct < (self.trailing_trigger - 0.02): # 回撤
-                     del self.entry_prices[target_symbol]
-                     self.balance += self.balance * self.position_size * (1 + pnl_pct)
-                     return TradeDecision(Signal.SELL, target_symbol, 0, "保本离场")
+            # Skip if banned
+            if symbol in self.banned_tags:
+                continue
 
-            # 趋势反转离场: 价格跌破 SMA
-            sma, _ = self._calculate_indicators(target_symbol)
-            if sma and current_price < sma:
-                del self.entry_prices[target_symbol]
-                self.balance += self.balance * self.position_size * (1 + pnl_pct)
-                return TradeDecision(Signal.SELL, target_symbol, 0, "趋势破位离场")
+            # --- EXIT LOGIC (Risk Management) ---
+            if symbol in self.positions:
+                pos = self.positions[symbol]
                 
-            return TradeDecision(Signal.HOLD, target_symbol, 0, f"持仓中 PnL: {pnl_pct:.2%}")
+                # Update High Water Mark
+                if current_price > pos['high']:
+                    pos['high'] = current_price
+                
+                # Calculate PnL percentages
+                drawdown_from_peak = (current_price - pos['high']) / pos['high']
+                total_pnl = (current_price - pos['entry']) / pos['entry']
+                
+                should_close = False
+                reason = ""
+                
+                # 1. Trailing Stop (Protect Profits)
+                if drawdown_from_peak < -self.trailing_stop_pct:
+                    should_close = True
+                    reason = "Trailing Stop"
+                
+                # 2. Hard Stop Loss (Catastrophe protection)
+                elif total_pnl < -self.stop_loss_pct:
+                    should_close = True
+                    reason = "Hard Stop"
+                
+                if should_close:
+                    print(f"📉 SELL {symbol}: {reason} (PnL: {total_pnl*100:.2f}%)")
+                    decision[symbol] = "SELL"
+                    # Update equity estimate (simplified)
+                    pnl_amount = pos['amount'] * total_pnl
+                    self.equity += pnl_amount
+                    del self.positions[symbol]
+                    continue # Skip entry logic
 
-        # 3. 检查开仓状态 (买入逻辑)
-        else:
-            sma, volatility = self._calculate_indicators(target_symbol)
-            
-            # 数据不足
-            if not sma or not volatility:
-                return None
-            
-            history = self.price_history[target_symbol]
-            
-            # 逻辑 A: 趋势确认 (价格在均线之上)
-            trend_confirmed = current_price > sma
-            
-            # 逻辑 B: 动量确认 (连续两根上涨，防止接飞刀)
-            momentum_confirmed = False
-            if len(history) >= 3:
-                momentum_confirmed = history[-1] > history
+            # --- ENTRY LOGIC (Momentum + Stability) ---
+            # Only enter if slots available and enough history
+            if symbol not in self.positions and len(self.positions) < self.max_positions:
+                if len(self.price_history[symbol]) >= self.lookback_window:
+                    history = list(self.price_history[symbol])
+                    
+                    # 1. Calculate Volatility (Standard Deviation / Mean)
+                    if len(history) > 2:
+                        mean_price = statistics.mean(history)
+                        stdev = statistics.stdev(history)
+                        volatility = stdev / mean_price if mean_price > 0 else 0
+                    else:
+                        volatility = 0.0
+
+                    # 2. Trend Analysis
+                    # Check if price is higher than it was 5 ticks ago (Mid-term momentum)
+                    mid_term_change = (current_price - history[-5]) / history[-5]
+                    
+                    # Check immediate tick momentum
+                    short_term_change = (current_price - history[-2]) / history[-2]
+                    
+                    # 3. Consistency Check (Count positive ticks in window)
+                    positive_ticks = sum(1 for i in range(1, len(history)) if history[i] > history[i-1])
+                    
+                    # Signal Trigger:
+                    # - Price is up > 0.5% vs 5 ticks ago
+                    # - Immediate momentum is positive
+                    # - At least 60% of recent ticks were green (Consistency)
+                    if (mid_term_change * 100 > self.entry_threshold and 
+                        short_term_change > 0 and 
+                        positive_ticks >= (self.lookback_window * 0.6)):
+                        
+                        bet_size = self.get_position_size(volatility)
+                        
+                        print(f"🚀 BUY {symbol}: Mom={mid_term_change*100:.2f}% Vol={volatility:.4f}")
+                        decision[symbol] = {"action": "BUY", "amount": bet_size}
+                        
+                        self.positions[symbol] = {
+                            'entry': current_price, 
+                            'high': current_price,
+                            'amount': bet_size
+                        }
+
+            # Update last price for next tick reference
+            self.last_prices[symbol] = current_price
+
+        return decision

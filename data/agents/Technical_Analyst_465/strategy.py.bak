@@ -1,0 +1,182 @@
+# Darwin SDK - User Strategy Template
+# 🧠 DEVELOPERS: EDIT THIS FILE ONLY!
+
+import math
+import statistics
+from collections import deque
+
+class MyStrategy:
+    """
+    Agent: Technical_Analyst_465 (v3.0 - Phoenix Recovery)
+    
+    Evolution Log:
+    1. [Shift] Moved from lagging EMAs to Instant Momentum (Winner's DNA).
+    2. [Mutation] Added 'Time-Decay Exit': If a trade doesn't profit in 10 ticks, cut it.
+    3. [Risk] Implemented 'Volatility Normalization': Position size scales inversely with risk.
+    4. [Recovery] strict 'Circuit Breaker': Blacklist tokens that cause losses.
+    """
+
+    def __init__(self):
+        print("🧠 Phoenix Strategy Initialized (Recovery Mode)")
+        
+        # === Configuration ===
+        self.lookback_window = 12       # Short window for fast reaction
+        self.volatility_multiplier = 2.0 # Bollinger Band width
+        self.min_roi_target = 0.015     # 1.5% target per trade
+        self.max_drawdown = 0.02        # 2% Hard Stop Loss
+        self.trailing_gap = 0.01        # 1% Trailing Stop
+        self.max_hold_ticks = 15        # Max duration to hold a stagnant trade
+        
+        # === State ===
+        # {symbol: deque([p1, p2...], maxlen=N)}
+        self.price_history = {}
+        
+        # {symbol: {"entry": float, "highest": float, "ticks_held": int, "amount": float}}
+        self.positions = {}
+        
+        # {symbol: timestamp_of_unban}
+        self.blacklisted = {}
+        self.banned_tags = set()
+        
+        # Simulated Balance Tracking (since SDK might not pass it every tick)
+        self.estimated_balance = 536.69
+        self.allocation_per_trade = 0.15 # Use 15% of equity per trade
+
+    def on_hive_signal(self, signal: dict):
+        """Receive signals from Hive Mind"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            self.banned_tags.update(penalize)
+
+    def _get_volatility(self, prices):
+        if len(prices) < 2:
+            return 0
+        return statistics.stdev(prices) if len(prices) > 1 else 0
+
+    def _get_sma(self, prices):
+        return sum(prices) / len(prices) if prices else 0
+
+    def on_price_update(self, prices: dict):
+        """
+        Main trading loop. 
+        Returns: Dict or None. 
+        Format: {"action": "buy"/"sell", "symbol": "BTC", "amount": 100}
+        """
+        
+        # 1. Update Data & Clean Blacklist
+        active_symbols = []
+        for symbol, data in prices.items():
+            price = data["priceUsd"]
+            
+            if symbol not in self.price_history:
+                self.price_history[symbol] = deque(maxlen=self.lookback_window)
+            self.price_history[symbol].append(price)
+            active_symbols.append(symbol)
+            
+            # Decay blacklist (simplified logic, just random chance to unban or time based)
+            # Here we just check if we can re-evaluate
+            if symbol in self.blacklisted:
+                self.blacklisted[symbol] -= 1
+                if self.blacklisted[symbol] <= 0:
+                    del self.blacklisted[symbol]
+
+        # 2. Manage Existing Positions (Exit Logic)
+        for symbol in list(self.positions.keys()):
+            current_price = prices[symbol]["priceUsd"]
+            pos = self.positions[symbol]
+            
+            # Update stats
+            pos["ticks_held"] += 1
+            if current_price > pos["highest"]:
+                pos["highest"] = current_price
+            
+            roi = (current_price - pos["entry"]) / pos["entry"]
+            pullback = (pos["highest"] - current_price) / pos["highest"]
+            
+            # Decision: SELL?
+            sell_reason = None
+            
+            # A. Hard Stop Loss
+            if roi < -self.max_drawdown:
+                sell_reason = "STOP_LOSS"
+                
+            # B. Trailing Stop (Protect Profits)
+            elif roi > 0.005 and pullback > self.trailing_gap:
+                sell_reason = "TRAILING_PROFIT"
+                
+            # C. Time Stop (Stagnant Money)
+            elif pos["ticks_held"] > self.max_hold_ticks and roi < self.min_roi_target:
+                sell_reason = "TIME_DECAY"
+                
+            if sell_reason:
+                # Execute Sell
+                print(f"📉 SELL {symbol} | Reason: {sell_reason} | ROI: {roi*100:.2f}%")
+                
+                # Penalty for loss: Blacklist temporarily
+                if roi < 0:
+                    self.blacklisted[symbol] = 20 # Ban for 20 ticks
+                    
+                del self.positions[symbol]
+                # Return immediately to handle one action per tick (SDK limitation usually)
+                return {
+                    "action": "sell",
+                    "symbol": symbol,
+                    "amount": 1.0 # Sell 100%
+                }
+
+        # 3. Scan for Entries (Momentum Logic)
+        # Only if we have cash (simplified check, assuming max 5 positions)
+        if len(self.positions) < 5:
+            best_candidate = None
+            highest_score = 0
+            
+            for symbol in active_symbols:
+                # Filter bad candidates
+                if symbol in self.positions: continue
+                if symbol in self.blacklisted: continue
+                if len(self.price_history[symbol]) < self.lookback_window: continue
+                
+                history = list(self.price_history[symbol])
+                current_price = history[-1]
+                sma = self._get_sma(history)
+                stdev = self._get_volatility(history)
+                
+                if stdev == 0: continue
+                
+                # Strategy: Bollinger Breakout + Momentum
+                # Price must be above Upper Band
+                upper_band = sma + (self.volatility_multiplier * stdev)
+                
+                # Calculate Momentum (ROC)
+                momentum = (current_price - history[0]) / history[0]
+                
+                if current_price > upper_band and momentum > 0:
+                    # Score based on momentum strength relative to volatility
+                    score = momentum / (stdev / current_price)
+                    if score > highest_score:
+                        highest_score = score
+                        best_candidate = symbol
+
+            if best_candidate and highest_score > 2.0:
+                # Position Sizing: Risk-based
+                # Less volatility = larger size (capped)
+                # For simplicity in this recovery phase, we use fixed allocation
+                amount_usd = self.estimated_balance * self.allocation_per_trade
+                
+                current_p = prices[best_candidate]["priceUsd"]
+                
+                self.positions[best_candidate] = {
+                    "entry": current_p,
+                    "highest": current_p,
+                    "ticks_held": 0,
+                    "amount": amount_usd
+                }
+                
+                print(f"🚀 BUY {best_candidate} | Score: {highest_score:.2f} | Price: {current_p}")
+                return {
+                    "action": "buy",
+                    "symbol": best_candidate,
+                    "amount": amount_usd
+                }
+
+        return None

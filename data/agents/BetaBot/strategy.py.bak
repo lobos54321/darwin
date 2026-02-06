@@ -1,0 +1,164 @@
+# Darwin SDK - User Strategy Template
+# 🧠 DEVELOPERS: EDIT THIS FILE ONLY!
+
+import random
+import math
+from collections import deque
+
+class MyStrategy:
+    def __init__(self):
+        print("🧠 Strategy Evolved: BetaBot -> GammaPhoenix (Volatility Breakout & Recovery)")
+        
+        # --- 资金管理与进化配置 (Capital & Evolution) ---
+        self.initial_balance = 1000.0
+        self.current_balance = 639.51 # Sync with current state
+        self.trade_size_pct = 0.10    # Increase risk slightly to 10% to recover (Aggressive Recovery)
+        self.max_positions = 4        # Diversify risk
+        
+        # --- 策略参数 (Strategy Parameters) ---
+        self.short_window = 5         # Fast EMA
+        self.long_window = 20         # Slow EMA
+        self.volatility_threshold = 0.002 # 0.2% min change to filter noise
+        
+        # --- 动态风控 (Dynamic Risk) ---
+        self.trailing_stop_pct = 0.03 # 3% Trailing Stop
+        self.take_profit_pct = 0.15   # 15% Take Profit (Let winners run)
+        
+        # --- 记忆库 (Memory) ---
+        self.price_history = {}       # {symbol: deque(maxlen=30)}
+        self.positions = {}           # {symbol: {'entry_price': float, 'highest_price': float, 'amount': float}}
+        self.banned_tags = set()      # Penalized tags
+        self.cooldowns = {}           # {symbol: int} - Time steps to wait after selling
+
+    def on_hive_signal(self, signal: dict):
+        """Receive signals from Hive Mind to avoid toxic assets"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            self.banned_tags.update(penalize)
+            # Close positions immediately if penalized
+            for tag in penalize:
+                # Assuming tag might map to symbol or category, logic to close would go here
+                pass
+
+    def _calculate_ema(self, prices, window):
+        if not prices or len(prices) < window:
+            return None
+        multiplier = 2 / (window + 1)
+        ema = prices[0]
+        for price in prices[1:]:
+            ema = (price - ema) * multiplier + ema
+        return ema
+
+    def on_price_update(self, prices: dict):
+        """
+        Core logic loop. Returns decision tuple: (ACTION, SYMBOL, AMOUNT/PERCENT)
+        """
+        decision = None
+        
+        # Update Balance Logic (Mockup: in real engine this comes from account data)
+        # We assume available balance is tracked externally or roughly here
+        
+        for symbol, data in prices.items():
+            current_price = data["priceUsd"]
+            
+            # 1. Update History
+            if symbol not in self.price_history:
+                self.price_history[symbol] = deque(maxlen=30)
+            self.price_history[symbol].append(current_price)
+            
+            # Decrement Cooldowns
+            if symbol in self.cooldowns:
+                self.cooldowns[symbol] -= 1
+                if self.cooldowns[symbol] <= 0:
+                    del self.cooldowns[symbol]
+                continue # Skip processing if cooling down
+
+            # 2. Manage Existing Positions (Exit Logic)
+            if symbol in self.positions:
+                pos = self.positions[symbol]
+                entry_price = pos['entry_price']
+                highest_price = pos['highest_price']
+                
+                # Update highest price seen
+                if current_price > highest_price:
+                    self.positions[symbol]['highest_price'] = current_price
+                    highest_price = current_price
+                
+                # Calculate PnL
+                pnl_pct = (current_price - entry_price) / entry_price
+                drawdown_from_peak = (highest_price - current_price) / highest_price
+                
+                # A. Hard Take Profit (Moonbag scenario)
+                if pnl_pct >= self.take_profit_pct:
+                    print(f"💰 TAKE PROFIT: {symbol} (+{pnl_pct*100:.2f}%)")
+                    del self.positions[symbol]
+                    self.cooldowns[symbol] = 5
+                    self.current_balance += pos['amount'] * current_price # Mock update
+                    return ("SELL", symbol, 1.0) # Sell 100%
+                
+                # B. Trailing Stop Loss (Protect gains or cut losses)
+                # If we are in profit, tighten the stop. If in loss, use hard stop.
+                dynamic_stop = self.trailing_stop_pct
+                if pnl_pct > 0.05: # If up 5%, tighten stop to 1%
+                    dynamic_stop = 0.01
+                
+                if drawdown_from_peak >= dynamic_stop:
+                    print(f"🛡️ STOP LOSS/TRAIL: {symbol} (Drawdown: {drawdown_from_peak*100:.2f}%)")
+                    del self.positions[symbol]
+                    self.cooldowns[symbol] = 10 # Longer cooldown on loss
+                    return ("SELL", symbol, 1.0)
+                
+                continue # Hold position
+
+            # 3. Entry Logic (Buy Logic) - Only if slots available
+            if len(self.positions) < self.max_positions:
+                
+                # Check Hive Mind Ban
+                is_banned = False
+                for tag in self.banned_tags:
+                    if tag in symbol: # Simple string match assumption
+                        is_banned = True
+                if is_banned: continue
+
+                history = self.price_history[symbol]
+                if len(history) < self.long_window:
+                    continue
+
+                # Calculate Indicators
+                ema_short = self._calculate_ema(list(history)[-self.short_window:], self.short_window)
+                ema_long = self._calculate_ema(list(history)[-self.long_window:], self.long_window)
+                
+                if ema_short is None or ema_long is None:
+                    continue
+                
+                # Logic: Volatility Breakout + Trend Following
+                # 1. Trend is Up (Short EMA > Long EMA)
+                # 2. Momentum is accelerating (Current Price > Short EMA)
+                # 3. Not buying the absolute top (Price not > 5% of Long EMA - avoid FOMO)
+                
+                trend_up = ema_short > ema_long
+                momentum_strong = current_price > ema_short
+                not_overextended = current_price < (ema_long * 1.05)
+                
+                # Calculate Volatility (Standard Deviation of last 10 ticks)
+                recent_prices = list(history)[-10:]
+                mean_price = sum(recent_prices) / len(recent_prices)
+                variance = sum([((x - mean_price) ** 2) for x in recent_prices]) / len(recent_prices)
+                volatility = math.sqrt(variance) / mean_price
+                
+                # Trigger
+                if trend_up and momentum_strong and not_overextended and volatility > self.volatility_threshold:
+                    # Position Sizing based on Recovery Plan
+                    usd_amount = self.current_balance * self.trade_size_pct
+                    quantity = usd_amount / current_price
+                    
+                    print(f"🚀 ENTER: {symbol} at ${current_price:.4f} (Trend+Vol)")
+                    
+                    self.positions[symbol] = {
+                        'entry_price': current_price,
+                        'highest_price': current_price,
+                        'amount': quantity
+                    }
+                    return ("BUY", symbol, usd_amount)
+
+        return None

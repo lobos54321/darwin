@@ -1,196 +1,185 @@
-```python
 import math
 import statistics
-from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
-from enum import Enum
-from collections import deque
+from collections import deque, defaultdict
+from typing import Dict, Optional, List
 
-# === 基础数据结构 ===
-
-class Signal(Enum):
-    BUY = "BUY"
-    SELL = "SELL"
-    HOLD = "HOLD"
-
-
-@dataclass
-class TradeDecision:
-    signal: Signal
-    symbol: str
-    amount_usd: float
-    reason: str
-
-
-class DarwinStrategy:
+class MyStrategy:
     """
-    Agent_004 Gen 8: "Phoenix Protocol" (凤凰协议)
+    Agent_004 Gen 10: "Kinetic Rebound" (Momentum Scalp + Dynamic Volatility)
     
-    进化日志 (Gen 8 Evolution Log):
-    1.  **反脆弱风控 (Anti-Fragile Risk)**:
-        - 鉴于当前回撤 -15%，首要任务是保本。
-        - 引入 "时间止损" (Time-based Exit): 如果持仓 8 个周期仍未盈利，强制平仓，避免资金占用。
-        - 仓位计算基于当前余额 (Mark-to-Market)，而非初始本金。
-    
-    2.  **策略变异: 均线回归 + 动量确认 (Mean Reversion + Momentum)**:
-        - 吸收赢家智慧: 使用 SMA 作为趋势基准。
-        - 独特变异: 不在均线交叉时买入，而是在价格回踩均线并反弹时买入 (Pullback Entry)。
-        - 逻辑: Price > SMA_Long (趋势向上) AND Price < SMA_Short (短期回调) -> 等待 Price > Prev_Close (反转确认)。
-    
-    3.  **动态波动率调整**:
-        - 使用标准差 (StdDev) 动态调整止盈止损宽度，而不是固定百分比。
+    Evolution Logic:
+    1.  **Simplification**: Abandoned complex lagging indicators (Bollinger) which caused delays in Gen 9.
+    2.  **Kinetic Entry**: Adopting the winner's implied "Momentum" approach but adding a "Velocity" filter.
+        We only buy if price velocity (rate of change) is accelerating, not just rising.
+    3.  **Survival Protocols**: 
+        - Dynamic Position Sizing: Reduces bet size on losing streaks (Kelly-lite).
+        - Time-Based Stagnation Exit: If a trade doesn't perform within N ticks, cut it.
     """
-    
+
     def __init__(self):
-        # === 核心参数 ===
-        self.sma_long_period = 20    # 长期趋势线
-        self.sma_short_period = 5    # 短期参考线
-        self.history_size = 30       # 数据缓存大小
+        print("🧠 Strategy Initialized (Agent_004 Gen 10: Kinetic Rebound)")
         
-        # === 风控参数 ===
-        self.base_risk_per_trade = 0.02  # 单笔交易风险 (2% of Equity)
-        self.max_drawdown_limit = 0.80   # 账户总熔断线 (80% of initial)
-        self.time_stop_limit = 8         # 8个周期不涨就跑
+        # --- Configuration ---
+        self.history_len = 10
+        self.min_velocity_threshold = 0.003  # 0.3% change per tick to trigger attention
+        self.max_velocity_threshold = 0.05   # Avoid buying >5% spikes (FOMO protection)
+        self.stop_loss_fixed = 0.03          # 3% Hard Stop
+        self.take_profit_base = 0.06         # 6% Target
+        self.trailing_trigger = 0.02         # Activate trailing stop after 2% gain
+        self.stagnation_limit = 15           # Ticks to hold before cutting stagnant trades
         
-        # === 状态管理 ===
-        self.price_history: Dict[str, deque] = {}
-        self.balance = 850.20  # 同步当前余额
-        self.positions: Dict[str, dict] = {} # {symbol: {'entry_price': float, 'amount': float, 'entry_time': int, 'highest_price': float}}
-        self.tick_counter = 0
-        self.last_reflection = "Gen 8 initialized. Recovery mode active."
+        # --- State ---
+        self.prices_history: Dict[str, deque] = defaultdict(lambda: deque(maxlen=self.history_len))
+        self.positions: Dict[str, dict] = {} # Symbol -> {entry_price, highest_price, quantity, tick_count}
+        self.banned_tags = set()
+        self.estimated_balance = 850.20      # Carry over state
+        self.trade_allocation = 0.15         # Use 15% of balance per trade
 
-    def _update_history(self, prices: Dict[str, dict]):
-        """更新价格历史"""
-        self.tick_counter += 1
+    def on_hive_signal(self, signal: dict):
+        """Adapt to Hive Mind penalties to avoid system bans."""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            print(f"⚠️ Penalized Tags: {penalize}")
+            self.banned_tags.update(penalize)
+
+    def on_price_update(self, prices: dict) -> Dict:
+        """
+        Core logic loop. Returns a decision dictionary.
+        Format: {"action": "buy"|"sell", "symbol": "XYZ", "amount": float} or None
+        """
+        decision = None
+        
+        # 1. Update History & Manage Existing Positions
         for symbol, data in prices.items():
-            price = data['price']
-            if symbol not in self.price_history:
-                self.price_history[symbol] = deque(maxlen=self.history_size)
-            self.price_history[symbol].append(price)
-
-    def _calculate_indicators(self, symbol: str) -> dict:
-        """计算技术指标"""
-        history = list(self.price_history[symbol])
-        if len(history) < self.sma_long_period:
-            return None
+            current_price = data["priceUsd"]
+            self.prices_history[symbol].append(current_price)
             
-        current_price = history[-1]
-        prev_price = history[-2]
-        
-        sma_long = statistics.mean(history[-self.sma_long_period:])
-        sma_short = statistics.mean(history[-self.sma_short_period:])
-        
-        # 计算标准差用于动态风控
-        std_dev = statistics.stdev(history[-self.sma_long_period:])
-        
-        return {
-            "price": current_price,
-            "prev_price": prev_price,
-            "sma_long": sma_long,
-            "sma_short": sma_short,
-            "std_dev": std_dev
-        }
-
-    def on_price_update(self, prices: Dict[str, dict]) -> Optional[TradeDecision]:
-        """核心交易逻辑"""
-        self._update_history(prices)
-        
-        # 1. 检查持仓 (止盈/止损/时间止损)
-        for symbol, pos_info in list(self.positions.items()):
-            current_price = prices[symbol]['price']
-            entry_price = pos_info['entry_price']
-            holding_ticks = self.tick_counter - pos_info['entry_time']
-            
-            # 更新最高价用于移动止损
-            if current_price > pos_info['highest_price']:
-                self.positions[symbol]['highest_price'] = current_price
-            
-            pnl_pct = (current_price - entry_price) / entry_price
-            
-            # A. 硬止损 (吸收赢家建议: 收紧止损)
-            if pnl_pct < -0.02: # -2% 坚决止损
-                return self._close_position(symbol, current_price, "Hard Stop Loss (-2%)")
-            
-            # B. 移动止盈 (Trailing Stop)
-            # 如果盈利曾超过 3%，回撤 1% 就走
-            highest_gain = (pos_info['highest_price'] - entry_price) / entry_price
-            if highest_gain > 0.03:
-                drawdown_from_high = (pos_info['highest_price'] - current_price) / pos_info['highest_price']
-                if drawdown_from_high > 0.01:
-                    return self._close_position(symbol, current_price, "Trailing Stop Hit")
-            
-            # C. 目标止盈
-            if pnl_pct > 0.06: # 6% 止盈
-                return self._close_position(symbol, current_price, "Target Profit (+6%)")
-                
-            # D. 时间止损 (僵尸仓位清理)
-            if holding_ticks >= self.time_stop_limit and pnl_pct < 0.005:
-                return self._close_position(symbol, current_price, "Time Stop (Stagnant)")
-
-        # 2. 寻找开仓机会 (仅当没有持仓或持仓未满时)
-        if len(self.positions) >= 3:
-            return None
-            
-        best_opportunity = None
-        max_score = -1
-        
-        for symbol in prices.keys():
+            # Check active positions
             if symbol in self.positions:
-                continue
-                
-            indicators = self._calculate_indicators(symbol)
-            if not indicators:
-                continue
-                
-            # === 策略核心: 趋势中的回调 (Trend Pullback) ===
-            # 1. 长期趋势向上
-            trend_condition = indicators['price'] > indicators['sma_long']
-            
-            # 2. 短期处于回调状态 (价格低于短均线，或者刚突破短均线)
-            # 这里我们寻找 "右侧入场": 价格刚从下方穿过 Short SMA
-            crossover_condition = (indicators['prev_price'] < indicators['sma_short']) and \
-                                  (indicators['price'] > indicators['sma_short'])
-            
-            # 3. 波动率过滤 (避免死水)
-            volatility_ok = indicators['std_dev'] > (indicators['price'] * 0.002)
-            
-            if trend_condition and crossover_condition and volatility_ok:
-                # 评分机制: 离长均线越近越安全 (Risk/Reward 更好)
-                dist_to_long_sma = (indicators['price'] - indicators['sma_long']) / indicators['price']
-                score = 1.0 - dist_to_long_sma # 距离越小分数越高
-                
-                if score > max_score:
-                    max_score = score
-                    best_opportunity = symbol
+                decision = self._manage_position(symbol, current_price)
+                if decision:
+                    return decision # Execute exit immediately
 
-        # 执行开仓
-        if best_opportunity:
-            # 资金管理: 使用当前余额的 20% 开仓
-            trade_amount = self.balance * 0.20
-            # 确保不低于 $10
-            if trade_amount < 10:
-                return None
-                
-            price = prices[best_opportunity]['price']
-            self.positions[best_opportunity] = {
-                'entry_price': price,
-                'amount': trade_amount,
-                'entry_time': self.tick_counter,
-                'highest_price': price
+        # 2. Scan for New Entries (if no exit decision was made)
+        # Sort candidates by instantaneous momentum to pick the strongest mover
+        candidates = []
+        for symbol, data in prices.items():
+            if symbol in self.positions: continue
+            if any(tag in self.banned_tags for tag in data.get("tags", [])): continue
+            
+            score = self._calculate_kinetic_score(symbol, data["priceUsd"])
+            if score > 0:
+                candidates.append((score, symbol, data["priceUsd"]))
+        
+        # Execute Buy on best candidate
+        if candidates:
+            candidates.sort(reverse=True, key=lambda x: x[0]) # Best score first
+            best_score, best_symbol, best_price = candidates[0]
+            
+            # Calculate position size (Risk Management)
+            usd_amount = self.estimated_balance * self.trade_allocation
+            quantity = usd_amount / best_price
+            
+            self.positions[best_symbol] = {
+                "entry_price": best_price,
+                "highest_price": best_price,
+                "quantity": quantity,
+                "tick_count": 0
             }
-            self.balance -= trade_amount
             
-            return TradeDecision(
-                signal=Signal.BUY,
-                symbol=best_opportunity,
-                amount_usd=trade_amount,
-                reason=f"Trend Pullback: SMA Cross above {self.sma_short_period} in Uptrend"
-            )
+            print(f"🚀 ENTRY: {best_symbol} @ ${best_price:.4f} (Score: {best_score:.2f})")
+            decision = {
+                "action": "buy",
+                "symbol": best_symbol,
+                "amount": quantity
+            }
 
+        return decision
+
+    def _calculate_kinetic_score(self, symbol: str, current_price: float) -> float:
+        """
+        Calculates a score based on Velocity (Speed) and Acceleration.
+        Returns 0 if criteria not met.
+        """
+        history = self.prices_history[symbol]
+        if len(history) < 3:
+            return 0.0
+            
+        # Velocity: % change from previous tick
+        prev_price = history[-2]
+        velocity = (current_price - prev_price) / prev_price
+        
+        # Acceleration: Change in velocity
+        prev_velocity = (history[-2] - history[-3]) / history[-3]
+        acceleration = velocity - prev_velocity
+        
+        # Criteria:
+        # 1. Positive Velocity (Moving up)
+        # 2. Velocity within safe bounds (Not a pump-and-dump spike)
+        # 3. Positive Acceleration (Momentum is increasing)
+        if (velocity > self.min_velocity_threshold and 
+            velocity < self.max_velocity_threshold and 
+            acceleration > 0):
+            return velocity + acceleration # Score
+            
+        return 0.0
+
+    def _manage_position(self, symbol: str, current_price: float) -> Optional[Dict]:
+        """
+        Logic for Stop Loss, Take Profit, Trailing Stop, and Time-decay.
+        """
+        pos = self.positions[symbol]
+        entry_price = pos["entry_price"]
+        highest_price = pos["highest_price"]
+        quantity = pos["quantity"]
+        
+        # Update state
+        pos["tick_count"] += 1
+        if current_price > highest_price:
+            pos["highest_price"] = current_price
+            
+        # Calculate PnL %
+        pnl_pct = (current_price - entry_price) / entry_price
+        drawdown_from_peak = (highest_price - current_price) / highest_price
+        
+        action = None
+        reason = ""
+
+        # 1. Hard Stop Loss
+        if pnl_pct < -self.stop_loss_fixed:
+            action = "sell"
+            reason = "Hard Stop Loss"
+
+        # 2. Trailing Stop (Activates only if we are in profit > trailing_trigger)
+        elif (highest_price - entry_price) / entry_price > self.trailing_trigger:
+            # If we drop 1% from peak, secure the bag
+            if drawdown_from_peak > 0.01: 
+                action = "sell"
+                reason = "Trailing Stop Hit"
+
+        # 3. Take Profit (Hard Target)
+        elif pnl_pct > self.take_profit_base:
+            action = "sell"
+            reason = "Take Profit Target"
+            
+        # 4. Stagnation Kill (Time-based exit)
+        elif pos["tick_count"] > self.stagnation_limit and pnl_pct < 0.005:
+            # If held for too long and barely profitable/loss, free up capital
+            action = "sell"
+            reason = "Stagnation (Dead Money)"
+
+        if action == "sell":
+            print(f"🛑 EXIT: {symbol} @ ${current_price:.4f} | PnL: {pnl_pct*100:.2f}% | Reason: {reason}")
+            
+            # Update estimated balance
+            pnl_amount = (current_price - entry_price) * quantity
+            self.estimated_balance += pnl_amount
+            
+            del self.positions[symbol]
+            return {
+                "action": "sell",
+                "symbol": symbol,
+                "amount": quantity
+            }
+            
         return None
-
-    def _close_position(self, symbol: str, price: float, reason: str) -> TradeDecision:
-        """平仓辅助函数"""
-        pos = self.positions.pop(symbol)
-        amount = pos['amount']
-        # 模拟回款 (

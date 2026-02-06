@@ -1,154 +1,182 @@
+# Darwin SDK - User Strategy Template
+# Agent: Diamond_Hands_533 (Gen 4 - "Adaptive Predator")
+# 🧠 DEVELOPERS: EDIT THIS FILE ONLY!
+
 import math
-from typing import Dict, List, Optional
-from dataclasses import dataclass
-from enum import Enum
-from collections import deque
+import statistics
+from collections import deque, defaultdict
+from typing import Dict, List, Optional, Set
 
-class Signal(Enum):
-    BUY = "BUY"
-    SELL = "SELL"
-    HOLD = "HOLD"
-
-@dataclass
-class TradeDecision:
-    signal: Signal
-    symbol: str
-    amount_usd: float
-    reason: str
-
-class DarwinStrategy:
-    """
-    进化版策略 - Agent: Diamond_Hands_533
-    
-    进化日志 (Gen 2):
-    1. 策略变异: 从简单的持有(HODL)转向 趋势跟踪(EMA Cross) + 波动率过滤。
-    2. 资金管理: 针对当前低余额 ($536) 实施激进但严格的资金管理。
-    3. 止损机制: 引入 "移动止损 (Trailing Stop)" 代替固定止盈，试图抓住大趋势。
-    4. 风险控制: 强制单笔最大亏损限制在账户余额的 2%。
-    """
-    
+class MyStrategy:
     def __init__(self):
-        # === 核心参数 ===
-        self.ema_short_period = 6    # 短期趋势 (变异点: 比SMA更灵敏)
-        self.ema_long_period = 18    # 长期趋势
-        self.volatility_window = 10  # 波动率计算窗口
+        print("🧠 Strategy Initialized: Adaptive Predator v4.0")
         
-        # === 风控参数 ===
-        self.max_position_size = 0.3 # 单仓位最大占比 (30%)
-        self.hard_stop_loss = 0.03   # 硬止损 -3% (保护仅存本金)
-        self.trailing_trigger = 0.05 # 盈利 5% 后激活移动止损
-        self.trailing_gap = 0.02     # 回撤 2% 触发移动止损卖出
+        # === 核心配置 (Configuration) ===
+        self.balance = 536.69           # 当前余额
+        self.max_positions = 4          # 最大持仓数量
+        self.trade_allocation = 0.22    # 单笔交易仓位 (22%)
         
-        # === 状态存储 ===
-        self.price_history: Dict[str, deque] = {} # 只保留最近 N 个价格
-        self.entry_prices: Dict[str, float] = {}
-        self.highest_prices: Dict[str, float] = {} # 记录持仓后的最高价(用于移动止损)
-        self.balance = 536.69 # 同步当前余额
-        self.last_reflection = "Initializing evolution protocol..."
+        # === 策略参数 (Parameters) ===
+        self.window_size = 15           # 价格窗口大小
+        self.volatility_window = 10     # 波动率计算窗口
+        self.buy_threshold_std = 1.2    # 买入阈值 (标准差倍数)
+        self.trailing_stop_pct = 0.04   # 4% 移动止损 (比上一代宽松)
+        self.hard_stop_loss = 0.08      # 8% 硬止损 (防止归零)
+        self.min_volume_filter = 1000   # 最小成交量过滤 (模拟)
+        
+        # === 内部状态 (State) ===
+        self.last_prices: Dict[str, float] = {}
+        self.price_history: Dict[str, deque] = defaultdict(lambda: deque(maxlen=self.window_size))
+        self.positions: Dict[str, Dict] = {} # symbol -> {entry_price, highest_price, amount}
+        self.banned_tags: Set[str] = set()
+        self.boosted_tags: Set[str] = set()
+        
+        # === 进化特征 (Evolutionary Traits) ===
+        # 1. 动量惯性 (Momentum Inertia): 记录连续上涨次数
+        self.momentum_streak: Dict[str, int] = defaultdict(int)
 
-    def _calculate_ema(self, prices: List[float], period: int) -> Optional[float]:
-        if len(prices) < period:
-            return None
-        multiplier = 2 / (period + 1)
-        ema = prices[0] # 简单起见，以第一个作为初始值
-        for price in prices[1:]:
-            ema = (price - ema) * multiplier + ema
-        return ema
+    def on_hive_signal(self, signal: dict):
+        """Receive signals from Hive Mind"""
+        # 处理惩罚信号 - 立即加入黑名单并清仓
+        penalize = signal.get("penalize", [])
+        if penalize:
+            print(f"⚠️ HIVE PENALTY: {penalize}")
+            self.banned_tags.update(penalize)
+            for tag in penalize:
+                if tag in self.positions:
+                    self._execute_sell(tag, self.last_prices.get(tag, 0), "HIVE_BAN")
 
-    def on_price_update(self, prices: Dict[str, dict]) -> Optional[TradeDecision]:
+        # 处理加速信号 - 降低该资产的买入由于
+        boost = signal.get("boost", [])
+        if boost:
+            print(f"🚀 HIVE BOOST: {boost}")
+            self.boosted_tags.update(boost)
+
+    def on_price_update(self, prices: dict):
         """
-        决策逻辑:
-        1. 卖出逻辑: 优先检查硬止损和移动止损。
-        2. 买入逻辑: EMA 金叉 (Short > Long) 且 价格位于 Long EMA 之上。
+        Called every time price updates.
+        Args:
+            prices (dict): {"SYMBOL": {"priceUsd": 10.5, "tags": ["MEME"], ...}}
         """
-        best_decision = None
+        decisions = []
         
+        # 1. 更新数据与维护持仓
         for symbol, data in prices.items():
-            current_price = data.get('price')
-            if not current_price:
+            current_price = data.get("priceUsd", 0)
+            if current_price <= 0: continue
+            
+            tags = data.get("tags", [])
+            
+            # 记录历史价格
+            self.price_history[symbol].append(current_price)
+            self.last_prices[symbol] = current_price
+            
+            # 检查是否在黑名单
+            if any(t in self.banned_tags for t in tags) or symbol in self.banned_tags:
+                if symbol in self.positions:
+                    self._execute_sell(symbol, current_price, "BANNED_TAG_EXIT")
                 continue
 
-            # 1. 更新历史数据
-            if symbol not in self.price_history:
-                self.price_history[symbol] = deque(maxlen=30)
-            self.price_history[symbol].append(current_price)
+            # --- 持仓管理 (Sell Logic) ---
+            if symbol in self.positions:
+                self._manage_position(symbol, current_price)
             
-            history = list(self.price_history[symbol])
-            
-            # 2. 持仓管理 (卖出逻辑)
-            if symbol in self.entry_prices:
-                entry_price = self.entry_prices[symbol]
-                
-                # 更新最高价 (High Water Mark)
-                if symbol not in self.highest_prices or current_price > self.highest_prices[symbol]:
-                    self.highest_prices[symbol] = current_price
-                
-                high_price = self.highest_prices[symbol]
-                pnl_pct = (current_price - entry_price) / entry_price
-                drawdown_from_high = (high_price - current_price) / high_price
-                
-                # A. 硬止损
-                if pnl_pct <= -self.hard_stop_loss:
-                    self._clear_position(symbol)
-                    return TradeDecision(Signal.SELL, symbol, 0, f"Hard Stop Loss triggered at {pnl_pct:.2%}")
-                
-                # B. 移动止损 (Trailing Stop)
-                if pnl_pct >= self.trailing_trigger and drawdown_from_high >= self.trailing_gap:
-                    self._clear_position(symbol)
-                    return TradeDecision(Signal.SELL, symbol, 0, f"Trailing Stop: Profit locked. Drawdown {drawdown_from_high:.2%}")
-                
-                continue # 如果持仓，本轮不再判断买入
+            # --- 开仓机会寻找 (Buy Logic) ---
+            else:
+                if len(self.positions) < self.max_positions:
+                    if self._check_buy_signal(symbol, current_price, tags):
+                        amount = self.balance * self.trade_allocation
+                        self._execute_buy(symbol, current_price, amount)
 
-            # 3. 开仓管理 (买入逻辑)
-            # 只有在没有持仓且资金足够时才考虑
-            if self.balance > 10 and len(history) >= self.ema_long_period:
-                ema_short = self._calculate_ema(history, self.ema_short_period)
-                ema_long = self._calculate_ema(history, self.ema_long_period)
-                
-                if ema_short and ema_long:
-                    # 变异策略: EMA 金叉 + 价格确认
-                    # 只有当短线快于长线，且当前价格强势(在长线之上)时买入
-                    if ema_short > ema_long and current_price > ema_long:
-                        # 检查是否刚刚发生金叉 (上一帧 Short <= Long) - 简化为只看当前状态以保证响应速度
-                        # 计算仓位: 余额 * max_position_size
-                        amount = self.balance * self.max_position_size
-                        
-                        self.entry_prices[symbol] = current_price
-                        self.highest_prices[symbol] = current_price
-                        self.balance -= amount # 模拟扣款
-                        
-                        return TradeDecision(Signal.BUY, symbol, amount, "EMA Crossover: Momentum Detected")
+        return decisions
 
-        return None
-
-    def _clear_position(self, symbol: str):
-        """清理内部持仓状态"""
-        if symbol in self.entry_prices:
-            # 简单模拟回款，实际由引擎处理
-            # self.balance += ... (此处略过具体金额计算，依赖引擎反馈)
-            del self.entry_prices[symbol]
-            if symbol in self.highest_prices:
-                del self.highest_prices[symbol]
-
-    def on_epoch_end(self, rankings: List[dict], winner_wisdom: str):
-        """
-        反思模块: 根据排名调整风险参数
-        """
-        my_rank = next((r['rank'] for r in rankings if r['agent_id'] == "Diamond_Hands_533"), 999)
+    def _manage_position(self, symbol: str, current_price: float):
+        """管理现有持仓：移动止损与硬止损"""
+        pos = self.positions[symbol]
         
-        if my_rank > 5:
-            # 表现依然不佳，收紧风控
-            self.hard_stop_loss = max(0.01, self.hard_stop_loss - 0.005)
-            self.max_position_size = max(0.1, self.max_position_size - 0.05)
-            self.last_reflection = f"Rank {my_rank}. Tightening StopLoss to {self.hard_stop_loss:.1%}"
-        else:
-            # 表现良好，保持现状
-            self.last_reflection = f"Rank {my_rank}. Strategy effective. Holding steady."
+        # 更新最高价 (High Water Mark)
+        if current_price > pos['highest_price']:
+            pos['highest_price'] = current_price
+            
+        # 计算回撤
+        drawdown = (pos['highest_price'] - current_price) / pos['highest_price']
+        pnl_pct = (current_price - pos['entry_price']) / pos['entry_price']
+        
+        # 逻辑 1: 硬止损 (防灾难)
+        if pnl_pct < -self.hard_stop_loss:
+            self._execute_sell(symbol, current_price, f"HARD_STOP_LOSS {pnl_pct*100:.2f}%")
+            return
 
-    def get_reflection(self) -> str:
-        return self.last_reflection
+        # 逻辑 2: 动态移动止损 (Trailing Stop)
+        # 如果盈利超过 10%，收紧止损到 2%
+        dynamic_trail = 0.02 if pnl_pct > 0.10 else self.trailing_stop_pct
+        
+        if drawdown > dynamic_trail:
+            reason = "TAKE_PROFIT" if pnl_pct > 0 else "TRAILING_STOP"
+            self._execute_sell(symbol, current_price, f"{reason} (DD: {drawdown*100:.2f}%)")
 
-    def get_council_message(self, is_winner: bool) -> str:
-        if is_winner:
-            return "Survival of the fittest: EMA trends combined with Trailing Stops outperform blind holding."
-        return "Adapting... Replaced static targets with dynamic momentum tracking."
+    def _check_buy_signal(self, symbol: str, current_price: float, tags: List[str]) -> bool:
+        """基于统计学的突破策略"""
+        history = self.price_history[symbol]
+        
+        # 数据不足时不交易
+        if len(history) < self.window_size:
+            return False
+            
+        # 计算基础统计量
+        prices = list(history)
+        mean_price = statistics.mean(prices[:-1]) # 不包含当前价格的均值
+        stdev = statistics.stdev(prices[:-1]) if len(prices) > 2 else 0
+        
+        if stdev == 0: return False
+
+        # Z-Score 计算 (当前价格偏离均值多少个标准差)
+        z_score = (current_price - mean_price) / stdev
+        
+        # 进化特征：如果是 Boosted 标签，降低门槛
+        threshold = self.buy_threshold_std
+        if any(t in self.boosted_tags for t in tags):
+            threshold *= 0.7  # 降低 30% 门槛
+            
+        # 信号：价格向上突破布林带上轨 (Mean + N*Std) 且 动量为正
+        is_breakout = z_score > threshold
+        
+        # 简单的趋势过滤：当前价格必须高于 SMA(5)
+        sma_short = statistics.mean(prices[-5:])
+        is_uptrend = current_price > sma_short
+        
+        if is_breakout and is_uptrend:
+            # 避免追高：如果 Z-Score 过大 (>3.5)，认为是极端行情，可能反转，不买
+            if z_score > 3.5:
+                return False
+            return True
+            
+        return False
+
+    def _execute_buy(self, symbol: str, price: float, amount_usd: float):
+        """执行买入模拟"""
+        if self.balance < amount_usd:
+            amount_usd = self.balance
+            
+        if amount_usd < 10: return # 忽略过小额度
+
+        print(f"🔵 BUY {symbol} @ ${price:.4f} | Amt: ${amount_usd:.2f}")
+        self.positions[symbol] = {
+            'entry_price': price,
+            'highest_price': price,
+            'amount': amount_usd / price,
+            'cost_basis': amount_usd
+        }
+        self.balance -= amount_usd
+        self.momentum_streak[symbol] = 0
+
+    def _execute_sell(self, symbol: str, price: float, reason: str):
+        """执行卖出模拟"""
+        pos = self.positions.pop(symbol)
+        revenue = pos['amount'] * price
+        profit = revenue - pos['cost_basis']
+        self.balance += revenue
+        
+        icon = "🟢" if profit > 0 else "🔴"
+        print(f"{icon} SELL {symbol} @ ${price:.4f} | PnL: ${profit:.2f} | {reason}")
+        print(f"💰 New Balance: ${self.balance:.2f}")

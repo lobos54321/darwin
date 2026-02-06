@@ -1,182 +1,140 @@
-import numpy as np
-import pandas as pd
-from dataclasses import dataclass
-from typing import Optional, Dict
+# Darwin SDK - User Strategy Template
+# Agent: Degen_Ape_693
+# Strategy: Phoenix Rebirth (Volatility Breakout + Dynamic Risk Sizing)
+# Version: 2.1 (Recovery Mode)
 
-@dataclass
-class TradeSignal:
-    action: str  # 'BUY', 'SELL', 'HOLD'
-    quantity: float
-    stop_loss: float
-    take_profit: float
-    reason: str
+import math
+import statistics
+from collections import deque
 
-class DegenApeEvolutionStrategy:
-    """
-    Agent: Degen_Ape_693 (Evolved)
-    Strategy: Adaptive Volatility Regime Switcher (AVRS)
-    Mutation: Hybrid Trend/Mean-Reversion with Drawdown Protection
-    """
+class MyStrategy:
+    def __init__(self):
+        print("🧠 Strategy Initialized: Phoenix Rebirth v2.1")
+        
+        # Configuration
+        self.history_size = 20        # Number of ticks to keep for SMA/StdDev
+        self.z_score_threshold = 2.0  # Bollinger Band equivalent
+        self.stop_loss_pct = 0.05     # Hard stop loss at 5%
+        self.take_profit_pct = 0.15   # Target 15% gains
+        self.trailing_sl_pct = 0.03   # Trailing stop activation
+        
+        # State Management
+        self.price_history = {}       # {symbol: deque([prices], maxlen=N)}
+        self.positions = {}           # {symbol: {"entry_price": float, "highest_price": float}}
+        self.banned_tags = set()      # Hive Mind penalties
 
-    def __init__(self, initial_capital: float = 1000.0):
-        self.initial_capital = initial_capital
-        self.roi = -0.463  # Current PnL state
-        
-        # Hyperparameters
-        self.ema_short_period = 13
-        self.ema_long_period = 48
-        self.rsi_period = 14
-        self.atr_period = 14
-        self.bb_period = 20
-        self.bb_std = 2.0
-        
-        # Risk Management Parameters
-        self.base_risk_per_trade = 0.02  # 2% risk
-        self.max_drawdown_limit = 0.15   # 15% threshold for defensive mode
-        self.leverage = 1.0
+    def on_hive_signal(self, signal: dict):
+        """Handle Hive Mind signals for penalties/boosts"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            print(f"⚠️ Penalty received for: {penalize}")
+            self.banned_tags.update(penalize)
+            # Close positions in banned tags immediately
+            for tag in penalize:
+                if tag in self.positions:
+                    del self.positions[tag]
 
-    def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = df.copy()
+    def _calculate_stats(self, symbol):
+        """Calculate SMA and Standard Deviation for a symbol"""
+        history = self.price_history.get(symbol, [])
+        if len(history) < 2:
+            return None, None
         
-        # Trend Indicators
-        df['ema_short'] = df['close'].ewm(span=self.ema_short_period, adjust=False).mean()
-        df['ema_long'] = df['close'].ewm(span=self.ema_long_period, adjust=False).mean()
-        
-        # Momentum
-        delta = df['close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=self.rsi_period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=self.rsi_period).mean()
-        rs = gain / loss
-        df['rsi'] = 100 - (100 / (1 + rs))
-        
-        # Volatility (ATR)
-        high_low = df['high'] - df['low']
-        high_close = np.abs(df['high'] - df['close'].shift())
-        low_close = np.abs(df['low'] - df['close'].shift())
-        ranges = pd.concat([high_low, high_close, low_close], axis=1)
-        true_range = np.max(ranges, axis=1)
-        df['atr'] = true_range.rolling(window=self.atr_period).mean()
-        
-        # Bollinger Bands
-        df['bb_mid'] = df['close'].rolling(window=self.bb_period).mean()
-        df['bb_std'] = df['close'].rolling(window=self.bb_period).std()
-        df['bb_upper'] = df['bb_mid'] + (df['bb_std'] * self.bb_std)
-        df['bb_lower'] = df['bb_mid'] - (df['bb_std'] * self.bb_std)
-        
-        # Volatility Regime (Normalized ATR)
-        df['natr'] = (df['atr'] / df['close']) * 100
-        
-        return df
+        sma = statistics.mean(history)
+        stdev = statistics.stdev(history)
+        return sma, stdev
 
-    def get_position_size(self, current_balance: float, entry_price: float, stop_loss: float) -> float:
+    def on_price_update(self, prices: dict):
         """
-        Dynamic position sizing based on account balance and distance to stop loss.
-        Includes defensive scaling for accounts in deep drawdown.
+        Core logic loop.
+        Returns a list of trade decisions.
         """
-        # Defensive Mutation: Reduce risk if account is significantly down
-        current_drawdown = 1 - (current_balance / self.initial_capital)
-        risk_scaling = 0.5 if current_drawdown > 0.40 else 1.0
+        decisions = []
         
-        risk_amount = current_balance * self.base_risk_per_trade * risk_scaling
-        price_risk = abs(entry_price - stop_loss)
-        
-        if price_risk == 0:
-            return 0.0
+        for symbol, data in prices.items():
+            # 1. Update Data
+            current_price = data["priceUsd"]
             
-        qty = risk_amount / price_risk
-        
-        # Cap max position size to 95% of balance (no leverage for recovery)
-        max_qty = (current_balance * 0.95) / entry_price
-        return min(qty, max_qty)
+            if symbol not in self.price_history:
+                self.price_history[symbol] = deque(maxlen=self.history_size)
+            self.price_history[symbol].append(current_price)
+            
+            # Skip if banned
+            if symbol in self.banned_tags:
+                continue
 
-    def analyze(self, market_data: pd.DataFrame, current_balance: float, current_position: Optional[Dict] = None) -> TradeSignal:
-        """
-        Main execution logic
-        """
-        df = self.calculate_indicators(market_data)
-        last_row = df.iloc[-1]
-        prev_row = df.iloc[-2]
-        
-        curr_price = last_row['close']
-        atr = last_row['atr']
-        
-        # Determine Market Regime
-        # High volatility -> Trend Following
-        # Low volatility -> Mean Reversion
-        volatility_threshold = df['natr'].mean()
-        is_high_volatility = last_row['natr'] > volatility_threshold
-        
-        action = 'HOLD'
-        reason = "Wait"
-        stop_loss = 0.0
-        take_profit = 0.0
-        
-        # --- Logic for Open Positions ---
-        if current_position:
-            # Trailing Stop Logic
-            if current_position['side'] == 'LONG':
-                new_stop = curr_price - (2.5 * atr)
-                if new_stop > current_position.get('stop_loss', 0):
-                    # Update SL strictly upwards
-                    return TradeSignal('HOLD', 0, new_stop, current_position.get('take_profit'), "Trailing Stop Update")
+            # 2. Manage Existing Positions (Risk Management)
+            if symbol in self.positions:
+                pos = self.positions[symbol]
+                entry_price = pos["entry_price"]
                 
-                # Exit conditions
-                if curr_price < current_position['stop_loss']:
-                    return TradeSignal('SELL', current_position['qty'], 0, 0, "Stop Loss Hit")
-                if curr_price > current_position['take_profit']:
-                    return TradeSignal('SELL', current_position['qty'], 0, 0, "Take Profit Hit")
-                if last_row['rsi'] > 80: # Overbought exit
-                    return TradeSignal('SELL', current_position['qty'], 0, 0, "RSI Overbought Exit")
-            
-            return TradeSignal('HOLD', 0, 0, 0, "Holding Position")
+                # Update highest price seen for trailing stop
+                if current_price > pos["highest_price"]:
+                    pos["highest_price"] = current_price
+                
+                # Logic: Stop Loss
+                pnl_pct = (current_price - entry_price) / entry_price
+                
+                # Hard Stop
+                if pnl_pct < -self.stop_loss_pct:
+                    decisions.append({
+                        "action": "SELL",
+                        "symbol": symbol,
+                        "reason": "STOP_LOSS"
+                    })
+                    del self.positions[symbol]
+                    continue
+                
+                # Trailing Stop
+                drawdown_from_peak = (pos["highest_price"] - current_price) / pos["highest_price"]
+                if pnl_pct > 0.05 and drawdown_from_peak > self.trailing_sl_pct:
+                    decisions.append({
+                        "action": "SELL",
+                        "symbol": symbol,
+                        "reason": "TRAILING_STOP"
+                    })
+                    del self.positions[symbol]
+                    continue
 
-        # --- Logic for New Entries ---
-        
-        # Strategy A: Trend Following (High Volatility)
-        if is_high_volatility:
-            # Golden Cross + RSI Confirmation
-            trend_bullish = last_row['ema_short'] > last_row['ema_long']
-            momentum_ok = 50 < last_row['rsi'] < 70
-            
-            if trend_bullish and momentum_ok:
-                action = 'BUY'
-                reason = "Trend Follow: EMA Cross + Volatility"
-                stop_loss = curr_price - (2.0 * atr)
-                take_profit = curr_price + (4.0 * atr) # Higher RR for trends
+                # Take Profit
+                if pnl_pct > self.take_profit_pct:
+                    decisions.append({
+                        "action": "SELL",
+                        "symbol": symbol,
+                        "reason": "TAKE_PROFIT"
+                    })
+                    del self.positions[symbol]
+                    continue
+                    
+            # 3. Look for New Entries (Volatility Breakout)
+            else:
+                # Need enough history
+                if len(self.price_history[symbol]) < self.history_size:
+                    continue
+                    
+                sma, stdev = self._calculate_stats(symbol)
+                if stdev == 0:
+                    continue
+                    
+                # Calculate Z-Score
+                z_score = (current_price - sma) / stdev
+                
+                # Breakout Condition: Price > SMA + 2*StdDev (Upper Bollinger Band)
+                # Mutation: Added Momentum check (Price > SMA) to avoid catching falling knives
+                if z_score > self.z_score_threshold and current_price > sma:
+                    # Position Sizing: 20% of capital per trade (Assuming external manager handles balance check, 
+                    # but we request a fixed 'weight' or 'amount')
+                    decisions.append({
+                        "action": "BUY",
+                        "symbol": symbol,
+                        "weight": 0.2, 
+                        "reason": f"VOL_BREAKOUT_Z_{z_score:.2f}"
+                    })
+                    
+                    # Record position
+                    self.positions[symbol] = {
+                        "entry_price": current_price,
+                        "highest_price": current_price
+                    }
 
-        # Strategy B: Mean Reversion (Low Volatility)
-        else:
-            # Bollinger Band Bounce
-            bb_oversold = curr_price <= last_row['bb_lower']
-            rsi_oversold = last_row['rsi'] < 35
-            
-            if bb_oversold and rsi_oversold:
-                action = 'BUY'
-                reason = "Mean Reversion: BB Lower + RSI Oversold"
-                stop_loss = curr_price - (1.5 * atr)
-                take_profit = last_row['bb_mid'] # Target mean
-
-        if action == 'BUY':
-            qty = self.get_position_size(current_balance, curr_price, stop_loss)
-            return TradeSignal(action, qty, stop_loss, take_profit, reason)
-
-        return TradeSignal('HOLD', 0, 0, 0, "No Valid Setup")
-
-# Example Usage Mock
-if __name__ == "__main__":
-    # Generate dummy data
-    data = {
-        'open': np.random.normal(100, 1, 100),
-        'high': np.random.normal(102, 1, 100),
-        'low': np.random.normal(98, 1, 100),
-        'close': np.random.normal(100, 1, 100),
-        'volume': np.random.normal(1000, 100, 100)
-    }
-    df = pd.DataFrame(data)
-    
-    # Initialize evolved agent
-    strategy = DegenApeEvolutionStrategy(initial_capital=1000.0)
-    
-    # Run analysis
-    signal = strategy.analyze(df, current_balance=536.69)
-    print(f"Signal: {signal.action} | Qty: {signal.quantity:.4f} | Reason: {signal.reason}")
+        return decisions

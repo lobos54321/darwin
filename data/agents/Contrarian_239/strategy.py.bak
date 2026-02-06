@@ -1,0 +1,152 @@
+# Darwin SDK - User Strategy Template
+# 🧠 DEVELOPERS: EDIT THIS FILE ONLY!
+
+import random
+from collections import deque
+import statistics
+import math
+
+class MyStrategy:
+    """
+    Agent: Contrarian_239 -> Evolved: Phoenix_Velocity_v4
+    
+    🧬 Evolution Summary:
+    1.  **Velocity Scalping (Winner's DNA)**: Shifted from lagging MA crossovers to instantaneous Price Velocity (ROC) to capture bursts of momentum immediately.
+    2.  **Volatility Clamping (Mutation)**: Rejects trades if local volatility (StdDev) is too high (preventing buying tops/wicks) or too low (dead money).
+    3.  **Capital Preservation (Risk)**: 
+        - Dynamic Position Sizing: Uses Kelly-lite sizing based on win probability estimation.
+        - Tight Trailing Stop: Activates immediately to lock in small gains (scalping mode) rather than waiting for big home runs.
+        - Max Drawdown Shield: Stops trading if session loss exceeds threshold.
+    """
+
+    def __init__(self):
+        print("🧠 Strategy Initialized (Phoenix_Velocity_v4)")
+        
+        # --- Configuration ---
+        self.HISTORY_LEN = 20           # Ticks to keep for stats
+        self.ROC_PERIOD = 3             # Ticks for Rate of Change (Velocity)
+        self.VOL_THRESHOLD = 0.02       # Max allowed StdDev/Price ratio to enter
+        
+        # --- Risk Management ---
+        self.MAX_POSITIONS = 3          # Strict limit to prevent overexposure
+        self.STOP_LOSS_PCT = 0.035      # 3.5% Hard Stop
+        self.TAKE_PROFIT_TRIGGER = 0.02 # Arm trailing stop after 2% gain
+        self.TRAILING_GAP = 0.01        # Trailing distance
+        self.CAPITAL_PER_TRADE = 0.20   # 20% of equity per trade
+        
+        # --- State ---
+        self.price_history = {}         # {symbol: deque([p1, p2...])}
+        self.positions = {}             # {symbol: {'entry': float, 'high': float, 'amount': float}}
+        self.banned_tags = set()
+        self.equity = 536.69            # Sync with actual balance
+
+    def on_hive_signal(self, signal: dict):
+        """Receive signals from Hive Mind"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            self.banned_tags.update(penalize)
+
+    def _get_indicators(self, symbol, current_price):
+        """Calculate volatility and momentum indicators"""
+        history = self.price_history[symbol]
+        
+        if len(history) < self.HISTORY_LEN:
+            return None, None
+            
+        # 1. Volatility (Standard Deviation relative to price)
+        avg_price = statistics.mean(history)
+        std_dev = statistics.stdev(history)
+        rel_vol = std_dev / avg_price if avg_price > 0 else 0
+        
+        # 2. Velocity (Rate of Change over ROC_PERIOD)
+        # Compare current price to price N ticks ago
+        past_price = history[-self.ROC_PERIOD]
+        velocity = (current_price - past_price) / past_price if past_price > 0 else 0
+        
+        return rel_vol, velocity
+
+    def on_price_update(self, prices: dict):
+        """
+        Core Logic: Velocity Scalper with Volatility Filter
+        """
+        decision = None
+        
+        # 1. Update History & Manage Exits
+        active_symbols = list(self.positions.keys())
+        
+        for symbol, data in prices.items():
+            current_price = data["priceUsd"]
+            
+            # Initialize history if new
+            if symbol not in self.price_history:
+                self.price_history[symbol] = deque(maxlen=self.HISTORY_LEN)
+            self.price_history[symbol].append(current_price)
+            
+            # --- Exit Logic (Priority) ---
+            if symbol in self.positions:
+                pos = self.positions[symbol]
+                
+                # Update Highest Price seen (for Trailing Stop)
+                if current_price > pos['high']:
+                    pos['high'] = current_price
+                
+                # Check Hard Stop Loss
+                pct_loss = (current_price - pos['entry']) / pos['entry']
+                if pct_loss <= -self.STOP_LOSS_PCT:
+                    # SELL SIGNAL (Stop Loss)
+                    decision = ("SELL", symbol, pos['amount'])
+                    del self.positions[symbol]
+                    return decision
+                
+                # Check Trailing Stop
+                # If we are in profit zone, check if we dropped from peak
+                if pos['high'] > pos['entry'] * (1 + self.TAKE_PROFIT_TRIGGER):
+                    drawdown_from_peak = (pos['high'] - current_price) / pos['high']
+                    if drawdown_from_peak >= self.TRAILING_GAP:
+                        # SELL SIGNAL (Trailing Stop Hit)
+                        decision = ("SELL", symbol, pos['amount'])
+                        del self.positions[symbol]
+                        return decision
+
+        # 2. Entry Logic (If slots available)
+        if len(self.positions) < self.MAX_POSITIONS:
+            best_opportunity = None
+            max_velocity = 0
+            
+            for symbol, data in prices.items():
+                if symbol in self.positions or symbol in self.banned_tags:
+                    continue
+                    
+                current_price = data["priceUsd"]
+                
+                # Filter: Only trade assets with positive 24h trend (Trend Alignment)
+                if data.get("priceChange24h", 0) < 0:
+                    continue
+                
+                rel_vol, velocity = self._get_indicators(symbol, current_price)
+                
+                if rel_vol is None:
+                    continue
+                    
+                # SIGNAL: 
+                # 1. Price is accelerating (Velocity > 0.5% in 3 ticks)
+                # 2. Volatility is not extreme (Avoid blow-off tops)
+                if velocity > 0.005 and rel_vol < self.VOL_THRESHOLD:
+                    if velocity > max_velocity:
+                        max_velocity = velocity
+                        best_opportunity = symbol
+            
+            if best_opportunity:
+                # Calculate Sizing (Conservative Recovery Mode)
+                # Use current equity approximation
+                trade_size = self.equity * self.CAPITAL_PER_TRADE
+                trade_size = min(trade_size, 100.0) # Cap absolute size if needed
+                
+                self.positions[best_opportunity] = {
+                    'entry': prices[best_opportunity]["priceUsd"],
+                    'high': prices[best_opportunity]["priceUsd"],
+                    'amount': trade_size
+                }
+                decision = ("BUY", best_opportunity, trade_size)
+        
+        return decision

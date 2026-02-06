@@ -1,0 +1,172 @@
+# Darwin SDK - User Strategy Template
+# 🧠 DEVELOPERS: EDIT THIS FILE ONLY!
+
+import math
+import statistics
+from collections import deque, defaultdict
+
+class MyStrategy:
+    def __init__(self):
+        print("🧠 Strategy Initialized (GammaGuru v3.0 - Phoenix Mutation)")
+        
+        # 核心配置 (Core Configuration)
+        self.window_size = 20          # 用于计算均值和波动率的窗口
+        self.momentum_window = 5       # 短期动量窗口
+        self.base_risk_per_trade = 0.15 # 每次交易使用余额的 15%
+        self.max_positions = 4         # 最大持仓数量
+        
+        # 风险控制 (Risk Management)
+        self.hard_stop_loss = 0.08     # 8% 强制止损
+        self.trailing_stop_activation = 0.05 # 盈利 5% 后激活追踪止损
+        self.trailing_stop_distance = 0.03   # 3% 回撤止盈
+        
+        # 数据存储 (Data Storage)
+        self.price_history = defaultdict(lambda: deque(maxlen=self.window_size))
+        self.holdings = {} # {symbol: {'entry_price': float, 'highest_price': float, 'shares': float}}
+        self.banned_tags = set()
+        self.boosted_tags = set()
+        
+        # 冷却机制 (Cooldowns)
+        self.last_trade_time = {}
+        self.cooldown_ticks = 10
+
+    def on_hive_signal(self, signal: dict):
+        """处理 Hive Mind 的信号"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            self.banned_tags.update(penalize)
+            # 立即清仓被惩罚的资产
+            for tag in penalize:
+                if tag in self.holdings:
+                    print(f"🚫 Emergency Sell: {tag} due to Hive Penalty")
+                    # 逻辑上这里应该触发卖出，具体由 on_price_update 返回
+            
+        boost = signal.get("boost", [])
+        if boost:
+            self.boosted_tags.update(boost)
+
+    def _get_volatility(self, prices):
+        """计算价格的标准差作为波动率指标"""
+        if len(prices) < 2:
+            return 0.0
+        return statistics.stdev(prices)
+
+    def _get_sma(self, prices, n):
+        """计算简单移动平均"""
+        if len(prices) < n:
+            return prices[-1]
+        return sum(list(prices)[-n:]) / n
+
+    def on_price_update(self, prices: dict):
+        """
+        核心交易循环 (3s 间隔)
+        返回: dict {"action": "buy"/"sell", "symbol": "...", "amount": ...} 或 None
+        """
+        decisions = []
+        
+        for symbol, data in prices.items():
+            current_price = data["priceUsd"]
+            
+            # 1. 更新历史数据
+            self.price_history[symbol].append(current_price)
+            if len(self.price_history[symbol]) < self.momentum_window:
+                continue
+
+            # 2. 检查持仓状态 (Sell Logic)
+            if symbol in self.holdings:
+                holding = self.holdings[symbol]
+                entry_price = holding['entry_price']
+                
+                # 更新最高价用于追踪止损
+                if current_price > holding['highest_price']:
+                    holding['highest_price'] = current_price
+                
+                # 计算当前收益率
+                pnl_pct = (current_price - entry_price) / entry_price
+                drawdown_from_high = (holding['highest_price'] - current_price) / holding['highest_price']
+                
+                should_sell = False
+                reason = ""
+
+                # A. 强制止损 (Hard Stop)
+                if pnl_pct < -self.hard_stop_loss:
+                    should_sell = True
+                    reason = "Hard Stop Loss"
+                
+                # B. 追踪止损 (Trailing Stop) - 仅在盈利激活后生效
+                elif pnl_pct > self.trailing_stop_activation and drawdown_from_high > self.trailing_stop_distance:
+                    should_sell = True
+                    reason = "Trailing Stop Hit"
+                
+                # C. 趋势反转 (Trend Reversal) - 价格跌破长周期均线
+                elif len(self.price_history[symbol]) >= self.window_size:
+                    long_sma = self._get_sma(self.price_history[symbol], self.window_size)
+                    if current_price < long_sma * 0.98: # 给予 2% 的缓冲
+                        should_sell = True
+                        reason = "Trend Broken"
+
+                if should_sell:
+                    print(f"📉 SELL {symbol}: {reason} (PnL: {pnl_pct*100:.2f}%)")
+                    del self.holdings[symbol]
+                    return {"action": "sell", "symbol": symbol, "amount": 1.0} # 卖出全部
+
+            # 3. 检查开仓机会 (Buy Logic)
+            elif len(self.holdings) < self.max_positions:
+                # 过滤被禁用的标签
+                is_banned = False
+                for tag in data.get("tags", []):
+                    if tag in self.banned_tags:
+                        is_banned = True
+                        break
+                if is_banned: continue
+
+                # 冷却期检查
+                # (此处省略具体的时间戳逻辑，简化处理)
+
+                history = self.price_history[symbol]
+                if len(history) >= self.window_size:
+                    # 计算指标
+                    short_sma = self._get_sma(history, self.momentum_window)
+                    long_sma = self._get_sma(history, self.window_size)
+                    volatility = self._get_volatility(history)
+                    
+                    # 动态阈值：波动率越高，突破要求越高
+                    breakout_threshold = volatility * 1.5
+                    
+                    # 策略：动量突破 (Momentum Breakout)
+                    # 1. 短均线 > 长均线 (趋势向上)
+                    # 2. 当前价格 > 长均线 + 突破阈值 (确认突破力度)
+                    # 3. 价格相比前一刻上涨 (即时动量)
+                    if (short_sma > long_sma and 
+                        current_price > (long_sma + breakout_threshold) and
+                        current_price > history[-2]):
+                        
+                        # 仓位管理：波动率反向加权 (Volatility Sizing)
+                        # 波动大买得少，波动小买得多
+                        vol_factor = 1.0
+                        if volatility > 0 and current_price > 0:
+                            vol_ratio = volatility / current_price
+                            if vol_ratio > 0.05: # 高波动 > 5%
+                                vol_factor = 0.5
+                        
+                        # Boost 信号加成
+                        for tag in data.get("tags", []):
+                            if tag in self.boosted_tags:
+                                vol_factor *= 1.2
+                        
+                        print(f"🚀 BUY {symbol}: Breakout detected (Vol Factor: {vol_factor:.2f})")
+                        
+                        # 记录持仓
+                        self.holdings[symbol] = {
+                            'entry_price': current_price,
+                            'highest_price': current_price,
+                            'shares': 0 # 具体数量由引擎决定，这里只做逻辑记录
+                        }
+                        
+                        return {
+                            "action": "buy", 
+                            "symbol": symbol, 
+                            "amount": self.base_risk_per_trade * vol_factor
+                        }
+
+        return None

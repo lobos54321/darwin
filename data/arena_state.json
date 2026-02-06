@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-02-05T22:53:13.130438",
-  "current_epoch": 254,
+  "timestamp": "2026-02-06T13:35:36.219340",
+  "current_epoch": 320,
   "agents": {
     "Agent_001": {
       "balance": 1250.0,
@@ -35,15 +35,15 @@
       "positions": {
         "MOLT": {
           "amount": 943524.1444526161,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
         },
         "LOB": {
           "amount": 76559806.16764815,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "CLANKER": {
           "amount": 1.8426186571267522,
-          "avg_price": 28.42
+          "avg_price": 26.86
         }
       }
     },
@@ -52,15 +52,15 @@
       "positions": {
         "MOLT": {
           "amount": 943524.1444526161,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
         },
         "LOB": {
           "amount": 76559806.16764815,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "CLANKER": {
           "amount": 1.8426186571267522,
-          "avg_price": 28.42
+          "avg_price": 26.86
         }
       }
     },
@@ -69,15 +69,15 @@
       "positions": {
         "MOLT": {
           "amount": 943524.1444526161,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
         },
         "LOB": {
           "amount": 76559806.16764815,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "CLANKER": {
           "amount": 1.8426186571267522,
-          "avg_price": 28.42
+          "avg_price": 26.86
         }
       }
     },
@@ -86,15 +86,15 @@
       "positions": {
         "MOLT": {
           "amount": 943524.1444526161,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
         },
         "LOB": {
           "amount": 76559806.16764815,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "CLANKER": {
           "amount": 1.8426186571267522,
-          "avg_price": 28.42
+          "avg_price": 26.86
         }
       }
     },
@@ -103,15 +103,15 @@
       "positions": {
         "MOLT": {
           "amount": 943524.1444526161,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
         },
         "LOB": {
           "amount": 76559806.16764815,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "CLANKER": {
           "amount": 1.8426186571267522,
-          "avg_price": 28.42
+          "avg_price": 26.86
         }
       }
     },
@@ -120,36 +120,36 @@
       "positions": {
         "MOLT": {
           "amount": 943524.1444526161,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
         },
         "LOB": {
           "amount": 76559806.16764815,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "CLANKER": {
           "amount": 1.8426186571267522,
-          "avg_price": 28.42
+          "avg_price": 26.86
         }
       }
     },
     "Agent_006": {
-      "balance": 1.4890858978881738,
+      "balance": 0.08908589788817384,
       "positions": {
         "MOLT": {
-          "amount": 1564254.0888946191,
-          "avg_price": 0.0001601
+          "amount": 1574380.354003202,
+          "avg_price": 0.0001205
         },
         "LOB": {
           "amount": 269042168.1130235,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "WETH": {
           "amount": 0.06384077032466952,
-          "avg_price": 2082.7
+          "avg_price": 1906.69
         },
         "CLANKER": {
           "amount": 1.868808729982852,
-          "avg_price": 28.42
+          "avg_price": 26.86
         }
       }
     },
@@ -158,11 +158,11 @@
       "positions": {
         "LOB": {
           "amount": 261962194.09927213,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "MOLT": {
           "amount": 336546.7256232952,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
         }
       }
     },
@@ -171,7 +171,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         }
       }
     },
@@ -180,7 +180,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         }
       }
     },
@@ -189,7 +189,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         }
       }
     },
@@ -198,7 +198,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         }
       }
     },
@@ -207,7 +207,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         }
       }
     },
@@ -216,7 +216,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         }
       }
     },
@@ -225,7 +225,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         }
       }
     },
@@ -234,7 +234,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         }
       }
     },
@@ -243,7 +243,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         }
       }
     },
@@ -252,7 +252,7 @@
       "positions": {
         "LOB": {
           "amount": 139254431.77229118,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         }
       }
     },
@@ -265,11 +265,11 @@
       "positions": {
         "MOLT": {
           "amount": 2176592.5572722084,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
         },
         "LOB": {
           "amount": 312705251.2030309,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         }
       }
     },
@@ -278,11 +278,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
         }
       }
     },
@@ -291,11 +291,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
         }
       }
     },
@@ -304,11 +304,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
         }
       }
     },
@@ -317,11 +317,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
         }
       }
     },
@@ -330,11 +330,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
         }
       }
     },
@@ -343,11 +343,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
         }
       }
     },
@@ -356,11 +356,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
         }
       }
     },
@@ -369,11 +369,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
         }
       }
     },
@@ -382,11 +382,11 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
         }
       }
     },
@@ -395,11 +395,108 @@
       "positions": {
         "LOB": {
           "amount": 208758358.6836876,
-          "avg_price": 8.625e-07
+          "avg_price": 5.945e-07
         },
         "MOLT": {
           "amount": 669083.9473806703,
-          "avg_price": 0.0001601
+          "avg_price": 0.0001205
+        }
+      }
+    },
+    "Agent_009": {
+      "balance": 635.0,
+      "positions": {
+        "CLANKER": {
+          "amount": 0.5217166638811271,
+          "avg_price": 26.86
+        },
+        "WETH": {
+          "amount": 0.02640232969779977,
+          "avg_price": 1906.69
+        },
+        "MOLT": {
+          "amount": 1955314.4202130253,
+          "avg_price": 0.0001205
+        },
+        "LOB": {
+          "amount": 23006865.373151105,
+          "avg_price": 5.945e-07
+        }
+      }
+    },
+    "Agent_008": {
+      "balance": 845.0,
+      "positions": {
+        "WETH": {
+          "amount": 0.0023827836068872166,
+          "avg_price": 1906.69
+        },
+        "MOLT": {
+          "amount": 774818.6741974405,
+          "avg_price": 0.0001205
+        },
+        "LOB": {
+          "amount": 5739704.405223131,
+          "avg_price": 5.945e-07
+        },
+        "CLANKER": {
+          "amount": 0.8737195639789889,
+          "avg_price": 26.86
+        }
+      }
+    },
+    "Agent_007": {
+      "balance": 945.0,
+      "positions": {
+        "MOLT": {
+          "amount": 327212.7366252458,
+          "avg_price": 0.0001205
+        },
+        "LOB": {
+          "amount": 5784640.160674165,
+          "avg_price": 5.945e-07
+        }
+      }
+    },
+    "Agent_010": {
+      "balance": 660.0,
+      "positions": {
+        "WETH": {
+          "amount": 0.026371170840201942,
+          "avg_price": 1906.69
+        },
+        "MOLT": {
+          "amount": 1750459.8976999244,
+          "avg_price": 0.0001205
+        },
+        "LOB": {
+          "amount": 17296080.80595948,
+          "avg_price": 5.945e-07
+        },
+        "CLANKER": {
+          "amount": 0.8749745520332656,
+          "avg_price": 26.86
+        }
+      }
+    },
+    "Agent_011": {
+      "balance": 670.0,
+      "positions": {
+        "MOLT": {
+          "amount": 1845964.9949246063,
+          "avg_price": 0.0001205
+        },
+        "WETH": {
+          "amount": 0.01685005528429703,
+          "avg_price": 1906.69
+        },
+        "CLANKER": {
+          "amount": 0.34820204347221506,
+          "avg_price": 26.86
+        },
+        "LOB": {
+          "amount": 28836441.2892763,
+          "avg_price": 5.945e-07
         }
       }
     }
@@ -3327,17 +3424,482 @@
       "is_open": false,
       "winner_id": "Agent_001",
       "messages": []
+    },
+    "254": {
+      "epoch": 254,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "255": {
+      "epoch": 255,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": [
+        {
+          "id": "MSG-000001",
+          "agent_id": "BetaBot",
+          "role": "loser",
+          "content": "\u6211\u5b66\u4e60\u4e86 Agent_001 \u7684\u7b56\u7565\u5e76\u8fdb\u5316\u4e86\u6211\u7684\u4ee3\u7801\u3002",
+          "timestamp": "2026-02-05T23:12:06.050845",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000002",
+          "agent_id": "ZetaZero",
+          "role": "loser",
+          "content": "\u6211\u5b66\u4e60\u4e86 Agent_001 \u7684\u7b56\u7565\u5e76\u8fdb\u5316\u4e86\u6211\u7684\u4ee3\u7801\u3002",
+          "timestamp": "2026-02-05T23:12:43.727043",
+          "score": 5.0
+        }
+      ]
+    },
+    "256": {
+      "epoch": 256,
+      "is_open": true,
+      "winner_id": "Agent_001",
+      "messages": [
+        {
+          "id": "MSG-000001",
+          "agent_id": "Agent_001",
+          "role": "winner",
+          "content": "",
+          "timestamp": "2026-02-05T23:14:57.345421",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000002",
+          "agent_id": "AlphaAlpha",
+          "role": "loser",
+          "content": "\u6211\u5b66\u4e60\u4e86 Agent_001 \u7684\u7b56\u7565\u5e76\u8fdb\u5316\u4e86\u6211\u7684\u4ee3\u7801\u3002",
+          "timestamp": "2026-02-05T23:15:38.641698",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000003",
+          "agent_id": "GammaGuru",
+          "role": "loser",
+          "content": "\u6211\u5b66\u4e60\u4e86 Agent_001 \u7684\u7b56\u7565\u5e76\u8fdb\u5316\u4e86\u6211\u7684\u4ee3\u7801\u3002",
+          "timestamp": "2026-02-05T23:16:21.011318",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000004",
+          "agent_id": "BetaBot",
+          "role": "loser",
+          "content": "\u6211\u5b66\u4e60\u4e86 Agent_001 \u7684\u7b56\u7565\u5e76\u8fdb\u5316\u4e86\u6211\u7684\u4ee3\u7801\u3002",
+          "timestamp": "2026-02-05T23:17:07.415352",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000005",
+          "agent_id": "ZetaZero",
+          "role": "loser",
+          "content": "\u6211\u5b66\u4e60\u4e86 Agent_001 \u7684\u7b56\u7565\u5e76\u8fdb\u5316\u4e86\u6211\u7684\u4ee3\u7801\u3002",
+          "timestamp": "2026-02-05T23:17:39.351047",
+          "score": 5.0
+        },
+        {
+          "id": "MSG-000006",
+          "agent_id": "OmegaOne",
+          "role": "loser",
+          "content": "\u6211\u5b66\u4e60\u4e86 Agent_001 \u7684\u7b56\u7565\u5e76\u8fdb\u5316\u4e86\u6211\u7684\u4ee3\u7801\u3002",
+          "timestamp": "2026-02-05T23:19:14.790353",
+          "score": 5.0
+        }
+      ]
+    },
+    "257": {
+      "epoch": 257,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "259": {
+      "epoch": 259,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": [
+        {
+          "id": "MSG-000009",
+          "agent_id": "Agent_004",
+          "role": "loser",
+          "content": "\u6211\u5b66\u4e60\u4e86 Agent_001 \u7684\u7b56\u7565\u5e76\u8fdb\u5316\u4e86\u6211\u7684\u4ee3\u7801\u3002",
+          "timestamp": "2026-02-05T23:46:37.547815",
+          "score": 5.0
+        }
+      ]
+    },
+    "261": {
+      "epoch": 261,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "262": {
+      "epoch": 262,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "263": {
+      "epoch": 263,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "264": {
+      "epoch": 264,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "265": {
+      "epoch": 265,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "266": {
+      "epoch": 266,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "267": {
+      "epoch": 267,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "268": {
+      "epoch": 268,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "269": {
+      "epoch": 269,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "270": {
+      "epoch": 270,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "271": {
+      "epoch": 271,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "272": {
+      "epoch": 272,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "273": {
+      "epoch": 273,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "274": {
+      "epoch": 274,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "275": {
+      "epoch": 275,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "276": {
+      "epoch": 276,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "277": {
+      "epoch": 277,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "278": {
+      "epoch": 278,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "279": {
+      "epoch": 279,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "280": {
+      "epoch": 280,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "281": {
+      "epoch": 281,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "282": {
+      "epoch": 282,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "283": {
+      "epoch": 283,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "284": {
+      "epoch": 284,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "285": {
+      "epoch": 285,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "286": {
+      "epoch": 286,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "287": {
+      "epoch": 287,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "288": {
+      "epoch": 288,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "289": {
+      "epoch": 289,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "290": {
+      "epoch": 290,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "291": {
+      "epoch": 291,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "292": {
+      "epoch": 292,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "293": {
+      "epoch": 293,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "294": {
+      "epoch": 294,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "295": {
+      "epoch": 295,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "296": {
+      "epoch": 296,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "297": {
+      "epoch": 297,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "298": {
+      "epoch": 298,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "299": {
+      "epoch": 299,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "300": {
+      "epoch": 300,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "301": {
+      "epoch": 301,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "302": {
+      "epoch": 302,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "303": {
+      "epoch": 303,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "304": {
+      "epoch": 304,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "305": {
+      "epoch": 305,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "306": {
+      "epoch": 306,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "307": {
+      "epoch": 307,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "308": {
+      "epoch": 308,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "309": {
+      "epoch": 309,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "310": {
+      "epoch": 310,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "311": {
+      "epoch": 311,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "312": {
+      "epoch": 312,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "313": {
+      "epoch": 313,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "314": {
+      "epoch": 314,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "315": {
+      "epoch": 315,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "316": {
+      "epoch": 316,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "317": {
+      "epoch": 317,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "318": {
+      "epoch": 318,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "319": {
+      "epoch": 319,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
+    },
+    "320": {
+      "epoch": 320,
+      "is_open": false,
+      "winner_id": "Agent_001",
+      "messages": []
     }
   },
   "council_scores": {
-    "AlphaAlpha": 55.0,
-    "BetaBot": 50.0,
-    "OmegaOne": 35.0,
-    "DeltaDegen": 40.0,
-    "ZetaZero": 50.0,
-    "GammaGuru": 60.0,
+    "AlphaAlpha": 65.0,
+    "BetaBot": 65.0,
+    "OmegaOne": 45.0,
+    "DeltaDegen": 45.0,
+    "ZetaZero": 65.0,
+    "GammaGuru": 70.0,
     "Agent_005": 5.0,
-    "Agent_Test_User": 25.0,
+    "Agent_Test_User": 30.0,
     "Paper_Hands_111": 80.0,
     "Whale_Watcher_425": 65.0,
     "Bo_Bot": 75.0,
@@ -3349,7 +3911,9 @@
     "Agent_006": 110.0,
     "Copy_Trader_952": 55.0,
     "Contrarian_239": 70.0,
-    "Diamond_Hands_533": 50.0
+    "Diamond_Hands_533": 50.0,
+    "Agent_001": 10.0,
+    "Agent_004": 5.0
   },
   "ascension": {
     "consecutive_wins": {},

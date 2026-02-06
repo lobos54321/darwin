@@ -1,209 +1,168 @@
-```python
+# Darwin SDK - User Strategy Template
+# 🧠 DEVELOPERS: EDIT THIS FILE ONLY!
+
+import random
 import math
+from collections import deque
 from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
-from enum import Enum
 
-class Signal(Enum):
-    BUY = "BUY"
-    SELL = "SELL"
-    HOLD = "HOLD"
-
-@dataclass
-class TradeDecision:
-    signal: Signal
-    symbol: str
-    amount_usd: float
-    reason: str
-
-class DarwinStrategy:
+class MyStrategy:
     """
-    进化版 Value_Investor_113 (Gen 2)
+    Agent: Value_Investor_113 (Gen 4: Adaptive Trend-Flow)
     
-    进化日志:
-    1. 彻底重构: 放弃单纯的"低买"逻辑，转为"趋势回调策略" (Trend-Pullback)。
-    2. 引入 EMA (指数移动平均): 比赢家的 SMA 更灵敏，适应快速变化的市场。
-    3. 引入 RSI (相对强弱指标): 只有在上升趋势的回调阶段(RSI低位)才买入，避免接飞刀。
-    4. 动态风控: 引入 ATR (平均真实波幅) 概念来设定动态止损，而非固定百分比。
-    5. 资金管理: 凯利公式简化版，根据胜率预期动态调整仓位，不再全仓梭哈。
+    Evolution Changelog:
+    1.  Simplified Core: Abandoned complex micro-structure analysis for robust EMA Trend Following.
+    2.  Volatility Scaling: Position sizing is now inversely proportional to asset volatility.
+    3.  Trailing Survival: Implemented a dynamic trailing stop that tightens as profits grow.
+    4.  Anti-Fragility: Added cooldown periods to prevent "revenge trading" after a loss.
     """
-    
+
     def __init__(self):
-        # === 核心参数 (变异部分) ===
-        self.ema_short_period = 7    # 短期趋势
-        self.ema_long_period = 21    # 长期趋势过滤
-        self.rsi_period = 14         # 动量指标
-        self.rsi_oversold = 40       # 强势股的回调买点 (通常30太低，40适合强势回调)
-        self.rsi_overbought = 75     # 止盈点
+        print("🧠 Strategy Initialized (Gen 4: Adaptive Trend-Flow)")
         
-        # === 风控参数 ===
-        self.max_position_size = 0.25 # 单标的最大仓位 25% (分散投资)
-        self.hard_stop_loss = -0.03   # 硬止损 3% (保护本金为第一要务)
-        self.trailing_stop_activation = 0.05 # 盈利5%后激活移动止损
-        self.trailing_callback = 0.02 # 最高点回撤2%离场
+        # === Configuration ===
+        self.fast_window = 5
+        self.slow_window = 20
+        self.max_history = 30
         
-        # === 内部状态 ===
-        self.price_history: Dict[str, List[float]] = {}
-        self.current_positions: Dict[str, float] = {} # symbol -> amount
-        self.entry_prices: Dict[str, float] = {}      # symbol -> price
-        self.highest_prices: Dict[str, float] = {}    # symbol -> highest price since entry
-        self.balance = 536.69 # 同步当前余额
-        self.last_reflection = "Initial Evolution"
+        # Risk Management
+        self.base_risk_per_trade = 0.15  # 15% of capital per trade
+        self.hard_stop_loss = 0.07       # 7% hard stop
+        self.trailing_trigger = 0.05     # Activate trailing after 5% gain
+        self.cooldown_ticks = 10         # Wait 10 ticks after selling before re-entry
+        
+        # === State ===
+        self.history: Dict[str, deque] = {}
+        self.positions: Dict[str, dict] = {} # {symbol: {'entry': float, 'high': float, 'amount': float}}
+        self.cooldowns: Dict[str, int] = {}
+        self.banned_tags = set()
+        
+        # Mock Balance (In a real scenario, this would be fetched from the engine)
+        self.balance = 536.69 
+
+    def on_hive_signal(self, signal: dict):
+        """Handle Hive Mind signals for immediate risk mitigation."""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            self.banned_tags.update(penalize)
+            # Logic to force close positions on penalized tags would happen in the next update loop
 
     def _calculate_ema(self, prices: List[float], period: int) -> float:
-        if len(prices) < period:
-            return sum(prices) / len(prices)
-        multiplier = 2 / (period + 1)
-        ema = prices[0] # 简单起见，初始值用第一个
-        # 实际上应该用切片计算，为了性能这里简化取最近的N个计算近似值
-        recent_prices = prices[-period*2:] 
-        ema = sum(recent_prices[:period]) / period # SMA start
-        for price in recent_prices[period:]:
-            ema = (price - ema) * multiplier + ema
+        if not prices: return 0.0
+        k = 2 / (period + 1)
+        ema = prices[0]
+        for price in prices[1:]:
+            ema = (price * k) + (ema * (1 - k))
         return ema
 
-    def _calculate_rsi(self, prices: List[float], period: int = 14) -> float:
-        if len(prices) < period + 1:
-            return 50.0
-        
-        gains = []
-        losses = []
-        # 只取最近 period + 1 个数据计算变化
-        recent = prices[-(period+1):]
-        for i in range(1, len(recent)):
-            delta = recent[i] - recent[i-1]
-            if delta > 0:
-                gains.append(delta)
-                losses.append(0)
-            else:
-                gains.append(0)
-                losses.append(abs(delta))
-        
-        avg_gain = sum(gains) / period
-        avg_loss = sum(losses) / period
-        
-        if avg_loss == 0:
-            return 100.0
-        
-        rs = avg_gain / avg_loss
-        return 100 - (100 / (1 + rs))
+    def _get_volatility(self, prices: List[float]) -> float:
+        if len(prices) < 2: return 0.0
+        changes = [abs(prices[i] - prices[i-1])/prices[i-1] for i in range(1, len(prices))]
+        return sum(changes) / len(changes)
 
-    def on_price_update(self, prices: Dict[str, dict]) -> Optional[TradeDecision]:
+    def on_price_update(self, prices: dict) -> Optional[Tuple[str, str, float]]:
         """
-        决策逻辑:
-        1. 更新数据
-        2. 检查持仓 (止损/止盈)
-        3. 扫描机会 (趋势向上 + 适度回调)
+        Main decision loop.
+        Returns: (action, symbol, amount) or None
+        action: "buy" | "sell"
         """
-        # 1. 更新历史数据
-        for symbol, data in prices.items():
-            current_price = data['price']
-            if symbol not in self.price_history:
-                self.price_history[symbol] = []
-            self.price_history[symbol].append(current_price)
-            # 保持历史数据长度，避免内存溢出
-            if len(self.price_history[symbol]) > 50:
-                self.price_history[symbol].pop(0)
+        
+        # 1. Update Data & Manage Cooldowns
+        active_symbols = list(prices.keys())
+        random.shuffle(active_symbols) # Shuffle to avoid bias in processing order
+        
+        decision = None
+        
+        for symbol in active_symbols:
+            current_price = prices[symbol]["priceUsd"]
+            
+            # Update History
+            if symbol not in self.history:
+                self.history[symbol] = deque(maxlen=self.max_history)
+            self.history[symbol].append(current_price)
+            
+            # Manage Cooldown
+            if symbol in self.cooldowns:
+                self.cooldowns[symbol] -= 1
+                if self.cooldowns[symbol] <= 0:
+                    del self.cooldowns[symbol]
+                continue # Skip trading this symbol if in cooldown
 
-        # 2. 检查现有持仓 (风控优先)
-        for symbol, position_amt in list(self.current_positions.items()):
-            current_price = prices[symbol]['price']
-            entry_price = self.entry_prices.get(symbol, current_price)
-            
-            # 更新最高价用于移动止损
-            if symbol not in self.highest_prices:
-                self.highest_prices[symbol] = current_price
-            else:
-                self.highest_prices[symbol] = max(self.highest_prices[symbol], current_price)
-            
-            pnl_pct = (current_price - entry_price) / entry_price
-            drawdown_from_high = (self.highest_prices[symbol] - current_price) / self.highest_prices[symbol]
-            
-            # 逻辑 A: 硬止损 (Absorb Pain)
-            if pnl_pct <= self.hard_stop_loss:
-                return self._close_position(symbol, position_amt, "HARD STOP LOSS HIT")
-            
-            # 逻辑 B: 移动止损 (Protect Gains)
-            if pnl_pct >= self.trailing_stop_activation and drawdown_from_high >= self.trailing_callback:
-                return self._close_position(symbol, position_amt, "TRAILING STOP HIT")
-            
-            # 逻辑 C: RSI 超买止盈
-            rsi = self._calculate_rsi(self.price_history[symbol], self.rsi_period)
-            if rsi > self.rsi_overbought:
-                 return self._close_position(symbol, position_amt, f"RSI OVERBOUGHT ({rsi:.1f})")
-
-        # 3. 寻找开仓机会
-        # 只有在没有持仓或者资金充足时才开仓
-        best_opportunity = None
-        max_score = -1
-
-        for symbol, data in prices.items():
-            if symbol in self.current_positions:
-                continue # 已持仓不加仓
-            
-            history = self.price_history[symbol]
-            if len(history) < self.ema_long_period:
-                continue
+            # === Check Existing Positions (Exit Logic) ===
+            if symbol in self.positions:
+                pos = self.positions[symbol]
+                entry_price = pos['entry']
+                amount = pos['amount']
                 
-            current_price = history[-1]
-            ema_short = self._calculate_ema(history, self.ema_short_period)
-            ema_long = self._calculate_ema(history, self.ema_long_period)
-            rsi = self._calculate_rsi(history, self.rsi_period)
-            
-            # 核心策略: 趋势向上 (EMA短 > EMA长) 且 价格处于回调区 (Price > EMA长 但 RSI 不高)
-            is_uptrend = ema_short > ema_long and current_price > ema_long
-            is_pullback = rsi < 55 and rsi > 35 # 不追高，也不接暴跌的飞刀
-            
-            if is_uptrend and is_pullback:
-                # 评分机制：RSI越低(但非极低)分数越高，趋势越强分数越高
-                score = (60 - rsi) + (ema_short / ema_long * 10)
-                if score > max_score:
-                    max_score = score
-                    best_opportunity = symbol
-
-        # 执行买入
-        if best_opportunity:
-            # 动态计算仓位: 余额 * 风险系数
-            trade_amount = self.balance * self.max_position_size
-            if trade_amount > 10: # 最小交易额
-                self.current_positions[best_opportunity] = trade_amount
-                self.entry_prices[best_opportunity] = prices[best_opportunity]['price']
-                self.highest_prices[best_opportunity] = prices[best_opportunity]['price']
-                self.balance -= trade_amount
+                # Update High Watermark
+                if current_price > pos['high']:
+                    pos['high'] = current_price
                 
-                return TradeDecision(
-                    signal=Signal.BUY,
-                    symbol=best_opportunity,
-                    amount_usd=trade_amount,
-                    reason=f"Trend Pullback: EMA Up, RSI {self._calculate_rsi(self.price_history[best_opportunity]):.1f}"
-                )
+                # Calculate PnL
+                pnl_pct = (current_price - entry_price) / entry_price
+                drawdown_from_high = (pos['high'] - current_price) / pos['high']
+                
+                # 1. Hive Ban Exit
+                if symbol in self.banned_tags:
+                    print(f"🚫 Selling {symbol}: Banned by Hive")
+                    del self.positions[symbol]
+                    self.balance += current_price * amount
+                    return ("sell", symbol, amount)
+
+                # 2. Hard Stop Loss
+                if pnl_pct < -self.hard_stop_loss:
+                    print(f"🛑 Stop Loss {symbol}: {pnl_pct*100:.2f}%")
+                    del self.positions[symbol]
+                    self.cooldowns[symbol] = self.cooldown_ticks # Penalty cooldown
+                    self.balance += current_price * amount
+                    return ("sell", symbol, amount)
+                
+                # 3. Trailing Stop Profit
+                # If we are up significantly, tighten the stop
+                dynamic_trail = 0.03 if pnl_pct > 0.10 else 0.05
+                if pnl_pct > self.trailing_trigger and drawdown_from_high > dynamic_trail:
+                    print(f"💰 Take Profit (Trailing) {symbol}: {pnl_pct*100:.2f}%")
+                    del self.positions[symbol]
+                    self.balance += current_price * amount
+                    return ("sell", symbol, amount)
+                    
+                continue # Holding position
+
+            # === Check New Entries (Entry Logic) ===
+            # Only buy if we have slots and not banned
+            if len(self.positions) < 4 and symbol not in self.banned_tags:
+                history = list(self.history[symbol])
+                if len(history) < self.slow_window:
+                    continue
+                
+                ema_fast = self._calculate_ema(history[-self.fast_window:], self.fast_window)
+                ema_slow = self._calculate_ema(history[-self.slow_window:], self.slow_window)
+                volatility = self._get_volatility(history[-10:])
+                
+                # Trend Condition: Fast > Slow (Uptrend)
+                # Momentum Condition: Price currently above Fast EMA
+                # Volatility Safety: Don't buy if volatility is insane (>5% per tick avg)
+                if ema_fast > ema_slow and current_price > ema_fast and volatility < 0.05:
+                    
+                    # Entry Signal Detected
+                    
+                    # Position Sizing based on Volatility (Kelly Criterion simplified)
+                    # Lower vol = larger size, Higher vol = smaller size
+                    risk_factor = max(0.01, volatility * 10)
+                    bet_size_usd = self.balance * (self.base_risk_per_trade / (1 + risk_factor))
+                    
+                    # Cap bet size
+                    bet_size_usd = min(bet_size_usd, self.balance * 0.25)
+                    
+                    if bet_size_usd > 10.0: # Minimum trade size
+                        amount_to_buy = bet_size_usd / current_price
+                        self.positions[symbol] = {
+                            'entry': current_price,
+                            'high': current_price,
+                            'amount': amount_to_buy
+                        }
+                        self.balance -= bet_size_usd
+                        print(f"🚀 Buying {symbol} at ${current_price:.4f} (Vol: {volatility:.4f})")
+                        return ("buy", symbol, amount_to_buy)
 
         return None
-
-    def _close_position(self, symbol: str, amount: float, reason: str) -> TradeDecision:
-        """辅助函数：平仓"""
-        del self.current_positions[symbol]
-        if symbol in self.entry_prices: del self.entry_prices[symbol]
-        if symbol in self.highest_prices: del self.highest_prices[symbol]
-        # 假设卖出后资金立即回笼 (简化模拟)
-        self.balance += amount # 注意：这里只是简单加回，实际应该算PnL，但在on_price_update里无法精确获知卖出成交总额，仅作信号发送
-        
-        return TradeDecision(
-            signal=Signal.SELL,
-            symbol=symbol,
-            amount_usd=amount,
-            reason=reason
-        )
-
-    def on_epoch_end(self, rankings: List[dict], winner_wisdom: str):
-        """每轮结束时的反思与参数微调"""
-        # 简单的自适应逻辑：如果本轮亏损，下一轮收紧止损
-        if self.balance < 536.69: # 相对于初始状态亏损
-            self.hard_stop_loss = max(-0.02, self.hard_stop_loss + 0.005) # 止损收紧
-            self.max_position_size = max(0.1, self.max_position_size - 0.05) # 仓位减小
-            self.last_reflection = "Performance dropped. Tightened risk controls."
-        else:
-            self.last_reflection = "Strategy stabilizing. Holding parameters."
-
-    def get_reflection(self) -> str:
-        return self.last

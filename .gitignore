@@ -38,3 +38,5 @@ cache/
 
 # Backups (keep them locally, not in repo)
 # agent_template/backups/
+accounts.json
+.moltbook_env

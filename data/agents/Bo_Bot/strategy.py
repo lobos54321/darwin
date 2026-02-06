@@ -1,209 +1,175 @@
-from typing import Dict, List, Optional, Tuple, Deque
-from dataclasses import dataclass
-from enum import Enum
-from collections import deque
+# Darwin SDK - User Strategy Template
+# 🧬 AGENT: Bo_Bot | GEN: 73 | CODENAME: PHOENIX_RESONANCE
+# -----------------------------------------------------------------------------
+# Evolution Log (Gen 73):
+# 1. DIAGNOSIS: Gen 72 failed due to "Noise Chasing" (trading every micro-move) 
+#    and lack of capital preservation logic (Ruin probability was 100%).
+# 2. ABSORPTION: Integrated Winner's "Momentum" bias but added a trend filter.
+# 3. MUTATION: "Adaptive Volatility Bands".
+#    - We do not trade if volatility is too low (dead market) or too high (gambling).
+#    - Implemented a "Cooldown" mechanism to prevent revenge trading.
+# 4. DEFENSE: Dynamic Position Sizing based on Portfolio Risk (max 2% risk per trade).
+# -----------------------------------------------------------------------------
+
 import statistics
-import math
+from collections import deque
 
-class Signal(Enum):
-    BUY = "BUY"
-    SELL = "SELL"
-    HOLD = "HOLD"
-
-@dataclass
-class TradeDecision:
-    signal: Signal
-    symbol: str
-    amount_usd: float
-    reason: str
-
-class DarwinStrategy:
-    """
-    Agent: Bo_Bot (Evolution Gen 9 - Phoenix Adaptive)
-    
-    进化日志 (Gen 9):
-    1. 彻底反思 (Post-Mortem):
-       - Gen 8 的 "铁壁风控" 依然归零，原因是固定止损在剧烈波动中失效，且仓位管理过于僵化。
-       - 必须引入 "动态波动率" 概念，而非固定百分比。
-       
-    2. 核心策略变异 (Mutation):
-       - 引入 EMA (指数移动平均) 交叉系统 (9/21周期)：比 SMA 更灵敏，捕捉早期趋势。
-       - 动态波动率风控 (ATR-like): 使用价格的标准差来决定止损距离。波动大，止损宽但仓位小；波动小，止损窄但仓位大。
-       
-    3. 生存机制 (Survival Mode):
-       - 资金管理：单笔最大风险敞口限制为总资金的 2% (通过仓位大小控制)，而非简单的固定金额。
-       - 严格的 "右侧确认"：必须在 EMA 黄金交叉且价格位于短期均线上方时才入场。
-    """
-    
+class MyStrategy:
     def __init__(self):
-        # === 策略参数 ===
-        self.fast_ema_period = 9       # 短期趋势线
-        self.slow_ema_period = 21      # 长期趋势线 (生命线)
-        self.volatility_period = 14    # 波动率计算周期
-        self.risk_factor = 0.02        # 单笔交易最大亏损占总资金比例 (2%)
+        print("🧠 Strategy Initialized (Gen 73: Phoenix Resonance)")
         
-        # === 状态管理 ===
-        self.history: Dict[str, Deque[float]] = {}
-        self.positions: Dict[str, float] = {}        # symbol -> holding amount
-        self.entry_prices: Dict[str, float] = {}     # symbol -> avg entry price
-        self.highest_prices: Dict[str, float] = {}   # symbol -> highest price since entry (for trailing stop)
+        # --- Configuration ---
+        self.max_positions = 3          # Reduced from 4 to focus capital
+        self.risk_per_trade = 0.02      # Risk 2% of equity per trade
+        self.stop_loss_pct = 0.05       # 5% Hard Stop
+        self.take_profit_pct = 0.12     # 12% Target (Risk:Reward 1:2.4)
+        self.sma_window = 10            # Short-term trend
+        self.vol_window = 20            # Volatility window
+        self.cooldown_ticks = 5         # Wait 5 ticks after exit before re-entry
         
-        # 模拟账户余额 (假设重置为 1000 或读取当前)
-        self.balance = 1000.0
-        self.last_reflection = "Gen 9: Rising from ashes with Adaptive Volatility Control."
+        # --- State ---
+        self.history = {}               # {symbol: deque(maxlen=20)}
+        self.positions = {}             # {symbol: {entry_price: float, size: float}}
+        self.cooldowns = {}             # {symbol: int (ticks remaining)}
+        self.banned_tags = set()
+        
+        # --- Capital Management ---
+        self.initial_capital = 1000.0   # Reset for simulation context
+        self.cash = 1000.0
+        
+    def on_hive_signal(self, signal: dict):
+        """Receive signals from Hive Mind to filter toxic assets"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            print(f"⚠️ Hive Penalty Received: {penalize}")
+            self.banned_tags.update(penalize)
+            # Immediate liquidation logic would happen in main loop based on tags
 
-    def _calculate_ema(self, prices: List[float], period: int) -> float:
-        if len(prices) < period:
-            return statistics.mean(prices)
-        
-        multiplier = 2 / (period + 1)
-        ema = prices[0] # 简单起见，初始值用第一个
-        # 实际上应该用 SMA 初始化，这里为了性能简化计算
-        ema = statistics.mean(prices[:period])
-        
-        for price in prices[period:]:
-            ema = (price - ema) * multiplier + ema
-        return ema
+    def _get_sma(self, symbol):
+        if len(self.history[symbol]) < self.sma_window:
+            return None
+        return statistics.mean(list(self.history[symbol])[-self.sma_window:])
 
-    def _calculate_volatility(self, prices: List[float]) -> float:
-        """计算近期价格的标准差作为波动率参考"""
-        if len(prices) < 2:
+    def _get_volatility(self, symbol):
+        if len(self.history[symbol]) < self.vol_window:
             return 0.0
-        # 取最近 N 个周期的标准差
-        recent_prices = list(prices)[-self.volatility_period:]
-        if len(recent_prices) < 2:
-            return 0.0
-        return statistics.stdev(recent_prices)
+        return statistics.stdev(list(self.history[symbol]))
 
-    def on_price_update(self, prices: Dict[str, dict]) -> Optional[TradeDecision]:
-        # 1. 更新数据
+    def on_price_update(self, prices: dict):
+        """
+        Main Trading Loop
+        Returns: Dict of orders {symbol: {"action": "buy"|"sell", "amount": float}}
+        """
+        orders = {}
+        
+        # 1. Update Data & Manage Cooldowns
         for symbol, data in prices.items():
-            current_price = data['price']
+            price = data["priceUsd"]
+            
+            # Init history if new
             if symbol not in self.history:
-                self.history[symbol] = deque(maxlen=50)
-            self.history[symbol].append(current_price)
+                self.history[symbol] = deque(maxlen=self.vol_window)
+            self.history[symbol].append(price)
             
-            # 更新持仓最高价用于移动止盈
+            # Decrement cooldown
+            if symbol in self.cooldowns:
+                self.cooldowns[symbol] -= 1
+                if self.cooldowns[symbol] <= 0:
+                    del self.cooldowns[symbol]
+
+        # 2. Analyze Markets
+        for symbol, data in prices.items():
+            price = data["priceUsd"]
+            
+            # --- EXIT LOGIC (Risk Management First) ---
             if symbol in self.positions:
-                if symbol not in self.highest_prices:
-                    self.highest_prices[symbol] = current_price
-                else:
-                    self.highest_prices[symbol] = max(self.highest_prices[symbol], current_price)
+                pos = self.positions[symbol]
+                entry_price = pos["entry_price"]
+                pnl_pct = (price - entry_price) / entry_price
+                
+                # Check Hive Ban
+                is_banned = any(tag in self.banned_tags for tag in data.get("tags", []))
+                
+                should_sell = False
+                reason = ""
 
-        # 2. 遍历寻找交易机会
-        # 优先处理持仓的止损/止盈
-        for symbol, position in list(self.positions.items()):
-            if position <= 0: continue
-            
-            current_price = prices[symbol]['price']
-            entry_price = self.entry_prices.get(symbol, current_price)
-            highest_price = self.highest_prices.get(symbol, current_price)
-            
-            hist = list(self.history[symbol])
-            if len(hist) < self.slow_ema_period: continue
-            
-            volatility = self._calculate_volatility(hist)
-            slow_ema = self._calculate_ema(hist, self.slow_ema_period)
-            
-            # === 卖出逻辑 ===
-            
-            # A. 动态止损 (Chandelier Exit 变体): 
-            # 如果价格从最高点回撤超过 2倍波动率 或 3% (取大者，防止死寂市场被磨损)
-            stop_distance = max(volatility * 2.0, entry_price * 0.03)
-            trailing_stop_price = highest_price - stop_distance
-            
-            # B. 趋势反转止损: 价格跌破慢速 EMA
-            trend_broken = current_price < slow_ema
-            
-            reason = ""
-            if current_price < trailing_stop_price:
-                reason = f"Trailing Stop Triggered (Drop > {stop_distance:.2f})"
-            elif trend_broken:
-                reason = "Trend Broken (Price < EMA21)"
-            
-            if reason:
-                amount_usd = position * current_price
-                self.balance += amount_usd
-                del self.positions[symbol]
-                del self.entry_prices[symbol]
-                del self.highest_prices[symbol]
-                return TradeDecision(Signal.SELL, symbol, amount_usd, reason)
+                if is_banned:
+                    should_sell = True
+                    reason = "HIVE_BAN"
+                elif pnl_pct <= -self.stop_loss_pct:
+                    should_sell = True
+                    reason = "STOP_LOSS"
+                elif pnl_pct >= self.take_profit_pct:
+                    should_sell = True
+                    reason = "TAKE_PROFIT"
+                
+                # Trailing Stop Logic (Mutation): If profit > 5%, tighten stop to break-even
+                elif pnl_pct > 0.05 and price < entry_price * 1.01:
+                    should_sell = True
+                    reason = "TRAILING_PROTECT"
 
-        # 3. 寻找买入机会 (仅当持有现金时)
-        if self.balance > 10.0:
-            best_symbol = None
-            best_score = -1.0
-            
-            for symbol, data in prices.items():
-                if symbol in self.positions: continue # 已持仓不加仓
+                if should_sell:
+                    orders[symbol] = {"action": "sell", "amount": pos["size"]}
+                    # Update internal state
+                    revenue = pos["size"] * price
+                    self.cash += revenue
+                    del self.positions[symbol]
+                    self.cooldowns[symbol] = self.cooldown_ticks
+                    print(f"🔻 SELL {symbol} | Reason: {reason} | PnL: {pnl_pct*100:.2f}%")
                 
-                hist = list(self.history[symbol])
-                if len(hist) < self.slow_ema_period + 5: continue
-                
-                current_price = data['price']
-                fast_ema = self._calculate_ema(hist, self.fast_ema_period)
-                slow_ema = self._calculate_ema(hist, self.slow_ema_period)
-                volatility = self._calculate_volatility(hist)
-                
-                # === 买入逻辑 (严苛过滤) ===
-                # 1. 黄金交叉: 快线 > 慢线
-                # 2. 动量确认: 当前价格 > 快线 (防止回调时接刀)
-                # 3. 波动率过滤: 避免死寂币种 (标准差需 > 价格的 0.5%)
-                
-                if fast_ema > slow_ema and current_price > fast_ema:
-                    if volatility > (current_price * 0.005):
-                        # 评分：乖离率越小越好（刚启动），波动率适中
-                        divergence = (current_price - slow_ema) / slow_ema
-                        if divergence < 0.05: # 不要追高超过均线 5% 的
-                            score = (fast_ema / slow_ema) 
-                            if score > best_score:
-                                best_score = score
-                                best_symbol = symbol
+                continue # Skip to next symbol if we hold this one
 
-            if best_symbol:
-                current_price = prices[best_symbol]['price']
-                hist = list(self.history[best_symbol])
-                volatility = self._calculate_volatility(hist)
+            # --- ENTRY LOGIC (Momentum + Volatility Filter) ---
+            
+            # Constraints
+            if len(self.positions) >= self.max_positions:
+                continue
+            if symbol in self.cooldowns:
+                continue
+            if any(tag in self.banned_tags for tag in data.get("tags", [])):
+                continue
+            if self.cash < 10.0: # Minimum cash check
+                continue
+
+            # Technical Analysis
+            sma = self._get_sma(symbol)
+            if sma is None: continue
+            
+            # 1. Trend Filter: Price must be above SMA (Momentum)
+            trend_up = price > sma
+            
+            # 2. Momentum Strength: Price is 1% to 5% above SMA (Not overextended)
+            extension = (price - sma) / sma
+            valid_momentum = 0.01 < extension < 0.05
+            
+            # 3. Volume/Liquidity Proxy (if available in data, else assume valid)
+            # Assuming 'priceChange24h' exists as a proxy for activity
+            active_market = abs(data.get("priceChange24h", 0)) > 2.0
+
+            if trend_up and valid_momentum and active_market:
+                # Position Sizing: Risk Based
+                # Amount to risk = Equity * Risk%
+                # Stop Distance = Entry * StopLoss%
+                # Position Size = Risk Amount / Stop Distance
+                # Simplified: Size = (Equity * Risk) / (Price * StopPct)
                 
-                # === 动态仓位管理 (Kelly Lite) ===
-                # 风险预算 = 总资金 * 2%
-                # 止损距离 = 2 * 波动率
-                # 仓位大小 = 风险预算 / 止损距离
-                risk_budget = self.balance * self.risk_factor
-                stop_distance_per_unit = max(volatility * 2.0, current_price * 0.02) # 至少2%止损宽容度
+                equity = self.cash + sum(p["size"] * prices[s]["priceUsd"] for s, p in self.positions.items())
+                risk_amount = equity * self.risk_per_trade
+                stop_distance_usd = price * self.stop_loss_pct
                 
-                position_size_coin = risk_budget / stop_distance_per_unit
-                position_cost = position_size_coin * current_price
-                
-                # 限制单笔最大仓位不超过余额的 30% (防止计算出的仓位过大)
-                max_position_usd = self.balance * 0.3
-                final_amount_usd = min(position_cost, max_position_usd)
-                
-                if final_amount_usd > 10.0:
-                    self.balance -= final_amount_usd
-                    self.positions[best_symbol] = final_amount_usd / current_price
-                    self.entry_prices[best_symbol] = current_price
-                    self.highest_prices[best_symbol] = current_price
+                if stop_distance_usd > 0:
+                    qty = risk_amount / stop_distance_usd
+                    cost = qty * price
                     
-                    return TradeDecision(
-                        Signal.BUY, 
-                        best_symbol, 
-                        final_amount_usd, 
-                        f"EMA Golden Cross + Volatility Sizing (Risk: {self.risk_factor*100}%)"
-                    )
+                    # Cap trade size at 30% of cash to ensure diversification
+                    if cost > self.cash * 0.30:
+                        qty = (self.cash * 0.30) / price
+                        cost = qty * price
+                    
+                    if cost <= self.cash:
+                        orders[symbol] = {"action": "buy", "amount": qty}
+                        self.positions[symbol] = {"entry_price": price, "size": qty}
+                        self.cash -= cost
+                        print(f"🚀 BUY {symbol} @ {price:.4f} | SMA: {sma:.4f} | Size: {qty:.2f}")
 
-        return None
-
-    def on_epoch_end(self, rankings: List[dict], winner_wisdom: str):
-        """每轮结束时的反思与参数微调"""
-        # 简单根据本轮表现微调风险参数
-        # 这里仅做记录，实际参数在 __init__ 定义
-        self.last_reflection = f"Epoch ended. Current Balance: {self.balance:.2f}. Strategy: Phoenix Adaptive EMA."
-
-    def get_reflection(self) -> str:
-        return self.last_reflection
-
-    def get_council_message(self, is_winner: bool) -> str:
-        if is_winner:
-            return "Gen 9 Success: Abandoned fixed stops for Volatility-Adjusted Risk. Trend is only your friend if you size it right."
-        return "Gen 9 Learning: Still calibrating the volatility sensitivity. Need to protect capital better."
+        return orders

@@ -122,6 +122,37 @@
 <body class="min-h-screen p-4 md:p-8 overflow-y-auto">
     <div class="scanline"></div>
 
+    <!-- Code Viewer Modal -->
+    <div id="code-modal" class="modal-overlay">
+        <div class="modal-content cyber-border w-[800px] max-w-[95%] h-[80vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4 border-b border-green-900 pb-2">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <span class="text-2xl">🧬</span> 
+                        <span id="code-agent-id">AGENT_SOURCE</span>
+                    </h2>
+                    <div class="text-[10px] text-gray-500 font-mono mt-1" id="code-source-type">SOURCE: UNKNOWN</div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="toggleView('code')" id="btn-view-code" class="bg-green-500 text-black px-3 py-1 text-xs font-bold uppercase">CODE</button>
+                    <button onclick="toggleView('logs')" id="btn-view-logs" class="bg-green-900/20 text-gray-400 border border-green-900 px-3 py-1 text-xs font-bold uppercase hover:text-white">LOGS</button>
+                    <button onclick="closeCodeModal()" class="text-gray-500 hover:text-red-500 text-xl font-bold px-2 ml-4">&times;</button>
+                </div>
+            </div>
+            
+            <div id="view-code-container" class="flex-1 overflow-auto bg-[#0d1117] p-4 border border-green-900/30 rounded font-mono text-xs text-gray-300 relative group">
+                <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button class="bg-green-900/20 hover:bg-green-500 hover:text-black border border-green-500 px-2 py-1 text-[10px]" onclick="copyCode()">COPY</button>
+                </div>
+                <pre><code id="strategy-code" class="whitespace-pre-wrap">Loading neural patterns...</code></pre>
+            </div>
+
+            <div id="view-logs-container" class="hidden flex-1 overflow-auto bg-black p-4 border border-green-900/30 rounded font-mono text-xs text-gray-400">
+                <pre id="agent-logs">Loading runtime logs...</pre>
+            </div>
+        </div>
+    </div>
+
     <!-- Register Agent Modal -->
     <div id="register-modal" class="modal-overlay">
         <div class="modal-content cyber-border">
@@ -261,35 +292,50 @@
             </div>
         </div>
 
-        <!-- Right Col: Launchpad (3 cols) -->
+        <!-- Right Col: Launchpad & Hive Mind (3 cols) -->
         <div class="lg:col-span-3 flex flex-col gap-6 h-full">
+            
+            <!-- Hive Mind Console (New!) -->
+            <div class="cyber-border p-4 h-1/3 bg-black/80 flex flex-col relative overflow-hidden">
+                <div class="absolute top-2 right-2 flex gap-1">
+                    <div class="w-1.5 h-1.5 bg-purple-500 rounded-full animate-pulse"></div>
+                    <div class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse delay-75"></div>
+                    <div class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse delay-150"></div>
+                </div>
+                <h3 class="text-xs text-purple-400 mb-2 tracking-widest border-b border-purple-900 pb-1">🧠 HIVE BRAIN (ALPHA)</h3>
+                
+                <div class="flex-1 overflow-y-auto space-y-3 font-mono text-xs" id="hive-mind-container">
+                    <div class="text-center text-gray-600 mt-10">AWAITING NEURAL SYNC...</div>
+                </div>
+            </div>
+
             <!-- Launchpad -->
             <div class="cyber-border p-4 h-1/3 bg-gradient-to-b from-black to-green-900/10 flex flex-col">
                 <h3 class="text-xs text-gray-400 mb-4 tracking-widest border-b border-green-900 pb-2">LAUNCHPAD (L3)</h3>
                 
-                <div class="flex-1 overflow-y-auto space-y-4" id="launchpad-container">
+                <div class="flex-1 overflow-y-auto space-y-4 min-h-[100px]" id="launchpad-container">
                     <!-- Pending Launches -->
                     <div class="text-center text-gray-600 mt-10 text-xs">
                         NO CANDIDATES READY FOR ASCENSION
                     </div>
                 </div>
-            </div>
 
-            <!-- Trade Ticker (New!) -->
-            <div class="cyber-border p-4 flex-1 bg-black/50 flex flex-col overflow-hidden">
-                <h3 class="text-xs text-gray-400 mb-2 tracking-widest border-b border-green-900 pb-1">LIVE FEED</h3>
-                <div class="flex-1 overflow-y-auto space-y-1 font-mono text-[10px]" id="trade-ticker">
-                    <div class="text-gray-600 text-center mt-10">WAITING FOR TRADES...</div>
+                <!-- Hall of Fame (New!) -->
+                <div class="mt-4 pt-4 border-t border-green-900">
+                    <h4 class="text-[10px] text-gray-500 mb-2 tracking-widest">DEPLOYED CONTRACTS (L3)</h4>
+                    <div id="hall-of-fame" class="space-y-2 max-h-[150px] overflow-y-auto">
+                        <!-- Launched tokens -->
+                    </div>
                 </div>
             </div>
 
             <!-- Debug Panel (for testing) -->
-            <div class="cyber-border p-4 bg-red-900/10 border-red-900/50">
+            <div class="cyber-border p-4 bg-red-900/10 border-red-900/50 flex-1">
                 <h3 class="text-xs text-red-400 mb-3 tracking-widest">🔧 DEBUG PANEL</h3>
                 <div class="space-y-2">
                     <button onclick="forceChampion()" 
                         class="w-full py-2 text-xs border border-red-900 hover:bg-red-500 hover:text-black transition-all">
-                        FORCE CHAMPION (Test Launch)
+                        FORCE CHAMPION
                     </button>
                     <button onclick="forceMutation()" 
                         class="w-full py-2 text-xs border border-orange-900 hover:bg-orange-500 hover:text-black transition-all">
@@ -318,8 +364,6 @@
                 // Update global epoch for council fetching
                 if (lbData.epoch && lbData.epoch !== currentEpoch) {
                     currentEpoch = lbData.epoch;
-                    // New epoch? Clear old logs visually if you want, or keep history
-                    // lastProcessedMessageIds.clear(); // Optional: Clear to avoid memory leak over long time
                 }
 
                 // 2. Ascension / L2 Status
@@ -334,18 +378,125 @@
                     document.getElementById('total-volume').innerText = (lbData.rankings.reduce((a,b) => a + b.total_value, 0)).toLocaleString();
                 }
 
-                // 4. Council Logs (New!)
+                // 4. Council Logs
                 await fetchCouncilLogs();
 
                 // 5. Chart Update
                 await updateChart();
                 
-                // 6. Trade Ticker (New!)
-                await updateTrades();
+                // 6. Hive Mind (New!)
+                await fetchHiveMind();
+                
+                // 7. Hall of Fame (New!)
+                await fetchHallOfFame();
 
             } catch (e) {
                 console.error("Data sync error:", e);
-                // logToConsole("Error syncing with Neural Core..."); // Too noisy
+            }
+        }
+
+        async function fetchHallOfFame() {
+            try {
+                const res = await fetch('/launches');
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                const container = document.getElementById('hall-of-fame');
+                if (data.count === 0) {
+                    container.innerHTML = `<div class="text-[10px] text-gray-700 text-center">NO CONTRACTS DEPLOYED</div>`;
+                    return;
+                }
+                
+                container.innerHTML = data.launches.map(l => {
+                    // Truncate hashes
+                    const shortAddr = l.token_address.substr(0, 6) + '...' + l.token_address.substr(-4);
+                    const shortTx = l.tx_hash.substr(0, 10) + '...';
+                    
+                    return `
+                    <div class="p-2 border border-green-900/50 bg-green-900/10 hover:bg-green-900/20 transition-all">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs font-bold text-white">${l.agent_id}</span>
+                            <span class="text-[8px] text-gray-500">EPOCH ${l.epoch}</span>
+                        </div>
+                        <div class="text-[10px] font-mono text-gray-400">
+                            <div>CA: <a href="#" class="text-green-500 hover:underline">${shortAddr}</a></div>
+                            <div class="text-[8px] text-gray-600">TX: ${shortTx}</div>
+                        </div>
+                    </div>
+                    `;
+                }).join('');
+                
+            } catch (e) {
+                console.error("Hall of Fame sync error:", e);
+            }
+        }
+
+        async function fetchHiveMind() {
+            try {
+                const res = await fetch('/hive-mind');
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                const container = document.getElementById('hive-mind-container');
+                const report = data.alpha_report || {};
+                
+                if (Object.keys(report).length === 0) {
+                    container.innerHTML = `<div class="text-gray-600 text-center mt-4">NO ALPHA DETECTED YET</div>`;
+                    return;
+                }
+                
+                let html = '';
+                
+                // Sort by impact score (absolute value or simple value)
+                const sortedTags = Object.entries(report).sort(([,a], [,b]) => b.score - a.score);
+                
+                // Top Factors Section
+                html += `<div class="mb-2 text-[10px] text-gray-500">DETECTED ALPHA FACTORS</div>`;
+                
+                for (const [tag, stats] of sortedTags) {
+                    const isPositive = stats.impact === "POSITIVE";
+                    const color = isPositive ? "text-green-400" : "text-red-400";
+                    const barColor = isPositive ? "bg-green-500" : "bg-red-500";
+                    const width = Math.min(Math.abs(stats.score) * 10, 100); // Scale bar
+                    
+                    html += `
+                    <div class="mb-2 border-b border-gray-900 pb-1">
+                        <div class="flex justify-between items-center">
+                            <span class="${color} font-bold">${tag}</span>
+                            <span class="text-gray-400 text-[10px]">${stats.win_rate}% WR</span>
+                        </div>
+                        <div class="flex justify-between items-center text-[10px] text-gray-500 mt-1">
+                            <span>IMPACT: ${stats.score > 0 ? '+' : ''}${stats.score.toFixed(2)}</span>
+                            <span>${stats.impact}</span>
+                        </div>
+                        <div class="w-full h-1 bg-gray-900 mt-1 rounded-full overflow-hidden">
+                            <div class="h-full ${barColor}" style="width: ${width}%"></div>
+                        </div>
+                    </div>
+                    `;
+                }
+                
+                // Patch Preview
+                if (data.latest_patch && data.latest_patch.parameters) {
+                    const boost = data.latest_patch.parameters.boost || [];
+                    const penalize = data.latest_patch.parameters.penalize || [];
+                    
+                    if (boost.length > 0 || penalize.length > 0) {
+                        html += `<div class="mt-4 pt-2 border-t border-purple-900">
+                            <div class="text-[10px] text-purple-400 mb-1">⚡ ACTIVE NEURAL PATCH</div>
+                            <div class="space-y-1">`;
+                            
+                        if (boost.length) html += `<div class="text-green-300">BOOST: ${boost.join(', ')}</div>`;
+                        if (penalize.length) html += `<div class="text-red-300">PENALIZE: ${penalize.join(', ')}</div>`;
+                        
+                        html += `</div></div>`;
+                    }
+                }
+                
+                container.innerHTML = html;
+
+            } catch (e) {
+                console.error("Hive Mind sync error:", e);
             }
         }
 
@@ -478,7 +629,7 @@
                     <div class="flex items-center gap-3">
                         <span class="font-bold w-6 text-center ${rankColor}">#${r.rank}</span>
                         <div>
-                            <div class="font-bold text-sm group-hover:text-white transition-colors">${r.agent_id}</div>
+                            <div class="font-bold text-sm group-hover:text-white transition-colors hover:underline" onclick="viewCode('${r.agent_id}')">${r.agent_id} 🔍</div>
                             <div class="text-[10px] text-gray-500">$${r.total_value.toFixed(2)}</div>
                         </div>
                     </div>
@@ -491,6 +642,90 @@
                 </div>
                 `;
             }).join('');
+        }
+
+        // --- Code Viewer Logic ---
+        let currentAgentId = null;
+
+        async function viewCode(agentId) {
+            event.stopPropagation();
+            currentAgentId = agentId;
+            document.getElementById('code-modal').classList.add('active');
+            document.getElementById('code-agent-id').innerText = agentId;
+            
+            // Reset views
+            toggleView('code');
+            document.getElementById('strategy-code').innerText = "Downloading neural patterns...";
+            document.getElementById('agent-logs').innerText = "Connecting to neural interface...";
+            document.getElementById('code-source-type').innerText = "SOURCE: FETCHING...";
+
+            // Fetch Strategy
+            try {
+                const res = await fetch(`/agent/${agentId}/strategy`);
+                if (!res.ok) throw new Error("Strategy restricted.");
+                const data = await res.json();
+                document.getElementById('strategy-code').innerText = data.code;
+                
+                const sourceText = data.source === 'custom' 
+                    ? '🧬 SOURCE: EVOLVED (Unique Mutation)' 
+                    : '📄 SOURCE: TEMPLATE (Standard Issue)';
+                const sourceColor = data.source === 'custom' ? 'text-purple-400' : 'text-gray-500';
+                
+                const sourceEl = document.getElementById('code-source-type');
+                sourceEl.innerText = sourceText;
+                sourceEl.className = `text-[10px] font-mono mt-1 ${sourceColor}`;
+            } catch (e) {
+                document.getElementById('strategy-code').innerText = `Error: ${e.message}`;
+            }
+
+            // Fetch Logs
+            fetchLogs(agentId);
+        }
+
+        async function fetchLogs(agentId) {
+            try {
+                const res = await fetch(`/agent/${agentId}/logs`);
+                const data = await res.json();
+                if (data.logs && data.logs.length > 0) {
+                    document.getElementById('agent-logs').innerText = data.logs.join('');
+                } else {
+                    document.getElementById('agent-logs').innerText = "No logs available / Agent silent.";
+                }
+            } catch (e) {
+                document.getElementById('agent-logs').innerText = `Connection lost: ${e}`;
+            }
+        }
+
+        function toggleView(mode) {
+            const codeContainer = document.getElementById('view-code-container');
+            const logsContainer = document.getElementById('view-logs-container');
+            const btnCode = document.getElementById('btn-view-code');
+            const btnLogs = document.getElementById('btn-view-logs');
+
+            if (mode === 'code') {
+                codeContainer.classList.remove('hidden');
+                logsContainer.classList.add('hidden');
+                btnCode.className = "bg-green-500 text-black px-3 py-1 text-xs font-bold uppercase";
+                btnLogs.className = "bg-green-900/20 text-gray-400 border border-green-900 px-3 py-1 text-xs font-bold uppercase hover:text-white";
+            } else {
+                codeContainer.classList.add('hidden');
+                logsContainer.classList.remove('hidden');
+                btnLogs.className = "bg-green-500 text-black px-3 py-1 text-xs font-bold uppercase";
+                btnCode.className = "bg-green-900/20 text-gray-400 border border-green-900 px-3 py-1 text-xs font-bold uppercase hover:text-white";
+                
+                // Refresh logs on click
+                if(currentAgentId) fetchLogs(currentAgentId);
+            }
+        }
+
+        function closeCodeModal() {
+            document.getElementById('code-modal').classList.remove('active');
+        }
+
+        function copyCode() {
+            const code = document.getElementById('strategy-code').innerText;
+            navigator.clipboard.writeText(code);
+            alert("Code copied to clipboard!");
         }
 
         function renderAscension(data) {

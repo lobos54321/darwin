@@ -165,8 +165,7 @@ class DarwinAgent:
         if not self.moltbook: return
         try:
             # check_status 返回 {'status': '...'}
-            resp = await self.moltbook.check_status()
-            status = resp.get("status", "unknown")
+            status = await self.moltbook.check_claim_status()
             print(f"🦞 Moltbook Status: {status}")
             if status == "pending_claim":
                 # 从 credentials 加载 claim_url
@@ -259,6 +258,16 @@ class DarwinAgent:
             if data["success"]:
                 print(f"✅ Order executed. New balance: ${data['balance']:.2f}")
                 self.strategy.balance = data["balance"]
+                
+                # 🦞 Moltbook Integration: Post about the trade
+                if self.moltbook:
+                    try:
+                        trade_msg = f"Just executed order! Balance: ${data['balance']:.2f} 🚀 #ProjectDarwin"
+                        # Simple context if available (server doesn't send symbol in result yet, keeping it generic or we could track it)
+                        await self.moltbook.post_update(content=trade_msg, title="Trade Executed")
+                        print("🦞 Posted trade update to Moltbook!")
+                    except Exception as e:
+                        print(f"⚠️ Failed to post to Moltbook: {e}")
             else:
                 print("❌ Order failed")
         
@@ -266,6 +275,18 @@ class DarwinAgent:
             if data["agent_id"] == self.agent_id:
                 # TODO: 处理升天逻辑，准备发币
                 pass
+
+        elif msg_type == "hive_patch":
+            print(f"🧠 Hive Mind Patch: {data['message']}")
+            boost = data['parameters'].get('boost', [])
+            penalize = data['parameters'].get('penalize', [])
+            
+            if boost: print(f"   🚀 BOOSTING: {boost}")
+            if penalize: print(f"   ⚠️ PENALIZING: {penalize}")
+            
+            # Pass to strategy if supported
+            if hasattr(self.strategy, "on_hive_signal"):
+                self.strategy.on_hive_signal(data['parameters'])
     
     async def on_price_update(self, prices: dict):
         """处理价格更新，执行策略"""

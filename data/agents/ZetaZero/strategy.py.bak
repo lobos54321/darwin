@@ -1,0 +1,193 @@
+# Darwin SDK - User Strategy Template
+# 🧠 DEVELOPERS: EDIT THIS FILE ONLY!
+
+import random
+import math
+from collections import deque
+
+class MyStrategy:
+    def __init__(self):
+        print("🧠 Strategy Initialized (ZetaZero v3.0 - Kinetic Survivor)")
+        
+        # --- Configuration / Gene Expression ---
+        self.volatility_window = 12       # Number of updates to track for local volatility
+        self.momentum_threshold = 0.5     # % change required to trigger momentum buy
+        self.dip_threshold = -2.0         # % drop to trigger mean reversion buy
+        
+        # Risk Management
+        self.base_trade_amount = 40.0     # Base USD size per trade
+        self.max_exposure_pct = 0.15      # Max % of portfolio in one asset
+        self.hard_stop_loss = 0.05        # 5% Hard Stop
+        self.trailing_stop_activation = 0.03 # Activate trailing stop after 3% gain
+        self.trailing_stop_distance = 0.02   # 2% Trailing distance
+        self.take_profit_fixed = 0.20     # 20% Hard Take Profit
+        self.cooldown_periods = 20        # Updates to wait before re-entering a stopped-out asset
+        
+        # --- State Tracking ---
+        self.prices_history = {}          # {symbol: deque(maxlen=N)}
+        self.positions = {}               # {symbol: {'entry': float, 'high': float, 'qty': float}}
+        self.cooldowns = {}               # {symbol: int (remaining ticks)}
+        self.banned_tags = set()
+        self.boosted_tags = set()
+        self.last_prices = {}
+        self.tick_count = 0
+
+    def on_hive_signal(self, signal: dict):
+        """Receive signals from Hive Mind"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            self.banned_tags.update(penalize)
+            # Logic to force close positions with banned tags would happen in on_price_update
+            
+        boost = signal.get("boost", [])
+        if boost:
+            self.boosted_tags.update(boost)
+
+    def _get_position_value(self, symbol, current_price):
+        if symbol not in self.positions:
+            return 0.0
+        return self.positions[symbol]['qty'] * current_price
+
+    def on_price_update(self, prices: dict):
+        """
+        Called every time price updates (approx every 3s).
+        """
+        self.tick_count += 1
+        decision = None
+        
+        # 1. Update Cooldowns
+        for sym in list(self.cooldowns.keys()):
+            self.cooldowns[sym] -= 1
+            if self.cooldowns[sym] <= 0:
+                del self.cooldowns[sym]
+
+        # 2. Process Portfolio & Risk Management (Sells)
+        active_symbols = list(self.positions.keys())
+        for symbol in active_symbols:
+            if symbol not in prices:
+                continue
+                
+            current_price = prices[symbol]["priceUsd"]
+            pos = self.positions[symbol]
+            
+            # Update High Watermark
+            if current_price > pos['high']:
+                pos['high'] = current_price
+                
+            # Calculate metrics
+            pnl_pct = (current_price - pos['entry']) / pos['entry']
+            drawdown_from_high = (pos['high'] - current_price) / pos['high']
+            
+            should_sell = False
+            reason = ""
+
+            # Check Banned Tags (Simulated check, assuming we map symbol to tags externally or just ignore here)
+            # In a real scenario, we'd check if symbol tags intersect self.banned_tags
+            
+            # Hard Stop Loss
+            if pnl_pct < -self.hard_stop_loss:
+                should_sell = True
+                reason = "Stop Loss"
+                
+            # Trailing Stop
+            elif pnl_pct > self.trailing_stop_activation and drawdown_from_high > self.trailing_stop_distance:
+                should_sell = True
+                reason = "Trailing Stop"
+                
+            # Hard Take Profit
+            elif pnl_pct > self.take_profit_fixed:
+                should_sell = True
+                reason = "Take Profit"
+
+            if should_sell:
+                print(f"📉 SELLING {symbol}: {reason} (PnL: {pnl_pct*100:.2f}%)")
+                decision = {
+                    "action": "sell",
+                    "symbol": symbol,
+                    "amount": pos['qty']
+                }
+                # Apply Cooldown
+                self.cooldowns[symbol] = self.cooldown_periods
+                del self.positions[symbol]
+                return decision # Return immediately to execute
+
+        # 3. Process Entry Signals (Buys)
+        # Only buy if we aren't selling this tick and have capacity
+        if len(self.positions) < 5: 
+            best_opportunity = None
+            highest_score = -float('inf')
+
+            for symbol, data in prices.items():
+                # Skip if in position or cooldown
+                if symbol in self.positions or symbol in self.cooldowns:
+                    continue
+
+                current_price = data["priceUsd"]
+                pct_change_24h = data.get("priceChange24h", 0)
+                
+                # Update History
+                if symbol not in self.prices_history:
+                    self.prices_history[symbol] = deque(maxlen=self.volatility_window)
+                self.prices_history[symbol].append(current_price)
+                
+                if len(self.prices_history[symbol]) < 3:
+                    continue
+                    
+                # Calculate Short-term Velocity (Last 3 ticks)
+                prev_price = self.prices_history[symbol][-2]
+                short_term_change = ((current_price - prev_price) / prev_price) * 100
+                
+                # Scoring Logic
+                score = 0
+                
+                # Strategy A: Trend Following (Momentum)
+                # Buy if 24h trend is up AND short term is popping
+                if pct_change_24h > 0 and short_term_change > self.momentum_threshold:
+                    score += short_term_change * 2
+                    if symbol in self.boosted_tags:
+                        score *= 1.5
+                
+                # Strategy B: Bull Market Dip (Mean Reversion)
+                # Buy if 24h trend is VERY strong but we just had a sharp drop
+                elif pct_change_24h > 10 and short_term_change < self.dip_threshold:
+                    score += abs(short_term_change) * 3 # High score for dips in uptrends
+                
+                if score > highest_score and score > 0.5:
+                    highest_score = score
+                    best_opportunity = symbol
+
+            if best_opportunity:
+                symbol = best_opportunity
+                price = prices[symbol]["priceUsd"]
+                
+                # Dynamic Sizing based on Confidence (Score)
+                # Cap size to max_exposure_pct implies we need to know total balance
+                # Since balance isn't passed in on_price_update in this template, we use fixed base + multiplier
+                
+                size_multiplier = 1.0
+                if symbol in self.boosted_tags:
+                    size_multiplier = 1.25
+                
+                trade_usd = self.base_trade_amount * size_multiplier
+                qty = trade_usd / price
+                
+                print(f"🚀 BUYING {symbol}: Score {highest_score:.2f}")
+                
+                self.positions[symbol] = {
+                    'entry': price,
+                    'high': price,
+                    'qty': qty
+                }
+                
+                decision = {
+                    "action": "buy",
+                    "symbol": symbol,
+                    "amount": trade_usd # Assuming SDK handles USD amount conversion or logic
+                }
+                return decision
+
+        # Update last prices for next tick reference if needed
+        for s, d in prices.items():
+            self.last_prices[s] = d["priceUsd"]
+
+        return None

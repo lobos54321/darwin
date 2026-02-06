@@ -1,0 +1,153 @@
+# Darwin SDK - User Strategy Template
+# 🧠 DEVELOPERS: EDIT THIS FILE ONLY!
+
+import math
+import statistics
+from collections import deque
+import time
+
+class MyStrategy:
+    def __init__(self):
+        print("🧠 Strategy Initialized (AlphaAlpha v3.0 - Phoenix Mutation)")
+        
+        # Configuration (Genetics)
+        self.history_window = 20        # Number of ticks to keep for MA/Vol calculation
+        self.min_volatility = 0.002     # Minimum 0.2% volatility to consider trading (avoid noise)
+        self.stop_loss_pct = 0.03       # Tighter 3% hard stop
+        self.trailing_stop_activation = 0.015 # Activate trailing stop after 1.5% gain
+        self.trailing_deviation = 0.01  # Trail by 1%
+        
+        # State Management
+        self.price_history = {}         # {symbol: deque([prices], maxlen=20)}
+        self.positions = {}             # {symbol: {'entry_price': float, 'highest_price': float, 'entry_time': ts}}
+        self.banned_tags = set()        # Hive Mind penalties
+        self.cooldowns = {}             # {symbol: timestamp}
+        self.last_clean_ts = 0
+
+    def on_hive_signal(self, signal: dict):
+        """Receive signals from Hive Mind"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            print(f"⚠️ Hive Penalty Received: {penalize}")
+            self.banned_tags.update(penalize)
+            # Immediate liquidation logic could go here if API supported it
+            
+        boost = signal.get("boost", [])
+        if boost:
+            # We treat boosted tags as momentum candidates
+            for tag in boost:
+                if tag in self.cooldowns:
+                    del self.cooldowns[tag] # Reset cooldown for boosted assets
+
+    def _calculate_indicators(self, symbol, current_price):
+        """Calculate SMA and Volatility (StdDev)"""
+        history = self.price_history[symbol]
+        if len(history) < self.history_window:
+            return None, None
+        
+        prices = list(history)
+        sma = statistics.mean(prices)
+        stdev = statistics.stdev(prices) if len(prices) > 1 else 0
+        
+        # Normalized volatility
+        volatility = stdev / sma if sma > 0 else 0
+        return sma, volatility
+
+    def on_price_update(self, prices: dict):
+        """
+        Called every time price updates.
+        Returns a dictionary of actions: {symbol: "buy"|"sell"|"hold"}
+        """
+        decisions = {}
+        current_time = time.time()
+        
+        # Cleanup routine (every 60s)
+        if current_time - self.last_clean_ts > 60:
+            self.banned_tags = {t for t in self.banned_tags if t in prices} # Keep memory clean
+            self.last_clean_ts = current_time
+
+        for symbol, data in prices.items():
+            current_price = data["priceUsd"]
+            
+            # 1. Update History
+            if symbol not in self.price_history:
+                self.price_history[symbol] = deque(maxlen=self.history_window)
+            self.price_history[symbol].append(current_price)
+            
+            # 2. Skip penalized or insufficient data
+            if symbol in self.banned_tags:
+                continue
+            if len(self.price_history[symbol]) < 5:
+                continue
+                
+            # 3. Calculate Indicators
+            sma, volatility = self._calculate_indicators(symbol, current_price)
+            if sma is None:
+                continue
+
+            # 4. Manage Existing Positions (Risk Management)
+            if symbol in self.positions:
+                pos = self.positions[symbol]
+                entry_price = pos['entry_price']
+                
+                # Update highest price seen since entry
+                if current_price > pos['highest_price']:
+                    pos['highest_price'] = current_price
+                
+                # PnL Calculation
+                pnl_pct = (current_price - entry_price) / entry_price
+                drawdown_from_high = (pos['highest_price'] - current_price) / pos['highest_price']
+                
+                action = "hold"
+                
+                # A. Hard Stop Loss
+                if pnl_pct < -self.stop_loss_pct:
+                    action = "sell"
+                    print(f"🛑 STOP LOSS triggered for {symbol} at {pnl_pct:.2%}")
+                
+                # B. Trailing Stop Profit
+                elif pnl_pct > self.trailing_stop_activation and drawdown_from_high > self.trailing_deviation:
+                    action = "sell"
+                    print(f"💰 TRAILING PROFIT triggered for {symbol}. Peak: {pos['highest_price']}, Now: {current_price}")
+                
+                # C. Stagnation Exit (Time-based decay)
+                elif (current_time - pos['entry_time']) > 300 and pnl_pct < 0.01:
+                    action = "sell" # Exit if price hasn't moved in 5 mins
+                
+                if action == "sell":
+                    decisions[symbol] = "sell"
+                    del self.positions[symbol]
+                    self.cooldowns[symbol] = current_time + 60 # 1 min cooldown after sale
+                
+                continue # Skip buying logic if we own it
+
+            # 5. Entry Logic (Momentum + Mean Reversion Filter)
+            # Check Cooldown
+            if symbol in self.cooldowns:
+                if current_time < self.cooldowns[symbol]:
+                    continue
+                else:
+                    del self.cooldowns[symbol]
+
+            # Logic:
+            # - Price must be above SMA (Trend is up)
+            # - Volatility must be significant (Not dead money)
+            # - Price is NOT currently spiking too hard (Avoid buying tops) -> Price < SMA * 1.02
+            
+            if volatility > self.min_volatility:
+                if current_price > sma:
+                    # Momentum confirmed
+                    # Check for "Buy the Dip" in uptrend: Price is slightly below the Bollinger Upper Band approximation
+                    upper_band = sma + (2 * volatility * sma)
+                    
+                    if current_price < upper_band:
+                        # Valid Entry
+                        decisions[symbol] = "buy"
+                        self.positions[symbol] = {
+                            'entry_price': current_price,
+                            'highest_price': current_price,
+                            'entry_time': current_time
+                        }
+                        print(f"🚀 BUY SIGNAL: {symbol} @ {current_price} (Vol: {volatility:.4f})")
+
+        return decisions

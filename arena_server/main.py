@@ -541,14 +541,21 @@ async def force_mutation():
         if not losers:
             return {"status": "error", "message": "No losers found"}
         
-        # Run full council + evolution flow
-        results = await run_council_and_evolution(
-            engine=engine,
-            council=council,
-            epoch=current_epoch,
-            winner_id=winner_id,
-            losers=losers
-        )
+        # 🟢 FIX: Start council session explicitly for debug
+        council.start_session(epoch=current_epoch, winner_id=winner_id)
+        
+        try:
+            # Run full council + evolution flow
+            results = await run_council_and_evolution(
+                engine=engine,
+                council=council,
+                epoch=current_epoch,
+                winner_id=winner_id,
+                losers=losers
+            )
+        finally:
+            # 🔴 FIX: Ensure session is closed even if errors occur
+            council.close_session(epoch=current_epoch)
         
         mutations = [{"agent_id": k, "success": v} for k, v in results.items()]
         return {"status": "ok", "winner": winner_id, "mutations": mutations}
@@ -672,6 +679,25 @@ async def get_stats():
     }
 
 
+@app.get("/hive-mind")
+async def get_hive_mind_status():
+    """获取蜂巢大脑状态 (Alpha 因子 & 策略补丁)"""
+    try:
+        # 获取当前分析报告
+        report = hive_mind.analyze_alpha()
+        # 获取最新补丁 (预览)
+        patch = hive_mind.generate_patch()
+        
+        return {
+            "epoch": current_epoch,
+            "alpha_report": report,
+            "latest_patch": patch
+        }
+    except Exception as e:
+        logger.error(f"Hive Mind API Error: {e}")
+        return {"error": str(e)}
+
+
 @app.get("/council/{epoch}")
 async def get_council_session(epoch: int):
     session = council.sessions.get(epoch)
@@ -793,6 +819,53 @@ async def get_agent_info(agent_id: str):
     }
 
 
+@app.get("/agent/{agent_id}/strategy")
+async def get_agent_strategy(agent_id: str):
+    """
+    [New] 获取 Agent 的策略代码
+    用于前端展示进化后的代码
+    """
+    try:
+        # 1. Try agent-specific directory
+        strategy_path = os.path.join(os.path.dirname(__file__), "..", "data", "agents", agent_id, "strategy.py")
+        if not os.path.exists(strategy_path):
+            # 2. Fallback to template
+            strategy_path = os.path.join(os.path.dirname(__file__), "..", "agent_template", "strategy.py")
+            
+        if os.path.exists(strategy_path):
+            with open(strategy_path, "r") as f:
+                code = f.read()
+            return {"agent_id": agent_id, "code": code, "source": "custom" if "data/agents" in strategy_path else "template"}
+        else:
+            raise HTTPException(status_code=404, detail="Strategy file not found")
+    except Exception as e:
+        logger.error(f"Error reading strategy for {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/agent/{agent_id}/logs")
+async def get_agent_logs(agent_id: str, lines: int = 50):
+    """
+    [New] 获取 Agent 的运行日志
+    """
+    try:
+        log_path = os.path.join(os.path.dirname(__file__), "..", "data", "agents", agent_id, "agent.log")
+        
+        if not os.path.exists(log_path):
+            return {"agent_id": agent_id, "logs": [f"No log file found for {agent_id}"]}
+            
+        # Read last N lines
+        # Simple implementation for now
+        with open(log_path, "r") as f:
+            all_lines = f.readlines()
+            recent_logs = all_lines[-lines:]
+            
+        return {"agent_id": agent_id, "logs": recent_logs}
+    except Exception as e:
+        logger.error(f"Error reading logs for {agent_id}: {e}")
+        return {"agent_id": agent_id, "logs": [f"Error reading logs: {str(e)}"]}
+
+
 # ========== 发币 API ==========
 
 @app.get("/pending-launches")
@@ -802,6 +875,25 @@ async def get_pending_launches():
     return {
         "pending": pending,
         "count": len(pending)
+    }
+
+
+@app.get("/launches")
+async def get_launches():
+    """获取所有已发行的代币记录 (Hall of Fame)"""
+    history = chain.get_launch_history()
+    return {
+        "count": len(history),
+        "launches": [
+            {
+                "agent_id": r.agent_id,
+                "token_address": r.token_address,
+                "tx_hash": r.tx_hash,
+                "epoch": r.epoch,
+                "launched_at": r.launched_at.isoformat()
+            }
+            for r in history
+        ]
     }
 
 

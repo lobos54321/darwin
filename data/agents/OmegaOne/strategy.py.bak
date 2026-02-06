@@ -1,0 +1,96 @@
+```python
+# Darwin SDK - User Strategy Template
+# 🧠 DEVELOPERS: EDIT THIS FILE ONLY!
+
+import random
+import math
+from collections import deque, defaultdict
+
+class MyStrategy:
+    def __init__(self):
+        print("🧠 Strategy Evolved: OmegaOne V2 (Mean Reversion + Dynamic Risk)")
+        
+        # --- 进化配置 (Evolution Config) ---
+        self.lookback_period = 12      # SMA Period
+        self.stop_loss_pct = 0.04      # 4% Hard Stop
+        self.take_profit_pct = 0.12    # 12% Target Profit
+        self.trailing_stop_pct = 0.025 # 2.5% Trailing Stop
+        self.max_pos_usd = 50.0        # Max size per trade
+        
+        # --- 状态追踪 (State Tracking) ---
+        self.last_prices = {}
+        self.price_history = defaultdict(lambda: deque(maxlen=20))
+        # Portfolio: {symbol: {'entry': float, 'high': float, 'amt': float}}
+        self.portfolio = {} 
+        self.banned_tags = set()
+        self.boosted_tags = set()
+        
+        # 内部现金估算 (用于仓位管理)
+        self.estimated_cash = 639.51 
+
+    def on_hive_signal(self, signal: dict):
+        """Receive signals from Hive Mind"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            print(f"🛡️ Risk Control: Banning {penalize}")
+            self.banned_tags.update(penalize)
+            
+        boost = signal.get("boost", [])
+        if boost:
+            # 进化点：收到 Boost 信号时清空该币种的历史黑名单
+            self.boosted_tags.update(boost)
+            self.banned_tags.difference_update(boost)
+
+    def _get_indicators(self, symbol):
+        """Calculate SMA and Volatility"""
+        history = list(self.price_history[symbol])
+        if len(history) < self.lookback_period:
+            return None, None
+            
+        # SMA
+        sma = sum(history[-self.lookback_period:]) / self.lookback_period
+        
+        # Volatility (Std Dev)
+        variance = sum([((x - sma) ** 2) for x in history[-self.lookback_period:]]) / self.lookback_period
+        std_dev = math.sqrt(variance)
+        
+        return sma, std_dev
+
+    def on_price_update(self, prices: dict):
+        """
+        Called every time price updates.
+        Returns: ("BUY"/"SELL", symbol, amount_usd) or None
+        """
+        decision = None
+        
+        for symbol, data in prices.items():
+            current_price = data["priceUsd"]
+            
+            # Update Data
+            self.price_history[symbol].append(current_price)
+            self.last_prices[symbol] = current_price
+            
+            # --- 1. 风控模块 (Risk Management) ---
+            if symbol in self.portfolio:
+                pos = self.portfolio[symbol]
+                entry = pos['entry']
+                
+                # 更新最高价 (High Water Mark)
+                if current_price > pos['high']:
+                    pos['high'] = current_price
+                
+                # 计算盈亏指标
+                pnl_pct = (current_price - entry) / entry
+                drawdown = (pos['high'] - current_price) / pos['high']
+                
+                # 止损/止盈逻辑
+                action = None
+                if pnl_pct <= -self.stop_loss_pct:
+                    print(f"🛑 STOP LOSS: {symbol} @ {pnl_pct*100:.2f}%")
+                    action = "SELL"
+                elif pnl_pct >= self.take_profit_pct:
+                    print(f"💰 TAKE PROFIT: {symbol} @ {pnl_pct*100:.2f}%")
+                    action = "SELL"
+                elif pnl_pct > 0.03 and drawdown >= self.trailing_stop_pct:
+                    print(f"📉 TRAILING STOP: {symbol} locked gains")
+                    action = "

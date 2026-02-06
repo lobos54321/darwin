@@ -1,185 +1,241 @@
-import numpy as np
-import pandas as pd
-from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
-from enum import Enum
+import random
+import math
+import statistics
+from collections import deque, defaultdict
 
-class Signal(Enum):
-    BUY = "BUY"
-    SELL = "SELL"
-    HOLD = "HOLD"
+# -----------------------------------------------------------------------------
+# Darwin SDK - User Strategy: "Darwinian_Adapter_v3"
+# 🧬 Evolution Log:
+# 1. Integration of 'Hive Mind' signals for filtering (Winner's trait).
+# 2. Dynamic Volatility Position Sizing (Risk Management).
+# 3. Hybrid Trend-Mean Reversion Logic (Unique Mutation).
+# 4. Emergency Circuit Breaker for rapid drawdowns.
+# -----------------------------------------------------------------------------
 
-@dataclass
-class TradeDecision:
-    signal: Signal
-    symbol: str
-    amount_usd: float
-    reason: str
-
-class DarwinStrategy:
-    """
-    Agent: FOMO_Bot_861 (Evolved -> Phoenix_Protocol)
-    Evolution:
-    1. Transformed from pure FOMO to "Volatility Breakout with Trend Filter".
-    2. Implemented "Recovery Mode": Strict position sizing to protect remaining $536.
-    3. Replaced simple EMA cross with Bollinger Band Squeeze logic to avoid fake-outs.
-    4. Hard stop-loss tightened to 2.5% to survive market noise but kill losers fast.
-    """
-
+class MyStrategy:
     def __init__(self):
-        # === Risk Management Parameters ===
-        self.risk_per_trade = 0.25      # Invest 25% of current balance per trade (Recovery sizing)
-        self.stop_loss_pct = 0.025      # Hard Stop Loss: -2.5%
-        self.trailing_start_pct = 0.04  # Start trailing after +4% profit
-        self.trailing_step_pct = 0.015  # Trail price by 1.5% once active
+        print("🧠 Strategy Initialized: Darwinian_Adapter_v3 (Survival Mode)")
         
-        # === Indicator Parameters ===
-        self.bb_period = 20
-        self.bb_std = 2.0
-        self.trend_ema_period = 50
-        self.rsi_period = 14
+        # === Configuration ===
+        self.history_maxlen = 60
+        self.volatility_window = 20
+        self.ema_short_period = 7
+        self.ema_long_period = 25
         
-        # === State Variables ===
-        self.balance = 536.69  # Synced with current state
-        self.price_history: Dict[str, List[float]] = {}
-        self.positions: Dict[str, dict] = {} # {symbol: {'entry': float, 'highest': float, 'qty': float}}
-        self.cooldown: Dict[str, int] = {}   # Prevent immediate rebuy after stop loss
+        # Risk Management
+        self.base_risk_per_trade = 0.15  # Risk 15% of equity per trade (Aggressive recovery)
+        self.max_drawdown_tolerance = 0.03 # 3% max loss per trade
+        self.trailing_stop_activation = 0.04 # Activate trailing after 4% gain
+        self.trailing_gap = 0.02 # Trail by 2%
         
-    def _update_history(self, symbol: str, price: float):
-        if symbol not in self.price_history:
-            self.price_history[symbol] = []
-        self.price_history[symbol].append(price)
-        # Keep buffer size manageable
-        if len(self.price_history[symbol]) > 100:
-            self.price_history[symbol].pop(0)
+        # === State ===
+        # History: { "SYMBOL": deque([p1, p2...]) }
+        self.price_history = defaultdict(lambda: deque(maxlen=self.history_maxlen))
+        self.last_prices = {}
+        
+        # Portfolio: { "SYMBOL": {"entry_price": float, "highest_price": float, "hold_time": int} }
+        self.positions = {}
+        
+        # Market Sentiment
+        self.banned_tags = set()
+        self.boosted_tags = set()
+        self.cooldowns = {} # { "SYMBOL": steps_remaining }
 
-    def _calculate_indicators(self, prices: List[float]) -> dict:
-        if len(prices) < self.trend_ema_period:
+    def on_hive_signal(self, signal: dict):
+        """Adapt to collective intelligence signals"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            print(f"⚠️ Hive Penalty: Avoiding {penalize}")
+            self.banned_tags.update(penalize)
+            
+        boost = signal.get("boost", [])
+        if boost:
+            print(f"🚀 Hive Boost: Targeting {boost}")
+            self.boosted_tags.update(boost)
+
+    def _calculate_ema(self, prices, period):
+        if len(prices) < period:
             return None
-            
-        s = pd.Series(prices)
-        
-        # Bollinger Bands
-        ma = s.rolling(window=self.bb_period).mean()
-        std = s.rolling(window=self.bb_period).std()
-        upper = ma + (std * self.bb_std)
-        lower = ma - (std * self.bb_std)
-        
-        # EMA Trend Filter
-        ema_trend = s.ewm(span=self.trend_ema_period, adjust=False).mean()
-        
-        # RSI
-        delta = s.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=self.rsi_period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=self.rsi_period).mean()
-        rs = gain / loss
-        rsi = 100 - (100 / (1 + rs))
-        
-        return {
-            'close': s.iloc[-1],
-            'bb_upper': upper.iloc[-1],
-            'bb_middle': ma.iloc[-1],
-            'bb_lower': lower.iloc[-1],
-            'ema_trend': ema_trend.iloc[-1],
-            'rsi': rsi.iloc[-1],
-            'prev_close': s.iloc[-2] if len(s) > 1 else s.iloc[-1]
-        }
+        multiplier = 2 / (period + 1)
+        ema = prices[0]
+        for price in prices[1:]:
+            ema = (price - ema) * multiplier + ema
+        return ema
 
-    def on_price_update(self, prices: Dict[str, dict]) -> Optional[TradeDecision]:
-        """
-        Main decision logic. Expects prices dict: {'BTC': {'price': 50000, ...}, ...}
-        """
-        # Assume single asset focus for simplicity or take the first one
-        target_symbol = list(prices.keys())[0]
-        current_price = prices[target_symbol]['price'] if isinstance(prices[target_symbol], dict) else prices[target_symbol]
+    def _calculate_rsi(self, prices, period=14):
+        if len(prices) < period + 1:
+            return 50
         
-        self._update_history(target_symbol, current_price)
+        gains = []
+        losses = []
+        for i in range(1, len(prices)):
+            delta = prices[i] - prices[i-1]
+            if delta > 0:
+                gains.append(delta)
+                losses.append(0)
+            else:
+                gains.append(0)
+                losses.append(abs(delta))
+                
+        # Simple average for efficiency in high-freq
+        avg_gain = sum(gains[-period:]) / period
+        avg_loss = sum(losses[-period:]) / period
         
-        # Cooldown management
-        if target_symbol in self.cooldown and self.cooldown[target_symbol] > 0:
-            self.cooldown[target_symbol] -= 1
-            return None
+        if avg_loss == 0:
+            return 100
+        rs = avg_gain / avg_loss
+        return 100 - (100 / (1 + rs))
 
-        # 1. Manage Existing Position
-        if target_symbol in self.positions:
-            pos = self.positions[target_symbol]
-            entry_price = pos['entry']
-            highest_price = pos['highest']
+    def on_price_update(self, prices: dict):
+        """
+        Main decision loop.
+        Expects prices dict: { "SYMBOL": {"priceUsd": float, "tags": [str...]} }
+        Returns: { "action": "buy"/"sell", "symbol": "XYZ", "amount": float, "reason": str }
+        """
+        decision = None
+        
+        # 1. Update Data & Manage Cooldowns
+        active_symbols = list(prices.keys())
+        for symbol in list(self.cooldowns.keys()):
+            self.cooldowns[symbol] -= 1
+            if self.cooldowns[symbol] <= 0:
+                del self.cooldowns[symbol]
+
+        # 2. Portfolio Management (Sell Logic)
+        for symbol in list(self.positions.keys()):
+            if symbol not in prices:
+                continue
+                
+            current_price = prices[symbol]["priceUsd"]
+            pos = self.positions[symbol]
+            entry_price = pos["entry_price"]
             
-            # Update highest price for trailing stop
-            if current_price > highest_price:
-                self.positions[target_symbol]['highest'] = current_price
-                highest_price = current_price
+            # Update highest price seen
+            if current_price > pos["highest_price"]:
+                self.positions[symbol]["highest_price"] = current_price
             
+            highest_price = self.positions[symbol]["highest_price"]
+            
+            # Calculate PnL
             pnl_pct = (current_price - entry_price) / entry_price
+            drawdown_from_peak = (highest_price - current_price) / highest_price
+            
+            should_sell = False
+            reason = ""
             
             # A. Hard Stop Loss
-            if pnl_pct <= -self.stop_loss_pct:
-                self.balance += current_price * pos['qty']
-                del self.positions[target_symbol]
-                self.cooldown[target_symbol] = 5 # Wait 5 ticks before re-entering
-                return TradeDecision(Signal.SELL, target_symbol, 0, "Hard Stop Loss Hit")
+            if pnl_pct < -self.max_drawdown_tolerance:
+                should_sell = True
+                reason = f"🛑 Stop Loss hit ({pnl_pct*100:.2f}%)"
+                self.cooldowns[symbol] = 10 # Stay out for a bit
             
-            # B. Trailing Take Profit
-            # If we are in profit > trailing_start, and price falls back by trailing_step from high
-            drawdown_from_high = (highest_price - current_price) / highest_price
-            if pnl_pct >= self.trailing_start_pct and drawdown_from_high >= self.trailing_step_pct:
-                self.balance += current_price * pos['qty']
-                del self.positions[target_symbol]
-                return TradeDecision(Signal.SELL, target_symbol, 0, "Trailing Profit Secured")
-                
-            return TradeDecision(Signal.HOLD, target_symbol, 0, "Holding Trend")
+            # B. Trailing Stop Profit
+            elif pnl_pct > self.trailing_stop_activation and drawdown_from_peak > self.trailing_gap:
+                should_sell = True
+                reason = f"💰 Trailing Profit ({pnl_pct*100:.2f}%)"
+            
+            # C. Stagnation Kill (Time-based exit)
+            pos["hold_time"] += 1
+            if pos["hold_time"] > 40 and pnl_pct < 0.01:
+                should_sell = True
+                reason = "⏳ Stagnation"
 
-        # 2. Check for New Entry
-        indicators = self._calculate_indicators(self.price_history[target_symbol])
-        if not indicators:
-            return None
+            if should_sell:
+                del self.positions[symbol]
+                return {
+                    "action": "sell",
+                    "symbol": symbol,
+                    "amount": 1.0, # Sell 100%
+                    "reason": reason
+                }
 
-        # Logic: Buy if Price > EMA (Uptrend) AND Price broke above Upper BB AND RSI not extreme (>75)
-        is_uptrend = indicators['close'] > indicators['ema_trend']
-        breakout = indicators['close'] > indicators['bb_upper'] and indicators['prev_close'] <= indicators['bb_upper']
-        healthy_momentum = 50 < indicators['rsi'] < 75
+        # 3. Entry Logic (Buy Logic)
+        # Only look for one buy per tick to avoid complexity
+        best_score = -1
+        best_symbol = None
         
-        if is_uptrend and breakout and healthy_momentum:
-            invest_amount = self.balance * self.risk_per_trade
-            qty = invest_amount / current_price
+        for symbol, data in prices.items():
+            current_price = data["priceUsd"]
+            tags = data.get("tags", [])
             
-            self.positions[target_symbol] = {
-                'entry': current_price,
-                'highest': current_price,
-                'qty': qty
+            # Update History
+            self.price_history[symbol].append(current_price)
+            hist = list(self.price_history[symbol])
+            
+            # Skip if holding, cooling down, or banned
+            if symbol in self.positions or symbol in self.cooldowns:
+                continue
+            if any(t in self.banned_tags for t in tags):
+                continue
+                
+            if len(hist) < self.ema_long_period:
+                continue
+            
+            # Indicators
+            ema_short = self._calculate_ema(hist, self.ema_short_period)
+            ema_long = self._calculate_ema(hist, self.ema_long_period)
+            rsi = self._calculate_rsi(hist)
+            
+            if not ema_short or not ema_long:
+                continue
+
+            # --- STRATEGY CORE: Momentum + Volatility ---
+            
+            # Trend Check
+            is_uptrend = ema_short > ema_long and current_price > ema_short
+            
+            # Volatility Check (Standard Deviation relative to mean)
+            recent_slice = hist[-10:]
+            if len(recent_slice) > 1:
+                stdev = statistics.stdev(recent_slice)
+                mean_price = statistics.mean(recent_slice)
+                volatility_ratio = stdev / mean_price if mean_price > 0 else 0
+            else:
+                volatility_ratio = 0
+                
+            # Scoring System
+            score = 0
+            
+            # 1. Trend Score
+            if is_uptrend:
+                score += 10
+            
+            # 2. RSI Filter (Buy dips in uptrend, or breakouts not yet overextended)
+            if 40 < rsi < 65:
+                score += 5
+            elif rsi > 75:
+                score -= 10 # Overbought
+            
+            # 3. Hive Boost
+            if any(t in self.boosted_tags for t in tags):
+                score += 15
+                
+            # 4. Volatility Expansion (Breakout)
+            if volatility_ratio > 0.005: # Arbitrary threshold for "moving"
+                score += 5
+                
+            if score > best_score:
+                best_score = score
+                best_symbol = symbol
+
+        # Execute Buy
+        if best_symbol and best_score >= 15:
+            # Position Sizing: Current balance is ~$536. 
+            # We use fixed USD amount approx 15% of initial $1000 ($150) or available.
+            # Assuming SDK handles balance checks, we request a dollar amount.
+            buy_amount = 120.0 
+            
+            self.positions[best_symbol] = {
+                "entry_price": prices[best_symbol]["priceUsd"],
+                "highest_price": prices[best_symbol]["priceUsd"],
+                "hold_time": 0
             }
-            self.balance -= invest_amount
             
-            return TradeDecision(
-                Signal.BUY, 
-                target_symbol, 
-                invest_amount, 
-                f"Trend Breakout: Price {current_price:.2f} > BB_Upper & EMA"
-            )
+            return {
+                "action": "buy",
+                "symbol": best_symbol,
+                "amount": buy_amount,
+                "reason": f"Score: {best_score} (Trend+Hive)"
+            }
 
-        return TradeDecision(Signal.HOLD, target_symbol, 0, "Waiting for setup")
-
-    def on_epoch_end(self, rankings: dict, winner_wisdom: str):
-        """
-        Reflect on performance.
-        """
-        total_equity = self.balance
-        for sym, pos in self.positions.items():
-            # Estimate current value using last known price (simplified)
-            last_price = self.price_history[sym][-1]
-            total_equity += pos['qty'] * last_price
-            
-        self.last_reflection = (
-            f"Epoch End Equity: ${total_equity:.2f}. "
-            f"Strategy: Volatility Breakout. "
-            f"Status: {'Recovering' if total_equity > 536.69 else 'Struggling'}."
-        )
-
-    def get_reflection(self) -> str:
-        return self.last_reflection
-
-    def get_council_message(self, is_winner: bool) -> str:
-        if is_winner:
-            return "Key to recovery: Stop guessing bottoms. Buy breakouts above volatility bands only when trend is confirmed."
-        return "Still calibrating volatility thresholds. Tight stops are preserving capital."
+        return decision

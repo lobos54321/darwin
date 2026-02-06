@@ -1,0 +1,155 @@
+import random
+import math
+from collections import deque, defaultdict
+
+class MyStrategy:
+    """
+    Agent: Copy_Trader_952 (Gen 5 - Adaptive Flow)
+    Evolutionary Logic:
+    1.  Simplification: Shifted from complex scalar logic to robust EMA Crossovers (absorbing winner's momentum essence).
+    2.  Volatility Sizing: Position size is now inversely proportional to recent volatility (StdDev).
+    3.  Trailing Profit: Implemented a 'ratchet' trailing stop that only moves up, never down.
+    4.  Recovery Mode: Aggressive entry on strong trends, but strict cut-loss to preserve the remaining $536.
+    """
+
+    def __init__(self):
+        print("🧠 Strategy Initialized (Gen 5: Adaptive Flow)")
+        
+        # === Configuration ===
+        self.fast_period = 7            # Fast EMA window
+        self.slow_period = 21           # Slow EMA window
+        self.volatility_window = 15     # Window to calculate StdDev
+        
+        # === Risk Management (Recovery Mode) ===
+        self.max_positions = 3          # Max concurrent trades to avoid over-exposure
+        self.base_risk_per_trade = 0.15 # Risk 15% of equity per trade (Aggressive recovery)
+        self.stop_loss_pct = 0.05       # Initial 5% stop loss
+        self.trailing_trigger = 0.08    # Activate trailing stop after 8% gain
+        self.trailing_distance = 0.03   # Trailing distance
+        
+        # === State ===
+        self.price_history = defaultdict(lambda: deque(maxlen=30))
+        self.positions = {}             # {symbol: {'entry_price': float, 'highest_price': float, 'size': float}}
+        self.banned_tags = set()
+        self.equity = 536.69            # Estimated local tracking (synced via API usually, but tracked here)
+
+    def on_hive_signal(self, signal: dict):
+        """Absorb Hive Mind signals to filter toxic assets"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            print(f"🚫 Hive Penalty: {penalize}")
+            self.banned_tags.update(penalize)
+
+    def _calculate_ema(self, prices: list, period: int) -> float:
+        if len(prices) < period:
+            return sum(prices) / len(prices) if prices else 0
+        
+        multiplier = 2 / (period + 1)
+        ema = sum(prices[:period]) / period # Simple MA as seed
+        
+        for price in prices[period:]:
+            ema = (price - ema) * multiplier + ema
+        return ema
+
+    def _calculate_volatility(self, prices: list) -> float:
+        if len(prices) < 2:
+            return 0.0
+        mean = sum(prices) / len(prices)
+        variance = sum((x - mean) ** 2 for x in prices) / (len(prices) - 1)
+        return math.sqrt(variance)
+
+    def on_price_update(self, prices: dict):
+        """
+        Core logic: EMA Crossover + Volatility Adjusted Sizing
+        """
+        decision = {}
+        
+        # 1. Update Data & Manage Existing Positions
+        for symbol, data in prices.items():
+            current_price = data["priceUsd"]
+            
+            # Update History
+            self.price_history[symbol].append(current_price)
+            
+            # Check Exits
+            if symbol in self.positions:
+                pos = self.positions[symbol]
+                
+                # Update highest price seen for trailing stop
+                if current_price > pos['highest_price']:
+                    pos['highest_price'] = current_price
+                
+                # Logic: Stop Loss or Trailing Stop
+                stop_price = pos['entry_price'] * (1 - self.stop_loss_pct)
+                
+                # If we hit the profit trigger, switch to trailing stop logic
+                pct_gain = (pos['highest_price'] - pos['entry_price']) / pos['entry_price']
+                if pct_gain >= self.trailing_trigger:
+                    trailing_stop = pos['highest_price'] * (1 - self.trailing_distance)
+                    stop_price = max(stop_price, trailing_stop)
+                
+                # Execute Exit
+                if current_price <= stop_price:
+                    print(f"📉 SELL {symbol} at {current_price} (Stop/Trail)")
+                    decision[symbol] = 0 # Close position
+                    del self.positions[symbol]
+                    continue # Skip entry logic for this symbol
+                
+                # Keep position (implied)
+                decision[symbol] = pos['size']
+
+        # 2. Scan for New Entries
+        if len(self.positions) >= self.max_positions:
+            return decision
+
+        for symbol, data in prices.items():
+            if symbol in self.positions:
+                continue
+            
+            # Skip banned tags/tokens
+            tags = data.get("tags", [])
+            if any(t in self.banned_tags for t in tags):
+                continue
+                
+            history = list(self.price_history[symbol])
+            if len(history) < self.slow_period:
+                continue
+            
+            current_price = data["priceUsd"]
+            
+            # Calculate Indicators
+            ema_fast = self._calculate_ema(history, self.fast_period)
+            ema_slow = self._calculate_ema(history, self.slow_period)
+            volatility = self._calculate_volatility(history[-self.volatility_window:])
+            
+            # Entry Logic: Golden Cross
+            # Previous tick check to ensure we just crossed
+            prev_fast = self._calculate_ema(history[:-1], self.fast_period)
+            prev_slow = self._calculate_ema(history[:-1], self.slow_period)
+            
+            just_crossed_up = (prev_fast <= prev_slow) and (ema_fast > ema_slow)
+            trend_strength = (ema_fast - ema_slow) / ema_slow
+            
+            # Filter: Only enter if trend strength is significant (>0.5%) to avoid chop
+            if just_crossed_up and trend_strength > 0.005:
+                
+                # Volatility Sizing: High Volatility = Smaller Size
+                # Normalize volatility: if vol is 10% of price, reduce size
+                vol_ratio = volatility / current_price if current_price > 0 else 0.01
+                size_multiplier = 1.0
+                if vol_ratio > 0.05: # High vol
+                    size_multiplier = 0.5
+                
+                target_value = (self.equity * self.base_risk_per_trade) * size_multiplier
+                amount_to_buy = target_value / current_price
+                
+                print(f"🚀 BUY {symbol} at {current_price} (EMA Cross, Vol: {vol_ratio:.4f})")
+                
+                self.positions[symbol] = {
+                    'entry_price': current_price,
+                    'highest_price': current_price,
+                    'size': amount_to_buy
+                }
+                decision[symbol] = amount_to_buy
+
+        return decision

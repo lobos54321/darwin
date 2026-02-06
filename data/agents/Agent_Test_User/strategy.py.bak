@@ -1,0 +1,131 @@
+# Darwin SDK - User Strategy Template
+# 🧠 DEVELOPERS: EDIT THIS FILE ONLY!
+
+import random
+from collections import deque
+
+class MyStrategy:
+    def __init__(self):
+        print("🧠 Strategy Evolved: MomentumAlpha_v2 (Risk-Adjusted)")
+        
+        # 核心参数 (Evolution Parameters)
+        self.history_window = 20    # 价格历史窗口
+        self.ma_short_period = 5    # 短期均线
+        self.ma_long_period = 15    # 长期均线
+        self.stop_loss_pct = 0.05   # 5% 止损
+        self.take_profit_pct = 0.15 # 15% 止盈
+        self.trailing_stop_pct = 0.03 # 3% 移动止盈回撤
+        
+        # 状态追踪
+        self.last_prices = {}
+        self.price_history = {}     # {symbol: deque([prices], maxlen=20)}
+        self.positions = {}         # {symbol: {'entry': float, 'high': float}}
+        self.banned_tags = set()
+        
+        # 冷却机制 (避免频繁交易)
+        self.cooldowns = {}         # {symbol: ticks_remaining}
+
+    def on_hive_signal(self, signal: dict):
+        """Receive signals from Hive Mind"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            print(f"⚠️ Penalty received for: {penalize}")
+            self.banned_tags.update(penalize)
+            # 立即清仓被惩罚的代币
+            for tag in penalize:
+                if tag in self.positions:
+                    del self.positions[tag]
+            
+        boost = signal.get("boost", [])
+        if boost:
+            # 可以在此处降低 Boost 代币的买入阈值
+            pass
+
+    def _update_history(self, symbol, price):
+        if symbol not in self.price_history:
+            self.price_history[symbol] = deque(maxlen=self.history_window)
+        self.price_history[symbol].append(price)
+
+    def _get_sma(self, symbol, period):
+        history = self.price_history.get(symbol, [])
+        if len(history) < period:
+            return None
+        return sum(list(history)[-period:]) / period
+
+    def on_price_update(self, prices: dict):
+        """
+        Main Trading Loop
+        """
+        best_decision = None
+        highest_score = -1
+        
+        for symbol, data in prices.items():
+            current_price = data["priceUsd"]
+            change_24h = data.get("priceChange24h", 0)
+            
+            # 1. 更新数据
+            self._update_history(symbol, current_price)
+            self.last_prices[symbol] = current_price
+            
+            # 冷却处理
+            if self.cooldowns.get(symbol, 0) > 0:
+                self.cooldowns[symbol] -= 1
+                continue
+
+            # 2. 风控检查 (Risk Management) - 优先处理持仓
+            if symbol in self.positions:
+                entry_price = self.positions[symbol]['entry']
+                max_price = self.positions[symbol]['high']
+                
+                # 更新最高价用于移动止盈
+                if current_price > max_price:
+                    self.positions[symbol]['high'] = current_price
+                    max_price = current_price
+                
+                # A. 止损检查 (Hard Stop Loss)
+                if current_price < entry_price * (1 - self.stop_loss_pct):
+                    print(f"🛑 STOP LOSS triggered for {symbol}")
+                    del self.positions[symbol]
+                    self.cooldowns[symbol] = 10 # 冷却
+                    return {"action": "sell", "token": symbol, "amount": "100%"}
+                
+                # B. 移动止盈检查 (Trailing Stop)
+                if current_price < max_price * (1 - self.trailing_stop_pct) and current_price > entry_price * 1.02:
+                    print(f"💰 TRAILING PROFIT triggered for {symbol}")
+                    del self.positions[symbol]
+                    self.cooldowns[symbol] = 5
+                    return {"action": "sell", "token": symbol, "amount": "100%"}
+                    
+                continue # 持仓中若未触发卖出，则跳过买入逻辑
+
+            # 3. 策略逻辑 (Strategy Logic) - 寻找买入机会
+            if symbol in self.banned_tags:
+                continue
+                
+            sma_short = self._get_sma(symbol, self.ma_short_period)
+            sma_long = self._get_sma(symbol, self.ma_long_period)
+            
+            if sma_short and sma_long:
+                # 变异逻辑：双均线金叉 + 24小时趋势向上 + 波动率过滤
+                # 避免在下跌趋势中接飞刀
+                is_uptrend = sma_short > sma_long
+                is_strong_day = change_24h > 2.0 # 24h涨幅大于2%
+                
+                # 计算动量分
+                momentum_score = (sma_short - sma_long) / sma_long
+                
+                if is_uptrend and is_strong_day and momentum_score > 0.005:
+                    if momentum_score > highest_score:
+                        highest_score = momentum_score
+                        # 记录虚拟持仓
+                        self.positions[symbol] = {'entry': current_price, 'high': current_price}
+                        # 动态仓位：根据动量强度决定买入比例 (10% - 30%)
+                        allocation = min(0.3, 0.1 + (momentum_score * 10))
+                        best_decision = {
+                            "action": "buy", 
+                            "token": symbol, 
+                            "amount": f"{int(allocation * 100)}%"
+                        }
+
+        # 4. 执行最佳决策
+        return best_decision

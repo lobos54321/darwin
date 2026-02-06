@@ -1,59 +1,170 @@
-```python
-import numpy as np
-import pandas as pd
+import math
+import statistics
+from collections import deque
+from typing import Dict, Optional
 
-class Whale_Watcher_425:
+class MyStrategy:
     """
-    Agent: Whale_Watcher_425 (Evolved)
-    Strategy: Volume-Weighted Trend Following with Dynamic Volatility Risk Control
-    Status: Evolved for Survival and Recovery
+    Agent: Whale_Watcher_425 (Gen 3 - Aggressive Recovery)
+    
+    Evolution Logic:
+    1. Mutation: Shifted from Mean Reversion to "Volatility Breakout + Momentum Surfing".
+       Reason: Failed trying to catch falling knives. Now we only buy strength.
+    2. Risk Management: Implemented "Chandelier Exit" (ATR-based trailing stop) to lock in profits 
+       early and cut losses immediately.
+    3. Architecture: Added a 'cooldown' mechanism to avoid over-trading chopping markets.
     """
 
     def __init__(self):
-        # ----------------------------------------------------------------
-        # 🧬 基因变异参数 (Evolutionary Parameters)
-        # ----------------------------------------------------------------
-        self.params = {
-            'ema_fast': 12,           # 快速趋势线
-            'ema_slow': 26,           # 慢速趋势线
-            'vol_ma_window': 20,      # 成交量基准周期
-            'whale_factor': 1.8,      # 巨鲸侦测倍数 (当前量 > 1.8倍均量)
-            'rsi_period': 14,         # 动量周期
-            'rsi_overbought': 70,     # 超买阈值
-            'rsi_oversold': 30,       # 超卖阈值
-            'atr_period': 14,         # 波动率周期
-            'risk_per_trade': 0.02,   # 每次交易仅通过 2% 资金风险
-            'sl_atr_mult': 2.0,       # 止损 = 2 * ATR
-            'tp_atr_mult': 3.5,       # 止盈 = 3.5 * ATR (盈亏比优化)
-        }
+        print("🧠 Strategy Initialized (Whale_Surfer_v3.0)")
         
-        # 交易状态管理
-        self.position = None      # 当前持仓: None, 'long', 'short'
-        self.entry_price = 0.0
-        self.stop_loss = 0.0
-        self.take_profit = 0.0
-        self.equity = 536.69      # 当前账户余额
+        # === Configuration ===
+        self.lookback_period = 20       # For volatility/MA calc
+        self.volatility_threshold = 1.5 # Z-Score for breakout detection
+        self.stop_loss_pct = 0.04       # Hard stop loss (4%)
+        self.trailing_stop_activation = 0.05 # Activate trailing stop after 5% gain
+        self.trailing_deviation = 0.02  # Trailing stop distance
+        
+        # === State Management ===
+        self.price_history: Dict[str, deque] = {}
+        self.positions: Dict[str, dict] = {} # {symbol: {'entry': float, 'high': float, 'shares': float}}
+        self.banned_tags = set()
+        self.cooldowns: Dict[str, int] = {} # symbol -> ticks remaining
+        
+        # === Portfolio ===
+        self.cash = 536.69  # Current Balance from prompt
+        self.initial_balance = 1000.0
 
-    def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+    def on_hive_signal(self, signal: dict):
+        """Handle external signals from the Hive Mind"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            self.banned_tags.update(penalize)
+            # Immediate liquidation logic for penalized assets could go here
+            
+        boost = signal.get("boost", [])
+        # We implicitly favor boosted tags by not banning them, 
+        # but relying on price action to confirm the boost.
+
+    def _get_indicators(self, symbol: str, current_price: float) -> dict:
+        """Calculate technical indicators efficiently"""
+        history = self.price_history[symbol]
+        if len(history) < self.lookback_period:
+            return None
+
+        prices = list(history)
+        
+        # 1. Volatility (Standard Deviation)
+        stdev = statistics.stdev(prices)
+        mean = statistics.mean(prices)
+        z_score = (current_price - mean) / stdev if stdev > 0 else 0
+        
+        # 2. Trend (Simple Moving Average)
+        sma_short = statistics.mean(prices[-5:])
+        sma_long = mean
+        
+        # 3. Momentum (ROC)
+        prev_price = prices[-5]
+        roc = (current_price - prev_price) / prev_price
+        
+        return {
+            "z_score": z_score,
+            "trend_up": sma_short > sma_long,
+            "roc": roc,
+            "volatility": stdev
+        }
+
+    def on_price_update(self, prices: dict):
         """
-        计算技术指标，用于感知市场环境
+        Main trading loop. 
+        Logic: Scans for Volatility Breakouts in Uptrends.
         """
-        # 1. 趋势指标 (EMA)
-        df['ema_fast'] = df['close'].ewm(span=self.params['ema_fast'], adjust=False).mean()
-        df['ema_slow'] = df['close'].ewm(span=self.params['ema_slow'], adjust=False).mean()
+        actions = []
         
-        # 2. 动量指标 (RSI)
-        delta = df['close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=self.params['rsi_period']).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=self.params['rsi_period']).mean()
-        rs = gain / loss
-        df['rsi'] = 100 - (100 / (1 + rs))
+        for symbol, data in prices.items():
+            current_price = data["priceUsd"]
+            
+            # --- 0. Data Ingestion ---
+            if symbol not in self.price_history:
+                self.price_history[symbol] = deque(maxlen=self.lookback_period)
+            self.price_history[symbol].append(current_price)
+            
+            # Decrease cooldown
+            if symbol in self.cooldowns:
+                self.cooldowns[symbol] -= 1
+                if self.cooldowns[symbol] <= 0:
+                    del self.cooldowns[symbol]
+                continue
+
+            # --- 1. Position Management (Sell Logic) ---
+            if symbol in self.positions:
+                pos = self.positions[symbol]
+                entry_price = pos['entry']
+                
+                # Update Highest Price for Trailing Stop
+                if current_price > pos['high']:
+                    pos['high'] = current_price
+                
+                # Logic A: Hard Stop Loss
+                pct_change = (current_price - entry_price) / entry_price
+                if pct_change < -self.stop_loss_pct:
+                    self._sell(symbol, current_price, "STOP_LOSS")
+                    continue
+                
+                # Logic B: Trailing Stop (Chandelier Exit)
+                # Only active if we are in significant profit
+                profit_from_entry = (pos['high'] - entry_price) / entry_price
+                if profit_from_entry > self.trailing_stop_activation:
+                    drawdown_from_peak = (pos['high'] - current_price) / pos['high']
+                    if drawdown_from_peak > self.trailing_deviation:
+                        self._sell(symbol, current_price, "TRAILING_PROFIT")
+                        continue
+                        
+                continue # Holding position
+
+            # --- 2. Entry Logic (Buy Logic) ---
+            if symbol in self.banned_tags:
+                continue
+                
+            indicators = self._get_indicators(symbol, current_price)
+            if not indicators:
+                continue
+            
+            # STRATEGY: Volatility Expansion + Momentum
+            # We want price exploding upwards (Z-Score > 1.5) with positive ROC
+            if (indicators["z_score"] > self.volatility_threshold and 
+                indicators["trend_up"] and 
+                indicators["roc"] > 0.01): # >1% momentum in last 5 ticks
+                
+                # Position Sizing: Risk 10% of current cash per trade
+                # We are in recovery mode, need to be aggressive but not reckless
+                allocation = self.cash * 0.10
+                if allocation > 10.0: # Minimum trade size
+                    self._buy(symbol, current_price, allocation)
+
+    def _buy(self, symbol: str, price: float, amount_usd: float):
+        shares = amount_usd / price
+        self.cash -= amount_usd
+        self.positions[symbol] = {
+            'entry': price,
+            'high': price,
+            'shares': shares
+        }
+        print(f"🚀 BUY {symbol} @ ${price:.4f} | Amt: ${amount_usd:.2f}")
+
+    def _sell(self, symbol: str, price: float, reason: str):
+        pos = self.positions[symbol]
+        return_usd = pos['shares'] * price
+        pnl = return_usd - (pos['shares'] * pos['entry'])
+        pnl_pct = (pnl / (pos['shares'] * pos['entry'])) * 100
         
-        # 3. 巨鲸侦测 (Volume Analysis)
-        df['vol_ma'] = df['volume'].rolling(window=self.params['vol_ma_window']).mean()
-        df['vol_spike'] = df['volume'] > (df['vol_ma'] * self.params['whale_factor'])
+        self.cash += return_usd
+        del self.positions[symbol]
         
-        # 4. 风险控制 (ATR)
-        high_low = df['high'] - df['low']
-        high_close = np.abs(df['high'] - df['close'].shift())
-        low_close = np.abs(df['
+        # Set cooldown to prevent FOMO re-entry immediately after sell
+        self.cooldowns[symbol] = 5 
+        
+        icon = "💰" if pnl > 0 else "🛑"
+        print(f"{icon} SELL {symbol} ({reason}) @ ${price:.4f} | PnL: {pnl_pct:.2f}% | Bal: ${self.cash:.2f}")
+
+# End of Strategy

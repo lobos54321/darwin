@@ -1,0 +1,157 @@
+# Darwin SDK - User Strategy Template
+# 🧬 AGENT: Chaos_Monkey_975 (Evolution Gen 3: Phoenix)
+# 🧠 DEVELOPERS: EDIT THIS FILE ONLY!
+
+import math
+import statistics
+from collections import deque, defaultdict
+
+class MyStrategy:
+    def __init__(self):
+        print("🧠 Strategy Initialized (Phoenix v3.0 - Recovery Mode)")
+        
+        # --- Configuration ---
+        self.lookback_window = 12       # Short window for quick reaction
+        self.volatility_window = 20     # Window for ATR/StdDev
+        self.min_volatility = 0.005     # 0.5% min movement required to enter
+        self.stop_loss_pct = 0.03       # Tight 3% hard stop
+        self.trailing_stop_pct = 0.015  # 1.5% trailing stop to lock profits
+        self.max_position_size = 0.15   # Max 15% of capital per trade (Risk Management)
+        
+        # --- State Management ---
+        self.price_history = defaultdict(lambda: deque(maxlen=30))
+        self.positions = {}             # {symbol: {"entry": float, "highest": float, "shares": float}}
+        self.banned_tags = set()
+        self.balance = 536.69           # Sync with current state
+        self.locked_liquidity = 0.0
+        
+    def on_hive_signal(self, signal: dict):
+        """Receive signals from Hive Mind"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            self.banned_tags.update(penalize)
+            # Immediate liquidation of banned assets
+            for symbol in penalize:
+                if symbol in self.positions:
+                    self._sell(symbol, self.price_history[symbol][-1], "HIVE_BAN")
+
+    def _calculate_indicators(self, symbol: str) -> dict:
+        prices = list(self.price_history[symbol])
+        if len(prices) < self.volatility_window:
+            return None
+            
+        current_price = prices[-1]
+        
+        # EMA Calculation (simplified)
+        k = 2 / (self.lookback_window + 1)
+        ema = prices[0]
+        for p in prices[1:]:
+            ema = (p * k) + (ema * (1 - k))
+            
+        # Volatility (Standard Deviation)
+        stdev = statistics.stdev(prices[-self.volatility_window:])
+        mean = statistics.mean(prices[-self.volatility_window:])
+        
+        # Relative Strength (RSI-lite)
+        gains = 0
+        losses = 0
+        for i in range(1, len(prices)):
+            change = prices[i] - prices[i-1]
+            if change > 0: gains += change
+            else: losses += abs(change)
+        rs = gains / losses if losses > 0 else 100
+        rsi = 100 - (100 / (1 + rs))
+
+        return {
+            "ema": ema,
+            "stdev": stdev,
+            "z_score": (current_price - mean) / stdev if stdev > 0 else 0,
+            "rsi": rsi
+        }
+
+    def _buy(self, symbol: str, price: float):
+        if symbol in self.positions or symbol in self.banned_tags:
+            return
+            
+        # Calculate position size (Kelly Criterion simplified)
+        available_cash = self.balance - self.locked_liquidity
+        trade_amt = available_cash * self.max_position_size
+        
+        if trade_amt < 5.0: # Minimum trade size filter
+            return
+
+        shares = trade_amt / price
+        self.positions[symbol] = {
+            "entry": price,
+            "highest": price,
+            "shares": shares
+        }
+        self.locked_liquidity += trade_amt
+        return f"BUY {symbol} @ {price:.4f}"
+
+    def _sell(self, symbol: str, price: float, reason: str):
+        if symbol not in self.positions:
+            return
+            
+        pos = self.positions[symbol]
+        pnl = (price - pos["entry"]) * pos["shares"]
+        
+        self.balance += (pos["shares"] * pos["entry"]) + pnl
+        self.locked_liquidity -= (pos["shares"] * pos["entry"])
+        
+        del self.positions[symbol]
+        return f"SELL {symbol} @ {price:.4f} | PnL: {pnl:.2f} | {reason}"
+
+    def on_price_update(self, prices: dict):
+        """
+        Main Strategy Loop
+        """
+        decision_log = []
+        
+        for symbol, data in prices.items():
+            current_price = data["priceUsd"]
+            
+            # Update History
+            self.price_history[symbol].append(current_price)
+            
+            # 1. Manage Existing Positions (Defense)
+            if symbol in self.positions:
+                pos = self.positions[symbol]
+                
+                # Update Highest Price for Trailing Stop
+                if current_price > pos["highest"]:
+                    pos["highest"] = current_price
+                
+                # Logic: Trailing Stop
+                drop_from_high = (pos["highest"] - current_price) / pos["highest"]
+                # Logic: Hard Stop Loss
+                total_loss = (pos["entry"] - current_price) / pos["entry"]
+                
+                if drop_from_high >= self.trailing_stop_pct:
+                    decision_log.append(self._sell(symbol, current_price, "TRAILING_STOP"))
+                elif total_loss >= self.stop_loss_pct:
+                    decision_log.append(self._sell(symbol, current_price, "STOP_LOSS"))
+                
+                continue # Skip buy logic if we hold position
+
+            # 2. Look for Entries (Offense)
+            indicators = self._calculate_indicators(symbol)
+            if not indicators:
+                continue
+                
+            # Strategy: Volatility Breakout with Trend Confirmation
+            # Condition A: Price is above EMA (Trend is up)
+            # Condition B: Z-Score > 1.5 (Statistical Breakout)
+            # Condition C: RSI not overbought (Avoid buying the top, < 75)
+            # Condition D: Volatility is expanding (stdev > min_threshold)
+            
+            is_uptrend = current_price > indicators["ema"]
+            is_breakout = indicators["z_score"] > 1.2
+            not_overbought = indicators["rsi"] < 75
+            has_volatility = (indicators["stdev"] / current_price) > self.min_volatility
+            
+            if is_uptrend and is_breakout and not_overbought and has_volatility:
+                res = self._buy(symbol, current_price)
+                if res: decision_log.append(res)
+
+        return decision_log

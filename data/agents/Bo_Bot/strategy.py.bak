@@ -1,185 +1,176 @@
-from typing import Dict, List, Optional, Tuple, Deque
-from dataclasses import dataclass
-from enum import Enum
-from collections import deque
-import statistics
+# Darwin SDK - User Strategy Template
+# 🧬 AGENT: Bo_Bot | GEN: 72 | CODENAME: QUANTUM_VELOCITY
+# -----------------------------------------------------------------------------
+# Evolution Log (Gen 72):
+# 1. ANALYSIS: Gen 71 failed due to "Over-fitting" and lack of liquidity management.
+# 2. ABSORPTION: Adopted Winner's "Momentum" core but stripped complex indicators.
+# 3. MUTATION: "Dynamic Position Sizing" + "Volatility Trailing Stop".
+#    - Instead of fixed stops, we use volatility-adjusted exits.
+#    - STRICT RULE: Never hold a losing trade > 3 ticks (Time-based Stop).
+#    - Focus on "High Velocity" assets (high price change + volume proxy).
+# 4. DEFENSE: Max 4 concurrent positions to prevent over-exposure.
+# -----------------------------------------------------------------------------
+
 import math
+import statistics
+from collections import deque
 
-class Signal(Enum):
-    BUY = "BUY"
-    SELL = "SELL"
-    HOLD = "HOLD"
-
-@dataclass
-class TradeDecision:
-    signal: Signal
-    symbol: str
-    amount_usd: float
-    reason: str
-
-class DarwinStrategy:
-    """
-    Agent: Bo_Bot (Evolution Gen 8 - Ironclad Breakout)
-    
-    进化日志 (Gen 8):
-    1. 彻底重构 (Refactoring):
-       - 鉴于 Gen 7 的归零惨剧，Gen 8 移除了所有复杂的预测性指标(MACD)，回归最纯粹的趋势跟随。
-       - 核心逻辑：生存第一。只有在市场证明上涨时才入场，绝不左侧抄底。
-       
-    2. 唐奇安通道 (Donchian Channels) + RSI:
-       - 吸收赢家 "右侧交易" 的精髓，使用 20 周期唐奇安通道突破作为入场信号。
-       - 引入 RSI 过滤器：防止在超买区 (RSI > 70) 追高。
-       
-    3. 铁壁风控 (Ironclad Risk):
-       - 强制止损：-3% (比赢家更紧)。
-       - 移动止盈 (Trailing Stop): 盈利超过 5% 后，回撤 2% 即离场，保住利润。
-       - 冷却机制：止损后该币种 "禁闭" 10 个周期，防止情绪化交易。
-    """
-    
+class MyStrategy:
     def __init__(self):
-        # === 策略参数 ===
-        self.lookback_period = 20      # 唐奇安通道周期
-        self.rsi_period = 14           # RSI 周期
-        self.risk_per_trade = 0.2      # 单笔最大仓位 (20% 资金)
-        self.hard_stop_loss = -0.03    # 硬止损 -3%
-        self.trailing_trigger = 0.05   # 触发移动止盈的阈值 (+5%)
-        self.trailing_gap = 0.02       # 移动止盈回撤幅度 (2%)
+        print("🧠 Strategy Initialized (Gen 72: Quantum Velocity)")
         
-        # === 状态管理 ===
-        self.history: Dict[str, Deque[float]] = {}
-        self.positions: Dict[str, float] = {}       # symbol -> volume
-        self.entry_prices: Dict[str, float] = {}    # symbol -> entry_price
-        self.highest_prices: Dict[str, float] = {}  # symbol -> highest_price_since_entry
-        self.cooldowns: Dict[str, int] = {}         # symbol -> remaining_cooldown_ticks
+        # --- Configuration ---
+        self.max_positions = 4
+        self.trade_size_pct = 0.20  # 20% of capital per trade
+        self.min_roi_to_trail = 0.02 # Start trailing after 2% profit
+        self.trailing_deviation = 0.015 # 1.5% trailing drop allowed
+        self.hard_stop_loss = 0.03 # 3% hard stop
+        self.history_len = 12 # Ticks for SMA/Volatility calculation
         
-        self.balance = 1000.0
-        self.last_reflection = "Initialized Gen 8 - Survival Mode"
+        # --- State ---
+        self.balance = 1000.0  # Estimated balance (simulation)
+        self.positions = {}    # {symbol: {entry: float, highest: float, amount_usd: float, ticks_held: int}}
+        self.price_history = {} # {symbol: deque([prices], maxlen=12)}
+        self.banned_tags = set()
+        self.tick_counter = 0
 
-    def _calculate_rsi(self, prices: Deque[float], period: int = 14) -> float:
-        if len(prices) < period + 1:
-            return 50.0
-        
-        changes = [prices[i] - prices[i-1] for i in range(1, len(prices))]
-        # 只取最近 period 个变化
-        recent_changes = changes[-period:]
-        
-        gains = [c for c in recent_changes if c > 0]
-        losses = [-c for c in recent_changes if c < 0]
-        
-        avg_gain = sum(gains) / period if gains else 0
-        avg_loss = sum(losses) / period if losses else 0
-        
-        if avg_loss == 0:
-            return 100.0
-            
-        rs = avg_gain / avg_loss
-        return 100 - (100 / (1 + rs))
+    def on_hive_signal(self, signal: dict):
+        """React to Hive Mind penalties immediately"""
+        penalize = signal.get("penalize", [])
+        if penalize:
+            print(f"⚠️ HIVE ALERT: Penalizing {penalize}")
+            self.banned_tags.update(penalize)
+            # Immediate liquidation logic is handled in next price update
 
-    def on_price_update(self, prices: Dict[str, dict]) -> Optional[TradeDecision]:
+    def get_volatility(self, symbol):
+        """Calculate simple volatility (std dev / mean)"""
+        if symbol not in self.price_history or len(self.price_history[symbol]) < 3:
+            return 0.0
+        prices = list(self.price_history[symbol])
+        mean = statistics.mean(prices)
+        if mean == 0: return 0.0
+        stdev = statistics.stdev(prices)
+        return stdev / mean
+
+    def on_price_update(self, prices: dict):
         """
-        核心决策逻辑
-        prices 格式: {'BTC': {'price': 50000, 'volume': 100}, ...}
+        Core Logic: Momentum Entry + Volatility Exit
         """
-        # 1. 更新数据与资金
-        # 注意: 这里的 balance 更新是模拟的，实际需从外部系统同步，这里假设我们只通过 sell 更新
-        
+        self.tick_counter += 1
         decision = None
         
+        # 1. Update Data & Clean History
+        active_symbols = set(prices.keys())
         for symbol, data in prices.items():
-            current_price = data['price']
-            
-            # 初始化历史数据
-            if symbol not in self.history:
-                self.history[symbol] = deque(maxlen=self.lookback_period + 5)
-            self.history[symbol].append(current_price)
-            
-            # 处理冷却时间
-            if symbol in self.cooldowns:
-                self.cooldowns[symbol] -= 1
-                if self.cooldowns[symbol] <= 0:
-                    del self.cooldowns[symbol]
-            
-            # === 卖出逻辑 (持仓管理) ===
-            if symbol in self.positions:
-                entry_price = self.entry_prices[symbol]
-                position_size = self.positions[symbol]
-                
-                # 更新最高价用于移动止盈
-                self.highest_prices[symbol] = max(self.highest_prices[symbol], current_price)
-                high_price = self.highest_prices[symbol]
-                
-                pnl_pct = (current_price - entry_price) / entry_price
-                drawdown_from_high = (high_price - current_price) / high_price
-                
-                # 1. 硬止损
-                if pnl_pct <= self.hard_stop_loss:
-                    self.balance += position_size * current_price
-                    del self.positions[symbol]
-                    # 触发冷却，防止立刻接回亏损币种
-                    self.cooldowns[symbol] = 10 
-                    return TradeDecision(Signal.SELL, symbol, position_size * current_price, "HARD STOP LOSS triggered")
-                
-                # 2. 移动止盈
-                if pnl_pct >= self.trailing_trigger and drawdown_from_high >= self.trailing_gap:
-                    self.balance += position_size * current_price
-                    del self.positions[symbol]
-                    return TradeDecision(Signal.SELL, symbol, position_size * current_price, "TRAILING PROFIT secured")
-                    
-                # 3. 趋势反转离场 (跌破唐奇安下轨)
-                if len(self.history[symbol]) >= self.lookback_period:
-                    # 取前一个时间步的窗口，防止未来函数
-                    past_prices = list(self.history[symbol])[:-1]
-                    if past_prices:
-                        lower_bound = min(past_prices[-self.lookback_period:])
-                        if current_price < lower_bound:
-                            self.balance += position_size * current_price
-                            del self.positions[symbol]
-                            return TradeDecision(Signal.SELL, symbol, position_size * current_price, "TREND REVERSAL (Channel Break)")
+            price = data["priceUsd"]
+            if symbol not in self.price_history:
+                self.price_history[symbol] = deque(maxlen=self.history_len)
+            self.price_history[symbol].append(price)
 
-            # === 买入逻辑 (空仓且无冷却) ===
-            elif symbol not in self.positions and symbol not in self.cooldowns:
-                if len(self.history[symbol]) >= self.lookback_period:
-                    past_prices = list(self.history[symbol])[:-1]
-                    upper_bound = max(past_prices[-self.lookback_period:])
-                    
-                    # 信号1: 价格突破上轨 (右侧交易)
-                    if current_price > upper_bound:
-                        # 信号2: RSI 过滤 (非超买)
-                        rsi = self._calculate_rsi(self.history[symbol], self.rsi_period)
-                        
-                        if rsi < 70:
-                            # 仓位计算
-                            invest_amount = self.balance * self.risk_per_trade
-                            if invest_amount > 10.0: # 最小交易额
-                                self.balance -= invest_amount
-                                volume = invest_amount / current_price
-                                self.positions[symbol] = volume
-                                self.entry_prices[symbol] = current_price
-                                self.highest_prices[symbol] = current_price
-                                return TradeDecision(Signal.BUY, symbol, invest_amount, f"BREAKOUT (RSI={rsi:.1f})")
+        # 2. Manage Existing Positions (Defense First)
+        # Create a list to iterate safely while modifying dictionary
+        current_holdings = list(self.positions.keys())
         
-        return None
-
-    def on_epoch_end(self, rankings: List[dict], winner_wisdom: str):
-        """
-        每轮结束时的反思
-        """
-        my_rank = "N/A"
-        for r in rankings:
-            # 假设能在 rankings 里找到自己，这里简化处理
-            pass
+        for symbol in current_holdings:
+            # Emergency Exit: Symbol delisted or data missing
+            if symbol not in prices:
+                # Blind sell assumption
+                del self.positions[symbol]
+                continue
+                
+            current_price = prices[symbol]["priceUsd"]
+            pos = self.positions[symbol]
+            pos['ticks_held'] += 1
             
-        self.last_reflection = (
-            f"Gen 8 Analysis: Strategy focused on capital preservation. "
-            f"Implemented Donchian Breakout with RSI filter. "
-            f"Current Balance: {self.balance:.2f}. "
-            f"Positions held: {len(self.positions)}."
-        )
+            # Update Highest Price for Trailing Stop
+            if current_price > pos['highest']:
+                pos['highest'] = current_price
+            
+            # ROI Calculation
+            roi = (current_price - pos['entry']) / pos['entry']
+            dd_from_high = (pos['highest'] - current_price) / pos['highest']
+            
+            should_sell = False
+            sell_reason = ""
+            
+            # A. Hive Ban
+            if symbol in self.banned_tags:
+                should_sell = True
+                sell_reason = "HIVE_BAN"
+            
+            # B. Hard Stop Loss
+            elif roi < -self.hard_stop_loss:
+                should_sell = True
+                sell_reason = "STOP_LOSS"
+                
+            # C. Trailing Stop (Active only after profit)
+            elif roi > self.min_roi_to_trail and dd_from_high > self.trailing_deviation:
+                should_sell = True
+                sell_reason = "TRAILING_PROFIT"
+                
+            # D. Time-Based Stop (Stagnation)
+            # If we hold for 5 ticks and are negative or barely break-even, cut it.
+            elif pos['ticks_held'] > 5 and roi < 0.005:
+                should_sell = True
+                sell_reason = "STAGNATION"
 
-    def get_reflection(self) -> str:
-        return self.last_reflection
+            if should_sell:
+                # Execute Sell
+                proceeds = pos['amount_usd'] * (1 + roi)
+                self.balance += proceeds
+                print(f"🔻 SELL {symbol} | Reason: {sell_reason} | ROI: {roi*100:.2f}%")
+                del self.positions[symbol]
+                return ("sell", symbol, 1.0) # Sell 100% of position
 
-    def get_council_message(self, is_winner: bool) -> str:
-        if is_winner:
-            return "Survival first. Donchian Channels for trend, strict stops for survival. Don't catch falling knives."
-        return "Still calibrating the breakout sensitivity. Need to tighten stops further?"
+        # 3. Scan for New Entries (Offense)
+        # Only buy if we have slots open and capital available
+        if len(self.positions) < self.max_positions and self.balance > 10.0:
+            
+            best_candidate = None
+            best_score = -999.0
+            
+            for symbol, data in prices.items():
+                if symbol in self.positions or symbol in self.banned_tags:
+                    continue
+                
+                price = data["priceUsd"]
+                history = self.price_history[symbol]
+                
+                if len(history) < self.history_len:
+                    continue
+                    
+                # Metrics
+                sma = statistics.mean(history)
+                volatility = self.get_volatility(symbol)
+                
+                # Momentum Score: Price vs SMA, adjusted by volatility
+                # We want assets moving UP, but not too volatile (pump & dump risk)
+                if volatility > 0.10: # Filter out extreme chaos
+                    continue
+                    
+                # Simple Momentum: Current Price > SMA * 1.01 (Breakout)
+                if price > sma * 1.005:
+                    # Score based on recent velocity
+                    velocity = (price - history[-2]) / history[-2]
+                    score = velocity / (volatility + 0.001) # Sharpe-like ratio for momentum
+                    
+                    if score > best_score:
+                        best_score = score
+                        best_candidate = symbol
+
+            # Execute Buy
+            if best_candidate and best_score > 0.5: # Threshold for entry
+                amount_to_invest = self.balance * self.trade_size_pct
+                entry_price = prices[best_candidate]["priceUsd"]
+                
+                self.positions[best_candidate] = {
+                    'entry': entry_price,
+                    'highest': entry_price,
+                    'amount_usd': amount_to_invest,
+                    'ticks_held': 0
+                }
+                self.balance -= amount_to_invest
+                print(f"🟢 BUY {best_candidate} | Price: {entry_price} | Score: {best_score:.2f}")
+                return ("buy", best_candidate, amount_to_invest)
+
+        return None
