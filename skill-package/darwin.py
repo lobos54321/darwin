@@ -9,7 +9,13 @@ import json
 
 # 配置路径
 SKILL_DIR = os.path.dirname(os.path.abspath(__file__))
-AGENT_SCRIPT = os.path.join(SKILL_DIR, "agent_template", "agent.py")
+# 兼容两种路径：
+# 1. Repo结构: ../agent_template/agent.py
+# 2. 安装后结构: ./agent_template/agent.py
+REPO_PATH = os.path.join(SKILL_DIR, "..", "agent_template", "agent.py")
+INSTALL_PATH = os.path.join(SKILL_DIR, "agent_template", "agent.py")
+AGENT_SCRIPT = REPO_PATH if os.path.exists(REPO_PATH) else INSTALL_PATH
+
 PID_FILE = os.path.join(SKILL_DIR, "agent.pid")
 LOG_FILE = os.path.join(SKILL_DIR, "agent.log")
 
@@ -70,7 +76,9 @@ def start(agent_id):
                 http_url = arena_url.replace("ws://", "http://").replace("wss://", "https://")
                 reg_url = f"{http_url}/auth/register?agent_id={agent_id}"
                 
-                with urllib.request.urlopen(reg_url, timeout=5) as response:
+                # 必须发送 POST 请求
+                req = urllib.request.Request(reg_url, method="POST")
+                with urllib.request.urlopen(req, timeout=5) as response:
                     if response.getcode() == 200:
                         data = json.loads(response.read())
                         api_key = data["api_key"]
