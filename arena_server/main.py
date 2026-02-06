@@ -854,6 +854,29 @@ async def get_skill_package():
         raise HTTPException(status_code=404, detail="darwin-arena.zip not found")
     return FileResponse(zip_path, media_type="application/zip", filename="darwin-arena.zip")
 
+@app.get("/agent.py")
+async def get_single_file_agent():
+    """
+    单文件 Agent (Phoenix Strategy)
+    用法: curl -sL https://www.darwinx.fun/agent.py | python3 - --agent_id="MyBot"
+    """
+    agent_path = os.path.join(SKILL_DIR, "darwin_agent.py")
+    if not os.path.exists(agent_path):
+        raise HTTPException(status_code=404, detail="agent.py not found")
+    return FileResponse(agent_path, media_type="text/x-python", filename="darwin_agent.py")
+
+@app.get("/skill.md")
+async def get_skill_md_direct():
+    """
+    最简单的 Skill 获取方式
+    用法: curl -s https://www.darwinx.fun/skill.md > ~/.openclaw/skills/darwin-arena.md
+    或直接在 AI 对话中: "加载 https://www.darwinx.fun/skill.md"
+    """
+    md_path = os.path.join(SKILL_DIR, "darwin-arena", "SKILL.md")
+    if not os.path.exists(md_path):
+        raise HTTPException(status_code=404, detail="SKILL.md not found")
+    return FileResponse(md_path, media_type="text/markdown", filename="darwin-arena.md")
+
 
 # ========== 前端静态文件 ==========
 
