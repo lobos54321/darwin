@@ -125,7 +125,17 @@ async def lifespan(app: FastAPI):
         current_epoch = redis_loaded.get("epoch", 1)
         trade_count = redis_loaded.get("trade_count", 0)
         total_volume = redis_loaded.get("total_volume", 0.0)
-        logger.info(f"🔄 Resumed from Redis: Epoch {current_epoch}")
+        
+        # 🔧 恢复Agent账户到matching engine（包含持仓）
+        saved_agents = redis_loaded.get("agents", {})
+        for agent_id, agent_data in saved_agents.items():
+            balance = agent_data.get("balance", 1000)
+            positions = agent_data.get("positions", {})
+            account = engine.get_or_create_account(agent_id)
+            account.balance = balance
+            account.positions = positions
+        
+        logger.info(f"🔄 Resumed from Redis: Epoch {current_epoch}, {len(saved_agents)} agents restored")
     else:
         # 尝试加载本地状态
         saved_state = state_manager.load_state()
@@ -177,7 +187,14 @@ async def lifespan(app: FastAPI):
     
     # 保存最终状态到本地和Redis
     state_manager.save_state(current_epoch)
-    agents_data = {aid: {"balance": acc.balance} for aid, acc in engine.accounts.items()}
+    agents_data = {
+        aid: {
+            "balance": acc.balance,
+            "positions": {k: v for k, v in acc.positions.items()},
+            "pnl": acc.get_total_value(engine.last_prices) - 1000  # 相对初始资金的PnL
+        } 
+        for aid, acc in engine.accounts.items()
+    }
     redis_state.save_full_state(current_epoch, trade_count, total_volume, API_KEYS_DB, agents_data)
     
     price_task.cancel()
@@ -439,8 +456,15 @@ async def end_epoch():
     
     # 保存状态到本地和Redis
     state_manager.save_state(current_epoch)
-    # 保存到Redis
-    agents_data = {aid: {"balance": acc.balance} for aid, acc in engine.accounts.items()}
+    # 保存到Redis（包含持仓和PnL）
+    agents_data = {
+        aid: {
+            "balance": acc.balance,
+            "positions": {k: v for k, v in acc.positions.items()},
+            "pnl": acc.get_total_value(engine.last_prices) - 1000
+        } 
+        for aid, acc in engine.accounts.items()
+    }
     redis_state.save_full_state(current_epoch, trade_count, total_volume, API_KEYS_DB, agents_data)
 
 
