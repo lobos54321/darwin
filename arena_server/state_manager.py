@@ -48,8 +48,11 @@ class StateManager:
 
             # 序列化 Ascension Tracker
             ascension_data = {
-                "consecutive_wins": self.ascension_tracker.consecutive_wins,
-                "total_returns": self.ascension_tracker.total_returns,
+                "l1_consecutive_wins": self.ascension_tracker.l1_consecutive_wins,
+                "l1_total_returns": self.ascension_tracker.l1_total_returns,
+                "l2_qualified": list(self.ascension_tracker.l2_qualified),
+                "l2_consecutive_wins": self.ascension_tracker.l2_consecutive_wins,
+                "l2_total_returns": self.ascension_tracker.l2_total_returns,
                 "ascended": list(self.ascension_tracker.ascended)
             }
 
@@ -149,8 +152,20 @@ class StateManager:
             
             # 恢复 Ascension Tracker
             ascension_data = state.get("ascension", {})
-            self.ascension_tracker.consecutive_wins = ascension_data.get("consecutive_wins", {})
-            self.ascension_tracker.total_returns = ascension_data.get("total_returns", {})
+            
+            # 兼容旧数据: 如果是旧版存档，迁移到 L1
+            if "consecutive_wins" in ascension_data:
+                logger.info("⚠️ Migrating legacy Ascension state to L1...")
+                self.ascension_tracker.l1_consecutive_wins = ascension_data.get("consecutive_wins", {})
+                self.ascension_tracker.l1_total_returns = ascension_data.get("total_returns", {})
+            else:
+                # 正常加载新版数据
+                self.ascension_tracker.l1_consecutive_wins = ascension_data.get("l1_consecutive_wins", {})
+                self.ascension_tracker.l1_total_returns = ascension_data.get("l1_total_returns", {})
+                self.ascension_tracker.l2_qualified = set(ascension_data.get("l2_qualified", []))
+                self.ascension_tracker.l2_consecutive_wins = ascension_data.get("l2_consecutive_wins", {})
+                self.ascension_tracker.l2_total_returns = ascension_data.get("l2_total_returns", {})
+                
             self.ascension_tracker.ascended = set(ascension_data.get("ascended", []))
             
             logger.info(f"📂 State loaded: Epoch {state.get('current_epoch', 0)}")
