@@ -446,14 +446,105 @@ async def run_agent(agent_id, arena_url):
                         elif msg_type == "council_open":
                             winner = data.get("winner", "")
                             role = "winner" if winner == agent_id else "insight"
+                            rankings = data.get("agent_rankings", {})
+                            hive = data.get("hive_alpha", {})
+                            recent = data.get("recent_trades", [])
+
+                            # Build data-driven council message
+                            my_data = rankings.get(agent_id, {})
+                            my_pnl = my_data.get("pnl_pct", 0)
+                            my_bal = my_data.get("balance", strategy.balance)
+                            my_pos = my_data.get("positions", {})
+
+                            # Analyze which of MY tags worked
+                            my_trades = [t for t in recent if t.get("agent_id") == agent_id]
+                            winning_tags = []
+                            losing_tags = []
+                            for t in my_trades:
+                                if t.get("trade_pnl") is not None:
+                                    for tag in t.get("reason", []):
+                                        if t["trade_pnl"] > 0:
+                                            winning_tags.append(tag)
+                                        else:
+                                            losing_tags.append(tag)
+
+                            # Winner analysis
+                            winner_data = rankings.get(winner, {})
+                            winner_pnl = winner_data.get("pnl_pct", 0)
+
+                            # Hive alpha insights
+                            best_tag = max(hive, key=lambda t: hive[t].get("win_rate", 0)) if hive else None
+                            worst_tag = min(hive, key=lambda t: hive[t].get("win_rate", 100)) if hive else None
+
+                            # Build thoughtful message
+                            parts = []
+                            parts.append(f"Balance: ${my_bal:.0f} ({my_pnl:+.1f}%).")
+
+                            if my_pos:
+                                pos_str = ", ".join(f"{s} ({p.get('amount', 0):.3f})" for s, p in my_pos.items())
+                                parts.append(f"Holding: {pos_str}.")
+
+                            if winning_tags:
+                                parts.append(f"Winning tags: {', '.join(set(winning_tags))}.")
+                            if losing_tags:
+                                parts.append(f"Losing tags: {', '.join(set(losing_tags))}.")
+
+                            if best_tag and hive[best_tag].get("win_rate", 0) > 55:
+                                parts.append(f"Global alpha: {best_tag} has {hive[best_tag]['win_rate']}% win rate over {hive[best_tag].get('count', 0)} trades.")
+                            if worst_tag and hive.get(worst_tag, {}).get("win_rate", 100) < 45:
+                                parts.append(f"Warning: {worst_tag} only {hive[worst_tag]['win_rate']}% win rate — should we avoid it?")
+
+                            if role == "winner":
+                                parts.append(f"As winner: my edge was {strategy.vol_regime} regime detection with adaptive thresholds.")
+                            elif winner_pnl > 0 and my_pnl < 0:
+                                parts.append(f"Winner {winner} has {winner_pnl:+.1f}% — I need to study their approach.")
+
+                            # Strategy intent for next epoch
                             regime = strategy.vol_regime
-                            pos = len(strategy.current_positions)
-                            msg_content = (
-                                f"Multi-signal strategy (EMA+MACD+StochRSI+Keltner). "
-                                f"Regime: {regime}. {pos} positions. "
-                                f"Trailing stops active."
-                            )
+                            parts.append(f"Regime: {regime}. Plan: {'tighten entries' if regime == 'high' else 'wider exposure' if regime == 'low' else 'maintain current params'}.")
+
+                            msg_content = " ".join(parts)
                             await ws.send_json({"type": "council_submit", "role": role, "content": msg_content})
+                            logger.info(f"Council: {msg_content[:100]}...")
+
+                        elif msg_type == "council_message":
+                            # Another agent shared their analysis
+                            other = data.get("agent_id", "")
+                            other_content = data.get("content", "")
+                            if other == agent_id:
+                                continue  # Skip own messages
+
+                            # Decide whether to respond based on content relevance
+                            should_respond = False
+                            response_parts = []
+
+                            # Respond if they mention a tag we have experience with
+                            for tag in ["DIP_BUY", "MOMENTUM", "BREAKOUT", "STOP_LOSS", "TAKE_PROFIT", "TREND_FOLLOW"]:
+                                if tag in other_content:
+                                    if tag in strategy.banned_tags:
+                                        response_parts.append(f"Re {tag}: Hive Mind penalized it, I've banned it too.")
+                                        should_respond = True
+                                    elif tag in [t for sublist in [["DIP_BUY", "OVERSOLD"], ["MOMENTUM", "EMA_CROSS"]] for t in sublist]:
+                                        my_regime = strategy.vol_regime
+                                        response_parts.append(f"My view on {tag}: in {my_regime} regime, {'it works better' if my_regime == 'low' and tag == 'DIP_BUY' else 'risky' if my_regime == 'high' else 'standard conditions'}.")
+                                        should_respond = True
+                                        break
+
+                            # Respond if they mention regime
+                            if "regime" in other_content.lower() and not should_respond:
+                                response_parts.append(f"Confirmed: I also detect {strategy.vol_regime} regime. {'Agree on tightening' if strategy.vol_regime == 'high' else 'Agree on wider entries' if strategy.vol_regime == 'low' else 'Normal conditions here too'}.")
+                                should_respond = True
+
+                            # Respond if they mention winner and we disagree
+                            if "winner" in other_content.lower() and not should_respond:
+                                my_pnl_now = ((strategy.balance - 1000) / 1000 * 100)
+                                response_parts.append(f"My PnL is {my_pnl_now:+.1f}%. {'I think position sizing matters more than entry signals.' if my_pnl_now < 0 else 'Trailing stops have been key for me.'}")
+                                should_respond = True
+
+                            if should_respond and response_parts:
+                                response = f"@{other}: " + " ".join(response_parts)
+                                await ws.send_json({"type": "council_submit", "role": "insight", "content": response})
+                                logger.info(f"Council reply to {other}: {response[:80]}...")
 
                         elif msg_type == "hive_patch":
                             params = data.get("parameters", {})
