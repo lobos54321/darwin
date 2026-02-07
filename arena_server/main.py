@@ -35,6 +35,7 @@ from hive_mind import HiveMind
 from group_manager import GroupManager
 from tournament import TournamentManager
 from redis_state import redis_state
+from bot_agents import BotManager
 
 # 配置日志
 logging.basicConfig(
@@ -60,6 +61,14 @@ chain = ChainIntegration(testnet=True)
 ascension_tracker = AscensionTracker()
 state_manager = StateManager(group_manager, council, ascension_tracker)
 tournament_manager = TournamentManager()  # 🏆 锦标赛管理器
+
+# 🤖 Bot Agents: in-process demo bots that keep the dashboard alive
+def _on_bot_trade(amount):
+    global trade_count, total_volume
+    trade_count += 1
+    total_volume += amount
+
+bot_manager = BotManager(group_manager, trade_counter_fn=_on_bot_trade)
 
 # --- Persistence: API Keys ---
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
@@ -184,7 +193,7 @@ async def lifespan(app: FastAPI):
     await group_manager.start_all_feeders()
     futures_task = asyncio.create_task(futures_feeder.start())
     epoch_task = asyncio.create_task(epoch_loop())
-    autosave_task = asyncio.create_task(state_manager.auto_save_loop(lambda: current_epoch))
+    autosave_task = asyncio.create_task(state_manager.auto_save_loop(lambda: current_epoch, save_all_state_to_redis))
 
     # 🧠 蜂巢大脑: 每 60 秒对每个组独立分析
     async def hive_mind_loop():
@@ -202,6 +211,36 @@ async def lifespan(app: FastAPI):
 
     hive_task = asyncio.create_task(hive_mind_loop())
 
+    # 📡 Group-level price broadcasting (replaces per-agent feeder subscriptions)
+    # One broadcast per group per price tick — scales to 10K+ agents
+    async def price_broadcast_loop():
+        while True:
+            try:
+                await asyncio.sleep(10)  # Match PRICE_UPDATE_INTERVAL
+                timestamp = datetime.now().isoformat()
+                for group_id, group in group_manager.groups.items():
+                    prices = group.feeder.prices
+                    if not prices:
+                        continue
+                    # Only broadcast if there are connected agents in this group
+                    group_agents = [aid for aid in group.members if aid in connected_agents]
+                    if not group_agents:
+                        continue
+                    await broadcast_to_group(group_id, {
+                        "type": "price_update",
+                        "prices": prices,
+                        "timestamp": timestamp,
+                    })
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Price broadcast error: {e}")
+
+    price_broadcast_task = asyncio.create_task(price_broadcast_loop())
+
+    # 🤖 Spawn demo bots so dashboard is never empty
+    await bot_manager.spawn_bots()
+
     logger.info("✅ Arena Server ready!")
     logger.info(f"📊 Live dashboard: http://localhost:8888/live")
     logger.info(f"📦 Groups: {len(group_manager.groups)} | Group size: {group_manager.dynamic_group_size()}")
@@ -216,9 +255,11 @@ async def lifespan(app: FastAPI):
     save_all_state_to_redis()
 
     group_manager.stop_all_feeders()
+    bot_manager.stop()
     futures_task.cancel()
     epoch_task.cancel()
     autosave_task.cancel()
+    price_broadcast_task.cancel()
     hive_task.cancel()
 
 
@@ -282,36 +323,40 @@ async def epoch_loop():
 
 
 async def broadcast_to_agents(message: dict):
-    """广播消息给所有连接的 Agent"""
+    """广播消息给所有连接的 Agent (并发发送)"""
     disconnected = []
+    msg_json = json.dumps(message)
 
-    for agent_id, ws in connected_agents.items():
+    async def _send(agent_id, ws):
         try:
-            await ws.send_json(message)
-        except Exception as e:
-            logger.warning(f"Failed to send to {agent_id}: {e}")
+            await ws.send_text(msg_json)
+        except Exception:
             disconnected.append(agent_id)
 
-    # 清理断开的连接
+    await asyncio.gather(*[_send(aid, ws) for aid, ws in connected_agents.items()])
+
     for agent_id in disconnected:
         connected_agents.pop(agent_id, None)
 
 
 async def broadcast_to_group(group_id: int, message: dict):
-    """广播消息给指定组内所有连接的 Agent"""
+    """广播消息给指定组内所有连接的 Agent (并发发送)"""
     group = group_manager.get_group_by_id(group_id)
     if not group:
         return
 
     disconnected = []
-    for agent_id in group.members:
+    msg_json = json.dumps(message)
+
+    async def _send(agent_id):
         ws = connected_agents.get(agent_id)
         if ws:
             try:
-                await ws.send_json(message)
-            except Exception as e:
-                logger.warning(f"Failed to send to {agent_id}: {e}")
+                await ws.send_text(msg_json)
+            except Exception:
                 disconnected.append(agent_id)
+
+    await asyncio.gather(*[_send(aid) for aid in group.members])
 
     for agent_id in disconnected:
         connected_agents.pop(agent_id, None)
@@ -380,28 +425,24 @@ async def end_epoch():
             "eliminated": losers,
         })
 
-        # 组内进化
+        # 组内进化: 服务端生成赢家分享，广播 mutation_phase 给客户端自行进化
         try:
             from evolution import run_council_and_evolution
+
+            async def group_broadcast(msg):
+                await broadcast_to_group(group_id, msg)
 
             results = await run_council_and_evolution(
                 engine=group.engine,
                 council=council,
                 epoch=current_epoch,
                 winner_id=winner_id,
-                losers=losers
+                losers=losers,
+                broadcast_fn=group_broadcast,
+                group_id=group_id,
             )
 
-            await broadcast_to_group(group_id, {
-                "type": "evolution_complete",
-                "epoch": current_epoch,
-                "group_id": group_id,
-                "winner_id": winner_id,
-                "evolved": [k for k, v in results.items() if v],
-                "failed": [k for k, v in results.items() if not v]
-            })
-
-            logger.info(f"  Group {group_id}: 🧬 {len([v for v in results.values() if v])}/{len(results)} evolved")
+            logger.info(f"  Group {group_id}: 🧬 mutation_phase sent to {len(losers)} agents (client-side evolution)")
         except Exception as e:
             logger.error(f"Evolution error (Group {group_id}): {e}")
 
@@ -654,23 +695,8 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
         "prices": group.feeder.prices
     })
 
-    # 订阅该组的价格更新
-    agent_connected = True
-
-    async def send_prices(prices):
-        if not agent_connected:
-            return
-        try:
-            await websocket.send_json({
-                "type": "price_update",
-                "prices": prices,
-                "timestamp": datetime.now().isoformat()
-            })
-        except:
-            pass
-
-    price_callback = lambda p: asyncio.create_task(send_prices(p))
-    group.feeder.subscribe(price_callback)
+    # Price updates are handled by group-level broadcast (see startup)
+    # No per-agent feeder subscription needed — scales to 10K+ agents
 
     try:
         while True:
@@ -749,11 +775,7 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
     except Exception as e:
         logger.error(f"WebSocket error for {agent_id}: {e}")
     finally:
-        agent_connected = False
         connected_agents.pop(agent_id, None)
-        # Clean up subscriber from group feeder
-        if price_callback in group.feeder._subscribers:
-            group.feeder._subscribers.remove(price_callback)
 
 
 # ========== REST API ==========
@@ -786,7 +808,7 @@ async def force_mutation():
     try:
         from evolution import run_council_and_evolution
 
-        all_mutations = []
+        all_notified = []
         for group_id, group in group_manager.groups.items():
             rankings = group.engine.get_leaderboard()
             if not rankings:
@@ -802,20 +824,25 @@ async def force_mutation():
             council.start_session(epoch=current_epoch, winner_id=winner_id)
 
             try:
+                async def group_broadcast(msg):
+                    await broadcast_to_group(group_id, msg)
+
                 results = await run_council_and_evolution(
                     engine=group.engine,
                     council=council,
                     epoch=current_epoch,
                     winner_id=winner_id,
-                    losers=losers
+                    losers=losers,
+                    broadcast_fn=group_broadcast,
+                    group_id=group_id,
                 )
             finally:
                 council.close_session(epoch=current_epoch)
 
-            for k, v in results.items():
-                all_mutations.append({"agent_id": k, "success": v, "group_id": group_id})
+            for loser_id in results.get("losers_notified", []):
+                all_notified.append({"agent_id": loser_id, "group_id": group_id})
 
-        return {"status": "ok", "mutations": all_mutations}
+        return {"status": "ok", "agents_notified": all_notified}
         
     except Exception as e:
         traceback.print_exc()

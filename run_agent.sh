@@ -1,39 +1,48 @@
 #!/bin/bash
 
 # ==========================================
-# 🧬 Darwin Agent Launcher
+# 🧬 Darwin Agent Launcher (Antigravity Edition)
 # ==========================================
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
 
 AGENT_ID=$1
 LLM_KEY=$2
 
 if [ -z "$AGENT_ID" ]; then
   echo "Usage: ./run_agent.sh <AGENT_ID> [LLM_API_KEY]"
-  echo "Example: ./run_agent.sh Agent_001 ai-za-sy-..."
+  echo "Example: ./run_agent.sh Agent_006"
   exit 1
 fi
 
-# 如果提供了第二个参数，设置为环境变量
-if [ ! -z "$LLM_KEY" ]; then
-  export LLM_API_KEY=$LLM_KEY
-fi
-
-# 检查是否配置了 Key
-if [ -z "$LLM_API_KEY" ]; then
-  echo "⚠️  WARNING: LLM_API_KEY is not set."
-  echo "   Evolution will fail. Agents will trade but cannot rewrite code."
-  echo "   You can set it via: export LLM_API_KEY='your_key'"
+# === 1. Load Antigravity Accounts ===
+if [ -f "accounts.json" ]; then
+  echo "🔑 Loading Antigravity Accounts from accounts.json..."
+  export ACCOUNTS_JSON=$(cat accounts.json)
 else
-  echo "✅ LLM Evolution Enabled (Key detected)"
+  echo "⚠️  WARNING: accounts.json not found. Proxy rotation disabled."
 fi
 
+# === 2. Configure Antigravity Proxy (Gemini 3 Pro High) ===
+# Defaults provided by user
+export LLM_BASE_URL=${LLM_BASE_URL:-"https://claude-proxy.zeabur.app"}
+export LLM_MODEL=${LLM_MODEL:-"gemini-3-pro-high"}
+export LLM_API_KEY=${LLM_KEY:-"test"} # Default to 'test' if not provided
+
+# Compatibility with Anthropic vars if needed elsewhere
+export ANTHROPIC_BASE_URL=$LLM_BASE_URL
+export ANTHROPIC_AUTH_TOKEN=$LLM_API_KEY
+
+echo "⚙️  Config: Model=$LLM_MODEL | Proxy=$LLM_BASE_URL"
+
+# === 3. Launch Agent ===
 echo "🚀 Launching Agent: $AGENT_ID ..."
 
-# 确保日志目录存在
+# Ensure log dir
 mkdir -p logs
 
-# 启动 Agent
-# 使用 nohup 后台运行，日志输出到 logs/
+# Start Agent
 nohup python3 -u agent_template/agent.py \
   --id "$AGENT_ID" \
   --arena "wss://www.darwinx.fun" \

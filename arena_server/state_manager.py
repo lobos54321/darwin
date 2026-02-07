@@ -191,13 +191,19 @@ class StateManager:
             logger.error(f"Failed to load state: {e}")
             return None
 
-    async def auto_save_loop(self, get_epoch_func):
-        """定期自动保存任务"""
+    async def auto_save_loop(self, get_epoch_func, redis_save_func=None):
+        """定期自动保存任务（本地 + Redis）"""
         while True:
             try:
                 await asyncio.sleep(60)  # 每分钟保存一次
                 current_epoch = get_epoch_func()
                 self.save_state(current_epoch)
+                # 同步保存到 Redis
+                if redis_save_func:
+                    try:
+                        redis_save_func()
+                    except Exception as e:
+                        logger.warning(f"Redis auto-save failed (will retry next cycle): {e}")
             except asyncio.CancelledError:
                 break
             except Exception as e:

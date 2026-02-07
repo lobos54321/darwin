@@ -3,6 +3,9 @@
 # Project Darwin - Start Swarm
 # 启动一组 Agent 进行混战
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR/.."
+
 ARENA_URL="http://localhost:8888"
 COUNT=5
 

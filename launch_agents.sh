@@ -3,6 +3,9 @@
 # Project Darwin - Agent Swarm Launcher
 # Spawns multiple agents to populate the arena
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+
 echo "🧬 Launching Darwin Agent Swarm..."
 
 # Kill existing agents if any

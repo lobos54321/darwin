@@ -128,13 +128,44 @@ Start immediately with `import ...` or `class ...`.
 
     return await call_llm_and_update(agent_id, prompt)
 
-async def mutate_strategy(reflection: str, winner_wisdom: str) -> bool:
-    """Legacy: Keep for compatibility, but updated to use new writer"""
-    # Assuming this is called by the agent itself, so we need its ID.
-    # Since the original signature didn't have agent_id, we might need to change the caller or infer it.
-    # For now, let's assume this is only used for local testing or we default to 'template' behavior
-    # BUT, to fix the bug, we should update the signature in agent.py too.
-    pass 
+async def mutate_strategy(reflection: str, winner_wisdom: str, winner_strategy: str = "") -> bool:
+    """
+    进化策略：基于反思 + 赢家智慧 + 赢家策略代码
+    Agent 用自己的 LLM 重写策略
+    """
+    # Try to get agent_id from environment or default
+    agent_id = os.getenv("DARWIN_AGENT_ID", "default")
+
+    current_code = read_strategy(agent_id)
+    if not current_code:
+        print("❌ Could not read current strategy.")
+        return False
+
+    winner_section = ""
+    if winner_wisdom:
+        winner_section += f"\n## Winner's Wisdom:\n{winner_wisdom}\n"
+    if winner_strategy:
+        winner_section += f"\n## Winner's Strategy (reference):\n```python\n{winner_strategy[:2000]}\n```\n"
+
+    prompt = f'''You are an expert Quant Developer.
+The agent's self-reflection: {reflection}
+{winner_section}
+Your Goal: REWRITE the strategy code to improve profitability.
+Learn from the winner's approach but add your own unique mutations.
+
+## Current Strategy Code:
+```python
+{current_code}
+```
+
+## Requirements:
+1. MUST preserve `__init__` and `on_price_update(self, prices)` methods.
+2. `on_price_update` must return: {{"side": "BUY", "symbol": "BTC", "amount": 0.1, "reason": ["TAG"]}}.
+3. Keep the class name `MyStrategy`.
+4. Output ONLY valid Python code. No markdown, no explanations.
+'''
+
+    return await call_llm_and_update(agent_id, prompt)
 
 async def call_llm_and_update(agent_id: str, prompt: str) -> bool:
     """Common LLM caller"""

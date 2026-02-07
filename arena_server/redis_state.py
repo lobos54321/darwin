@@ -29,13 +29,13 @@ KEY_COUNCIL_SESSIONS = "darwin:council_sessions"  # String: JSON dict of council
 
 
 class RedisStateManager:
-    """Redis状态管理器"""
-    
+    """Redis状态管理器（含断线重连）"""
+
     def __init__(self):
         self.redis = None
         self.enabled = False
         self._connect()
-    
+
     def _connect(self):
         """连接Redis"""
         try:
@@ -45,7 +45,8 @@ class RedisStateManager:
                 port=REDIS_PORT,
                 password=REDIS_PASSWORD,
                 decode_responses=True,
-                socket_connect_timeout=5
+                socket_connect_timeout=5,
+                retry_on_timeout=True,
             )
             self.redis.ping()
             self.enabled = True
@@ -53,6 +54,17 @@ class RedisStateManager:
         except Exception as e:
             logger.warning(f"⚠️ Redis not available: {e}. Using in-memory storage.")
             self.enabled = False
+
+    def _ensure_connection(self):
+        """检查连接，断线自动重连"""
+        if not self.enabled:
+            self._connect()
+            return
+        try:
+            self.redis.ping()
+        except Exception:
+            logger.warning("⚠️ Redis connection lost, reconnecting...")
+            self._connect()
     
     # === API Keys ===
     
@@ -250,6 +262,7 @@ class RedisStateManager:
                         api_keys: dict, agents: dict,
                         trade_history: list = None, council_sessions: dict = None):
         """保存完整状态（用于定期备份）"""
+        self._ensure_connection()
         if not self.enabled:
             return
         try:
@@ -284,6 +297,7 @@ class RedisStateManager:
     
     def load_full_state(self) -> Optional[dict]:
         """加载完整状态"""
+        self._ensure_connection()
         if not self.enabled:
             return None
         try:

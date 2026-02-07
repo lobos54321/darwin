@@ -1,62 +1,58 @@
 """
 🧬 Evolution Engine - Project Darwin
-输家读赢家分享 → LLM 重写策略代码 → 进化
+服务端职责：裁判 + 主持（生成赢家分享、读取赢家策略）
+客户端职责：进化（agent 用自己的 LLM 重写策略）
 """
 
 import os
-import re
-import json
 import asyncio
-import traceback
-import httpx
 from typing import Dict, Any, List, Optional
-from config import LLM_BASE_URL, LLM_MODEL, LLM_API_KEY
+from llm_client import call_llm
 
 
 class MutationEngine:
-    """进化引擎：让表现差的 Agent 学习赢家并进化策略"""
-    
-    def __init__(self, state: Dict = None):
-        self.state = state or {}
-        self.winner_wisdom: str = ""  # 赢家分享的智慧
-        self.winner_strategy: str = ""  # 赢家的策略代码
+    """进化引擎：准备赢家上下文，通知客户端自行进化"""
 
-    def set_winner_context(self, winner_id: str, wisdom: str = ""):
-        """设置赢家上下文，供输家学习"""
-        self.winner_wisdom = wisdom
-        
-        # Fix: Use absolute path relative to this file
+    def __init__(self):
+        self.winner_wisdom: str = ""
+        self.winner_strategy: str = ""
+
+    def _get_paths(self):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         data_dir = os.path.join(base_dir, "..", "data")
         template_dir = os.path.join(base_dir, "..", "agent_template")
+        return data_dir, template_dir
 
-        # 读取赢家的策略代码
+    def load_winner_strategy(self, winner_id: str) -> str:
+        """读取赢家的策略代码，供广播给客户端"""
+        data_dir, template_dir = self._get_paths()
+
         winner_strategy_path = os.path.join(data_dir, "agents", winner_id, "strategy.py")
         if os.path.exists(winner_strategy_path):
             with open(winner_strategy_path, "r") as f:
-                self.winner_strategy = f.read()
-            print(f"📚 Loaded winner {winner_id}'s strategy for learning")
-        else:
-            # 用模板
-            template_path = os.path.join(template_dir, "strategy.py")
-            if os.path.exists(template_path):
-                with open(template_path, "r") as f:
-                    self.winner_strategy = f.read()
+                code = f.read()
+            print(f"📚 Loaded winner {winner_id}'s strategy for sharing")
+            return code
+
+        # Fallback to template
+        template_path = os.path.join(template_dir, "strategy.py")
+        if os.path.exists(template_path):
+            with open(template_path, "r") as f:
+                return f.read()
+
+        return ""
 
     async def generate_winner_sharing(self, winner_id: str, winner_pnl: float, rankings: List) -> str:
-        """让 LLM 模拟赢家在议事厅分享经验"""
-        
-        # Fix paths
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        data_dir = os.path.join(base_dir, "..", "data")
-        
-        # 读取赢家策略
+        """让 LLM 模拟赢家在议事厅分享经验（服务端裁判/主持功能）"""
+
+        data_dir, _ = self._get_paths()
+
         winner_strategy_path = os.path.join(data_dir, "agents", winner_id, "strategy.py")
         strategy_content = ""
         if os.path.exists(winner_strategy_path):
             with open(winner_strategy_path, "r") as f:
                 strategy_content = f.read()
-        
+
         prompt = f"""你是 Project Darwin 竞技场的冠军 AI Agent "{winner_id}"。
 
 你这轮的战绩：
@@ -78,151 +74,21 @@ class MutationEngine:
 用中文回答，语气自信但友好："""
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    f"{LLM_BASE_URL}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {LLM_API_KEY}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": LLM_MODEL,
-                        "messages": [
-                            {"role": "system", "content": "你是一个资深的量化交易员，用简洁有力的语言分享经验。"},
-                            {"role": "user", "content": prompt}
-                        ],
-                        "max_tokens": 500,
-                        "temperature": 0.8
-                    }
-                )
-
-                if response.status_code == 200:
-                    resp_json = response.json()
-                    return resp_json["choices"][0]["message"]["content"]
+            result = await call_llm(
+                messages=[
+                    {"role": "system", "content": "你是一个资深的量化交易员，用简洁有力的语言分享经验。"},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=500,
+                temperature=0.8,
+                timeout=60.0,
+            )
+            if result:
+                return result
         except Exception as e:
             print(f"⚠️ Winner sharing generation failed: {e}")
-        
+
         return f"作为本轮冠军，我的策略重点是趋势跟踪和严格止损。"
-
-    async def mutate_agent(self, agent, winner_wisdom: str = "") -> bool:
-        """用 LLM 重写 Agent 的策略，基于赢家的智慧"""
-        print(f"🧬 Mutating agent {agent.agent_id}...")
-        
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            # 1. 准备 Agent 目录和当前策略
-            # Fix: Use absolute path relative to this file, not CWD
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            data_dir = os.path.join(base_dir, "..", "data")
-            template_dir = os.path.join(base_dir, "..", "agent_template")
-
-            agent_dir = os.path.join(data_dir, "agents", agent.agent_id)
-            
-            if not os.path.exists(agent_dir):
-                os.makedirs(agent_dir, exist_ok=True)
-                
-            agent_strategy = os.path.join(agent_dir, "strategy.py")
-            current_strategy = ""
-            if os.path.exists(agent_strategy):
-                with open(agent_strategy, "r") as f:
-                    current_strategy = f.read()
-            else:
-                # 从模板复制 (使用绝对路径)
-                template = os.path.join(template_dir, "strategy.py")
-                if os.path.exists(template):
-                    with open(template, "r") as f:
-                        current_strategy = f.read()
-                    with open(agent_strategy, "w") as f:
-                        f.write(current_strategy)
-
-            # 2. 构建进化 Prompt（包含赢家智慧）
-            prompt = f"""你是 Project Darwin 的进化引擎。
-
-# 🎯 任务
-重写 Agent "{agent.agent_id}" 的交易策略代码，帮助它在下一轮竞技中表现更好。
-
-# 📊 当前状态
-- 当前余额: ${agent.balance:.2f} (初始 $1000)
-- PnL: {((agent.balance - 1000) / 1000 * 100):.1f}%
-- 状态: 表现不佳，需要进化
-
-# 🏆 赢家分享的智慧
-{winner_wisdom if winner_wisdom else '(赢家未分享)'}
-
-# 📝 赢家的策略参考
-```python
-{self.winner_strategy[:1500] if self.winner_strategy else '# 无可参考策略'}
-```
-
-# 📝 当前失败的策略
-```python
-{current_strategy[:1500] if current_strategy else '# 空策略'}
-```
-
-# ⚡ 进化要求
-1. 吸收赢家的智慧和策略精髓
-2. 但要有自己的独特变异（避免同质化）
-3. 增强风控（止损、仓位管理）
-4. 代码必须完整可运行
-
-只输出完整的 Python 代码，包含所有 import："""
-
-            try:
-                target_url = f"{LLM_BASE_URL}/chat/completions"
-                print(f"📡 Calling LLM for {agent.agent_id}...")
-
-                response = await client.post(
-                    target_url,
-                    headers={
-                        "Authorization": f"Bearer {LLM_API_KEY}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": LLM_MODEL,
-                        "messages": [
-                            {"role": "system", "content": "你是世界级的量化交易工程师。只输出完整的 Python 策略代码，不要解释。"},
-                            {"role": "user", "content": prompt}
-                        ],
-                        "max_tokens": 4096,
-                        "temperature": 0.7
-                    }
-                )
-
-                if response.status_code != 200:
-                    print(f"❌ LLM Error: {response.status_code} - {response.text}")
-                    return False
-
-                resp_json = response.json()
-
-                # 解析 OpenAI 格式响应
-                new_code = resp_json["choices"][0]["message"]["content"]
-                
-                if not new_code:
-                    print(f"❌ No code in response")
-                    return False
-                
-                # 清理 markdown
-                if "```python" in new_code:
-                    match = re.search(r"```python\n(.*?)\n```", new_code, re.DOTALL)
-                    if match:
-                        new_code = match.group(1)
-                elif "```" in new_code:
-                    match = re.search(r"```\n(.*?)\n```", new_code, re.DOTALL)
-                    if match:
-                        new_code = match.group(1)
-
-                # 保存新策略
-                backup_path = agent_strategy + ".bak"
-                if os.path.exists(agent_strategy):
-                    os.rename(agent_strategy, backup_path)
-                with open(agent_strategy, "w") as f:
-                    f.write(new_code)
-                    
-                print(f"✅ Agent {agent.agent_id} evolved successfully!")
-                return True
-
-            except Exception as e:
-                traceback.print_exc()
-                return False
 
 
 async def run_council_and_evolution(
@@ -230,29 +96,36 @@ async def run_council_and_evolution(
     council,  # Council
     epoch: int,
     winner_id: str,
-    losers: List[str]
-) -> Dict[str, bool]:
+    losers: List[str],
+    broadcast_fn=None,  # async function to broadcast to group
+    group_id: int = 0,
+) -> Dict[str, Any]:
     """
-    完整的议事厅 + 进化流程
-    1. 赢家分享智慧
-    2. 输家学习并进化
+    议事厅 + 通知客户端进化
+
+    服务端做的事：
+    1. 生成赢家分享（LLM 主持）
+    2. 记录到议事厅
+    3. 广播 mutation_phase 给客户端，让客户端用自己的 LLM 进化
+
+    服务端不再做的事：
+    - 替 agent 调 LLM 重写策略（这是客户端的事）
     """
     from council import MessageRole
-    
-    results = {}
+
     mutation_engine = MutationEngine()
-    
+
     # 获取排行榜
     rankings = engine.get_leaderboard()
     winner_pnl = next((r[1] for r in rankings if r[0] == winner_id), 0)
-    
+
     # === 第1步: 赢家分享 ===
     print(f"\n🏛️ === COUNCIL SESSION (Epoch {epoch}) ===")
     print(f"🏆 Winner: {winner_id} (+{winner_pnl:.1f}%)")
-    
+
     winner_wisdom = await mutation_engine.generate_winner_sharing(winner_id, winner_pnl, rankings)
     print(f"\n💬 {winner_id} 分享:\n{winner_wisdom}\n")
-    
+
     # 记录到议事厅
     await council.submit_message(
         epoch=epoch,
@@ -260,30 +133,32 @@ async def run_council_and_evolution(
         role=MessageRole.WINNER,
         content=winner_wisdom
     )
-    
-    # 设置赢家上下文供进化使用
-    mutation_engine.set_winner_context(winner_id, winner_wisdom)
-    
-    # === 第2步: 输家进化 ===
-    print(f"\n🧬 === EVOLUTION PHASE ===")
+
+    # 读取赢家策略代码（发给客户端参考）
+    winner_strategy = mutation_engine.load_winner_strategy(winner_id)
+
+    # === 第2步: 广播 mutation_phase 给客户端 ===
+    print(f"\n🧬 === EVOLUTION PHASE (Client-Side) ===")
     print(f"📋 Losers to evolve: {losers}")
-    
-    for loser_id in losers:
-        agent = engine.accounts.get(loser_id)
-        if agent:
-            success = await mutation_engine.mutate_agent(agent, winner_wisdom)
-            results[loser_id] = success
-            
-            # 记录输家的"反思"
-            if success:
-                await council.submit_message(
-                    epoch=epoch,
-                    agent_id=loser_id,
-                    role=MessageRole.LOSER,
-                    content=f"我学习了 {winner_id} 的策略并进化了我的代码。"
-                )
-    
-    print(f"\n✅ Council & Evolution completed!")
-    print(f"📊 Results: {results}")
-    
-    return results
+    print(f"📡 Broadcasting mutation_phase to clients...")
+
+    mutation_data = {
+        "type": "mutation_phase",
+        "epoch": epoch,
+        "group_id": group_id,
+        "winner_id": winner_id,
+        "losers": losers,
+        "winner_wisdom": winner_wisdom,
+        "winner_strategy": winner_strategy[:3000],  # Cap size for WebSocket
+    }
+
+    if broadcast_fn:
+        await broadcast_fn(mutation_data)
+
+    print(f"✅ mutation_phase broadcasted. Agents will evolve with their own LLM.")
+
+    return {
+        "winner_id": winner_id,
+        "winner_wisdom": winner_wisdom,
+        "losers_notified": losers,
+    }

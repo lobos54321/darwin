@@ -321,7 +321,10 @@ class DarwinAgent:
         elif msg_type == "mutation_phase":
             print("\n🧬 Mutation phase started!")
             if self.agent_id in data.get("losers", []):
-                await self.evolve(data.get("winner_wisdom", ""))
+                await self.evolve(
+                    winner_wisdom=data.get("winner_wisdom", ""),
+                    winner_strategy=data.get("winner_strategy", ""),
+                )
         
         elif msg_type == "order_result":
             if data["success"]:
@@ -507,8 +510,8 @@ class DarwinAgent:
             "content": final_content
         })
     
-    async def evolve(self, winner_wisdom: str):
-        """进化: 重写策略代码 (mutation_phase triggered by server)"""
+    async def evolve(self, winner_wisdom: str, winner_strategy: str = ""):
+        """进化: 用自己的 LLM 重写策略代码 (triggered by server mutation_phase)"""
         print("🧬 Starting evolution...")
 
         # Generate reflection from strategy if supported
@@ -517,15 +520,16 @@ class DarwinAgent:
             reflection = self.strategy.get_council_message(is_winner=False)
         print(f"📝 Reflection: {reflection}")
 
-        # Use winner_wisdom as penalty context (losers learn from winner)
-        penalty_tags = ["UNDERPERFORM"]  # Generic tag for mutation_phase evolution
+        penalty_tags = ["UNDERPERFORM"]
 
-        # 调用 self_coder 重写策略
+        # 调用 self_coder 重写策略（用自己的 LLM）
         success = await mutate_strategy(
             self.agent_id,
             penalty_tags,
             api_key=self.api_key,
-            arena_url=self.arena_url
+            arena_url=self.arena_url,
+            winner_wisdom=winner_wisdom,
+            winner_strategy=winner_strategy,
         )
 
         if success:

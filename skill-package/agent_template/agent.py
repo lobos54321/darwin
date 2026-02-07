@@ -252,7 +252,10 @@ class DarwinAgent:
         elif msg_type == "mutation_phase":
             print("\n🧬 Mutation phase started!")
             if self.agent_id in data.get("losers", []):
-                await self.evolve(data.get("winner_wisdom", ""))
+                await self.evolve(
+                    winner_wisdom=data.get("winner_wisdom", ""),
+                    winner_strategy=data.get("winner_strategy", ""),
+                )
         
         elif msg_type == "order_result":
             if data["success"]:
@@ -385,20 +388,23 @@ class DarwinAgent:
             "content": final_content
         })
     
-    async def evolve(self, winner_wisdom: str):
-        """进化: 重写策略代码"""
+    async def evolve(self, winner_wisdom: str, winner_strategy: str = ""):
+        """进化: 用自己的 LLM 重写策略代码"""
         print("🧬 Starting evolution...")
-        
+
         # 生成反思
         reflection = self.strategy.on_epoch_end(
-            self.my_rank, 
-            self.total_agents, 
+            self.my_rank,
+            self.total_agents,
             winner_wisdom
         )
         print(f"📝 Reflection:\n{reflection}")
-        
-        # 调用 self_coder 重写策略
-        success = await mutate_strategy(reflection, winner_wisdom)
+
+        # 调用 self_coder 重写策略（用自己的 LLM）
+        success = await mutate_strategy(
+            reflection, winner_wisdom,
+            winner_strategy=winner_strategy,
+        )
         
         if success:
             print("🧬 Evolution complete! Reloading strategy...")

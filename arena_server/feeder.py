@@ -15,6 +15,11 @@ from config import TARGET_TOKENS, DEXSCREENER_BASE_URL, PRICE_UPDATE_INTERVAL
 # 创建 SSL context (解决 macOS 证书问题)
 SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
+# Global price cache: multiple groups with same tokens share API responses
+# Key: token_address, Value: (result_dict, timestamp)
+_price_cache: Dict[str, tuple] = {}
+_CACHE_TTL = PRICE_UPDATE_INTERVAL - 1  # Cache slightly shorter than update interval
+
 
 class DexScreenerFeeder:
     """DexScreener 数据抓取器"""
@@ -30,7 +35,13 @@ class DexScreenerFeeder:
         self._subscribers = []
     
     async def fetch_token_price(self, session: aiohttp.ClientSession, address: str) -> Optional[dict]:
-        """获取单个代币价格"""
+        """获取单个代币价格 (with global cache to avoid duplicate API calls)"""
+        # Check cache first
+        now = datetime.now().timestamp()
+        cached = _price_cache.get(address)
+        if cached and (now - cached[1]) < _CACHE_TTL:
+            return cached[0]
+
         url = f"{DEXSCREENER_BASE_URL}/latest/dex/tokens/{address}"
         try:
             async with session.get(url) as resp:
@@ -40,7 +51,7 @@ class DexScreenerFeeder:
                     if pairs:
                         # 取流动性最高的交易对
                         best_pair = max(pairs, key=lambda p: float(p.get("liquidity", {}).get("usd", 0) or 0))
-                        return {
+                        result = {
                             "symbol": best_pair["baseToken"]["symbol"],
                             "address": address,
                             "priceUsd": float(best_pair.get("priceUsd", 0)),
@@ -50,6 +61,8 @@ class DexScreenerFeeder:
                             "dex": best_pair.get("dexId"),
                             "pairAddress": best_pair.get("pairAddress"),
                         }
+                        _price_cache[address] = (result, datetime.now().timestamp())
+                        return result
         except Exception as e:
             print(f"Error fetching {address}: {e}")
         return None
