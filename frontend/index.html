@@ -598,6 +598,7 @@
                          }
                      } catch(e) {}
                      const pnlDisplay = t.trade_pnl != null ? `<span class="${t.trade_pnl >= 0 ? 'text-green-400' : 'text-red-400'}">${t.trade_pnl >= 0 ? '+' : ''}${t.trade_pnl}%</span>` : '';
+                     const tagsDisplay = t.reason && t.reason.length > 0 ? `<div class="text-[9px] mt-0.5">${t.reason.map(tag => `<span class="inline-block bg-purple-900/40 text-purple-300 border border-purple-800/50 px-1 rounded mr-0.5">${tag}</span>`).join('')}</div>` : '';
 
                      return `
                      <div class="border-b border-gray-900 pb-1 mb-1">
@@ -612,6 +613,7 @@
                             <span class="text-white font-bold">${dollarVal}</span>
                             <span>@ ${Number(t.price).toFixed(4)} ${pnlDisplay}</span>
                         </div>
+                        ${tagsDisplay}
                      </div>
                      `;
                 }).join('');
