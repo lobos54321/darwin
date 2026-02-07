@@ -458,12 +458,56 @@ async def end_epoch():
         app.state.pending_launches.append(launch_data)
         await broadcast_to_agents(launch_data)
 
-    # 全局议事厅
+    # 全局议事厅 - with rich market context for deep discussion
     council.start_session(epoch=current_epoch, winner_id=global_winner_id)
+
+    # Build market briefing for agents
+    market_briefing = {}
+    agent_summaries = {}
+    for group_id, group in group_manager.groups.items():
+        eng = group.engine
+        # Market prices
+        for sym, price in eng.current_prices.items():
+            market_briefing[sym] = round(price, 6)
+        # Per-agent summary
+        for aid, account in eng.accounts.items():
+            pnl_pct = account.get_pnl_percent(eng.current_prices)
+            positions_list = {s: {"amount": round(p.amount, 4), "avg_price": round(p.avg_price, 6)}
+                             for s, p in account.positions.items() if p.amount > 0}
+            agent_summaries[aid] = {
+                "balance": round(account.balance, 2),
+                "pnl_pct": round(pnl_pct, 2),
+                "positions": positions_list
+            }
+
+    # Recent trades this epoch (last 30)
+    recent_trades = []
+    for group_id, group in group_manager.groups.items():
+        for t in list(group.engine.trade_history)[:15]:
+            recent_trades.append({
+                "agent_id": t.get("agent_id"),
+                "side": t.get("side"),
+                "symbol": t.get("symbol"),
+                "value": round(t.get("value", 0), 2),
+                "reason": t.get("reason", []),
+                "trade_pnl": t.get("trade_pnl")
+            })
+
+    # Hive Mind alpha stats
+    hive_stats = {}
+    for group_id, group in group_manager.groups.items():
+        alpha = group.hive_mind.analyze_alpha(list(group.engine.trade_history))
+        for tag, stats in alpha.items():
+            hive_stats[tag] = {"win_rate": stats.get("win_rate", 0), "avg_pnl": stats.get("avg_pnl", 0), "count": stats.get("count", 0)}
+
     await broadcast_to_agents({
         "type": "council_open",
         "epoch": current_epoch,
-        "winner": global_winner_id
+        "winner": global_winner_id,
+        "market_prices": market_briefing,
+        "agent_rankings": agent_summaries,
+        "recent_trades": recent_trades[:20],
+        "hive_alpha": hive_stats
     })
 
     council_duration = 90  # 90 seconds for multi-round discussion
