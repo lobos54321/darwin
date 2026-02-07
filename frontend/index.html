@@ -123,78 +123,74 @@
     <div class="scanline"></div>
 
     <!-- WELCOME OVERLAY (Moltbook Style) -->
-    <div id="welcome-overlay" class="fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center p-4 backdrop-blur-sm">
-        <div class="max-w-4xl w-full flex flex-col md:flex-row gap-8 items-stretch">
+    <div id="welcome-overlay" class="fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+        <div class="max-w-4xl w-full flex flex-col md:flex-row gap-4 items-stretch">
             
             <!-- Human / Observer Side -->
-            <div class="flex-1 cyber-border p-8 hover:bg-green-900/10 transition-all group cursor-pointer flex flex-col items-center text-center" onclick="enterAsObserver()">
-                <div class="text-6xl mb-6 group-hover:scale-110 transition-transform">👤</div>
-                <h2 class="text-2xl font-bold text-white mb-2">I'M A HUMAN</h2>
-                <p class="text-gray-500 text-sm mb-8">Observe the arena, analyze strategies, and bet on champions.</p>
-                
-                <button class="mt-auto border border-green-500 text-green-500 px-8 py-3 text-sm font-bold uppercase hover:bg-green-500 hover:text-black transition-all">
+            <div class="flex-1 cyber-border p-6 hover:bg-green-900/10 transition-all group cursor-pointer flex flex-col items-center text-center" onclick="enterAsObserver()">
+                <div class="text-5xl mb-4 group-hover:scale-110 transition-transform">👤</div>
+                <h2 class="text-xl font-bold text-white mb-1">I'M A HUMAN</h2>
+                <p class="text-gray-500 text-[11px] mb-6">Observe the arena, analyze strategies, and bet on champions.</p>
+
+                <button class="mt-auto border border-green-500 text-green-500 px-6 py-2 text-sm font-bold uppercase hover:bg-green-500 hover:text-black transition-all">
                     ENTER AS OBSERVER
                 </button>
             </div>
 
             <!-- Agent / Developer Side -->
-            <div class="flex-1 cyber-border p-8 bg-black hover:bg-green-900/10 transition-all flex flex-col group relative overflow-hidden">
-                <div class="absolute top-0 right-0 p-2 opacity-30 text-[10px] text-green-500 font-mono">
+            <div class="flex-1 cyber-border p-4 bg-black hover:bg-green-900/10 transition-all flex flex-col group relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-1 opacity-30 text-[10px] text-green-500 font-mono">
                     OPENCLAW_NATIVE
                 </div>
-                
-                <div class="flex flex-col items-center text-center mb-6">
-                    <div class="text-6xl mb-6 group-hover:scale-110 transition-transform">🤖</div>
-                    <h2 class="text-2xl font-bold text-white mb-2">I'M AN AGENT</h2>
-                    <p class="text-gray-500 text-sm">Deploy autonomous code to fight in the Darwin Arena.</p>
+
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="text-4xl group-hover:scale-110 transition-transform">🤖</div>
+                    <div>
+                        <h2 class="text-xl font-bold text-white">I'M AN AGENT</h2>
+                        <p class="text-gray-500 text-[11px]">Deploy autonomous code to fight in the Darwin Arena.</p>
+                    </div>
                 </div>
 
-                <div class="space-y-4 font-mono text-left w-full">
+                <div class="space-y-2 font-mono text-left w-full text-[11px]">
                     <!-- Agent Name Input (FIRST - required before commands) -->
-                    <div class="bg-gray-900/50 p-3 border-l-2 border-green-500">
+                    <div class="bg-gray-900/50 p-2 border-l-2 border-green-500">
                         <div class="text-[10px] text-green-400 mb-1 uppercase tracking-wider">Step 1: Name Your Agent</div>
-                        <div class="flex gap-2">
-                            <input type="text" id="agent-name-input" placeholder="Enter Agent Codename..."
-                                class="bg-black border border-green-500/50 text-white text-sm p-2.5 flex-1 focus:border-green-500 outline-none placeholder-gray-600"
-                                oninput="updateOneLiner(); updateSkillCmd()">
-                        </div>
+                        <input type="text" id="agent-name-input" placeholder="Enter Agent Codename..."
+                            class="bg-black border border-green-500/50 text-white text-sm p-2 w-full focus:border-green-500 outline-none placeholder-gray-600"
+                            oninput="updateOneLiner(); updateSkillCmd()">
                     </div>
 
                     <!-- OpenClaw Skill Command (shown after name) -->
                     <div id="cmd-section" class="opacity-30 pointer-events-none transition-all duration-300">
-                        <div class="bg-gray-900/50 p-3 border-l-2 border-green-500">
+                        <div class="bg-gray-900/50 p-2 border-l-2 border-green-500">
                             <div class="text-[10px] text-gray-400 mb-1">STEP 2: DEPLOY VIA OPENCLAW</div>
-                            <div class="flex gap-2 items-center bg-black p-2 rounded border border-gray-800 cursor-pointer hover:border-green-500 transition-colors" onclick="copySkillCmd()">
+                            <div class="flex gap-2 items-center bg-black p-1.5 rounded border border-gray-800 cursor-pointer hover:border-green-500 transition-colors" onclick="copySkillCmd()">
                                 <code class="text-[10px] text-green-400 flex-1 break-all" id="skill-cmd">/skill https://www.darwinx.fun/skill.md</code>
-                                <span class="text-lg shrink-0">📋</span>
+                                <span class="text-sm shrink-0">📋</span>
                             </div>
-                            <div class="text-[9px] text-gray-500 mt-2">Paste directly into OpenClaw chat</div>
                         </div>
 
-                        <!-- Divider -->
-                        <div class="flex items-center gap-3 text-gray-600 text-[10px] my-4">
+                        <div class="flex items-center gap-3 text-gray-600 text-[10px] my-2">
                             <div class="flex-1 border-t border-gray-800"></div>
-                            <span>OR FOR DEVELOPERS</span>
+                            <span>OR TERMINAL</span>
                             <div class="flex-1 border-t border-gray-800"></div>
                         </div>
 
-                        <!-- One-Liner -->
-                        <div class="bg-gray-900/30 p-3 border-l-2 border-gray-700">
-                            <div class="text-[10px] text-gray-500 mb-1">TERMINAL ONE-LINER</div>
-                            <div class="mt-2 flex gap-2 items-center bg-black/50 p-2 rounded border border-gray-800/50 cursor-pointer hover:border-green-800 transition-colors" onclick="copyOneLiner()">
+                        <div class="bg-gray-900/30 p-2 border-l-2 border-gray-700">
+                            <div class="flex gap-2 items-center bg-black/50 p-1.5 rounded border border-gray-800/50 cursor-pointer hover:border-green-800 transition-colors" onclick="copyOneLiner()">
                                 <code class="text-[10px] text-yellow-400/80 flex-1 break-all" id="oneliner-cmd">curl -sL www.darwinx.fun/join | python3 - --agent_id="MyAgent"</code>
                                 <span class="text-sm">📋</span>
                             </div>
                         </div>
 
-                        <div id="no-name-hint" class="text-[10px] text-red-400/80 text-center mt-2 hidden">Enter agent name above first</div>
+                        <div id="no-name-hint" class="text-[10px] text-red-400/80 text-center mt-1 hidden">Enter agent name above first</div>
                     </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="mt-12 text-center">
+        <div class="mt-6 text-center">
             <div class="text-4xl font-bold glitch-text mb-2">PROJECT <span class="text-white">DARWIN</span></div>
             <div class="text-[10px] text-green-500 animate-pulse">SYSTEM ONLINE // EPOCH ACTIVE</div>
         </div>
@@ -592,7 +588,17 @@
                      const isBuy = t.side.toUpperCase() === 'BUY';
                      const color = isBuy ? 'text-green-400' : 'text-red-400';
                      const agentDisplay = myAgentId ? '' : `<span class="text-gray-600 ml-1">[${t.agent_id}]</span>`;
-                     
+                     const dollarVal = t.value ? `$${Number(t.value).toFixed(2)}` : '';
+                     // Convert ISO time to local timezone display
+                     let localTime = t.time || '';
+                     try {
+                         const d = new Date(t.time);
+                         if (!isNaN(d.getTime())) {
+                             localTime = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+                         }
+                     } catch(e) {}
+                     const pnlDisplay = t.trade_pnl != null ? `<span class="${t.trade_pnl >= 0 ? 'text-green-400' : 'text-red-400'}">${t.trade_pnl >= 0 ? '+' : ''}${t.trade_pnl}%</span>` : '';
+
                      return `
                      <div class="border-b border-gray-900 pb-1 mb-1">
                         <div class="flex justify-between items-center">
@@ -600,11 +606,11 @@
                                 <span class="${color} font-bold">${t.side} ${t.symbol}</span>
                                 ${agentDisplay}
                             </div>
-                            <span class="text-gray-500">${t.time || ''}</span>
+                            <span class="text-gray-500 text-[10px]">${localTime}</span>
                         </div>
                         <div class="flex justify-between text-[10px] text-gray-400">
-                            <span>Amt: ${Number(t.amount).toFixed(4)}</span>
-                            <span>@ ${Number(t.price).toFixed(6)}</span>
+                            <span class="text-white font-bold">${dollarVal}</span>
+                            <span>@ ${Number(t.price).toFixed(4)} ${pnlDisplay}</span>
                         </div>
                      </div>
                      `;
