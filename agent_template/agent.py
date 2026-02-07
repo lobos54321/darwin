@@ -91,6 +91,13 @@ class DarwinAgent:
         self.council_messages: List[dict] = []  # Messages from other agents in current council
         self.council_briefing: dict = {}  # Server-provided briefing data
         self.has_spoken_in_council = False
+
+        # Evolution dedup: track which epoch's hive_patch we already evolved for
+        self.last_evolved_epoch = -1
+
+        # Minimum activity: force exploratory trade if idle too long
+        self.ticks_since_last_trade = 0
+        self.idle_trade_threshold = 30  # ~5 minutes (30 ticks * 10s)
         
         # 随机分配人设
         self.persona = random.choice(PERSONAS)
@@ -390,34 +397,48 @@ class DarwinAgent:
             print(f"🧠 Hive Mind Patch: {data['message']}")
             boost = data['parameters'].get('boost', [])
             penalize = data['parameters'].get('penalize', [])
-            
+
             if boost: print(f"   🚀 BOOSTING: {boost}")
-            if penalize: 
+            if penalize:
                 print(f"   ⚠️ PENALIZING: {penalize}")
-                # === TRUE EVOLUTION: Self-Rewrite Code ===
-                # If we are being penalized, our strategy logic is flawed.
-                # We invoke the self_coder to fix the source code immediately.
-                
-                # Pass API key and Arena URL to allow uploading the new strategy
-                success = await mutate_strategy(
-                    self.agent_id, 
-                    penalize, 
-                    api_key=self.api_key, 
-                    arena_url=self.arena_url
-                )
-                
-                if success:
-                    print(f"🧬 Genetic Mutation Successful! Reloading Strategy...")
-                    # Reload the strategy instance to apply new logic without restarting
-                    try:
-                        self.strategy = self._load_strategy()
-                        print(f"✅ Strategy Reloaded: v{random.randint(100,999)}")
-                    except Exception as e:
-                        print(f"❌ Failed to reload strategy: {e}")
-            
-            # Pass to strategy if supported
+
+                # DEADLOCK FIX: If ALL tags are penalized and NONE boosted,
+                # the signal is "everything sucks" — evolving from this just
+                # produces "do nothing" strategies. Skip evolution.
+                if not boost and len(penalize) >= 4:
+                    print(f"   ⏭️ All-penalize deadlock detected ({len(penalize)} tags). Skipping evolution.")
+                else:
+                    # Dedup: only evolve once per epoch
+                    patch_epoch = data.get('epoch', self.current_epoch)
+                    if patch_epoch <= self.last_evolved_epoch:
+                        print(f"   ⏭️ Already evolved for epoch {patch_epoch}, skipping.")
+                    else:
+                        self.last_evolved_epoch = patch_epoch
+
+                        success = await mutate_strategy(
+                            self.agent_id,
+                            penalize,
+                            api_key=self.api_key,
+                            arena_url=self.arena_url
+                        )
+
+                        if success:
+                            print(f"🧬 Genetic Mutation Successful! Reloading Strategy...")
+                            try:
+                                self.strategy = self._load_strategy()
+                                print(f"✅ Strategy Reloaded: v{random.randint(100,999)}")
+                            except Exception as e:
+                                print(f"❌ Failed to reload strategy: {e}")
+
+            # Pass to strategy — but limit banned_tags to prevent total shutdown
             if hasattr(self.strategy, "on_hive_signal"):
-                self.strategy.on_hive_signal(data['parameters'])
+                # Cap banned tags: never ban more than 2 tags at once
+                # This prevents the "ban everything → no trades" death spiral
+                limited_params = dict(data['parameters'])
+                if len(limited_params.get('penalize', [])) > 2:
+                    limited_params['penalize'] = limited_params['penalize'][:2]
+                    print(f"   🔒 Limited banned tags to: {limited_params['penalize']}")
+                self.strategy.on_hive_signal(limited_params)
     
     async def _thinking_loop(self):
         """定期思考循环 (LLM-powered market observations)"""
@@ -485,7 +506,16 @@ Reply with ONLY the insight."""
     async def on_price_update(self, prices: dict):
         """处理价格更新，执行策略"""
         decision = self.strategy.on_price_update(prices)
-        
+
+        if not decision:
+            self.ticks_since_last_trade += 1
+
+            # Minimum activity: force exploratory trade after prolonged inactivity
+            if self.ticks_since_last_trade >= self.idle_trade_threshold:
+                decision = self._force_exploratory_trade(prices)
+                if decision:
+                    print(f"🔬 Forced exploratory trade after {self.ticks_since_last_trade} idle ticks")
+
         if decision:
             symbol = decision.get("symbol")
             side = decision.get("side")
@@ -493,17 +523,17 @@ Reply with ONLY the insight."""
             reason = decision.get("reason", [])
 
             if not side:
-                # print("⚠️ Strategy returned empty side. Skipping order.")
                 return
 
             print(f"📈 Decision: {side.upper()} {symbol} ${amount:.2f}")
             print(f"   Reason: {reason}")
-            
+            self.ticks_since_last_trade = 0  # Reset idle counter
+
             # 发送订单
             await self.ws.send_json({
                 "type": "order",
                 "symbol": symbol,
-                "side": side.upper(), # Ensure uppercase for server
+                "side": side.upper(),
                 "amount": amount,
                 "reason": reason
             })
@@ -594,6 +624,39 @@ Reply with ONLY the insight."""
         lines.insert(0, f"Balance: ${balance:.2f}")
         lines.insert(1, f"Open positions ({len(positions)}):")
         return "\n".join(lines)
+
+    def _force_exploratory_trade(self, prices: dict) -> Optional[dict]:
+        """Force a small exploratory trade when agent has been idle too long"""
+        # Pick a random tradeable symbol
+        tradeable = [s for s, p in prices.items()
+                     if p.get("priceUsd", 0) > 0 and s != "WETH"]
+        if not tradeable:
+            return None
+
+        # If we have positions, try selling one
+        positions = getattr(self.strategy, "current_positions", {})
+        for sym in positions:
+            if sym in prices and positions[sym] > 0:
+                cur_price = prices[sym].get("priceUsd", 0)
+                amt = positions[sym] * cur_price * 0.98
+                if amt > 1:
+                    return {
+                        "symbol": sym, "side": "sell",
+                        "amount": round(amt, 2),
+                        "reason": ["EXPLORE", "IDLE_EXIT"]
+                    }
+
+        # Otherwise, buy a small amount of a random token
+        symbol = random.choice(tradeable)
+        balance = getattr(self.strategy, "balance", 1000)
+        amount = min(15.0, balance * 0.02)  # Small: $15 or 2% of balance
+        if amount < 1:
+            return None
+        return {
+            "symbol": symbol, "side": "buy",
+            "amount": round(amount, 2),
+            "reason": ["EXPLORE", "RANDOM_TEST"]
+        }
 
     def _build_council_briefing(self, council_data: dict) -> str:
         """Build a rich briefing from server-provided council data"""

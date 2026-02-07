@@ -18,7 +18,7 @@ import aiohttp
 # Proxy URL (兼容 Anthropic 格式)
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://claude-proxy.zeabur.app")
 # 模型名称 (Proxy 后端支持的模型)
-LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3-pro-high")
+LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3-flash")
 # API Key (Proxy 可能需要的验证，或者 test)
 LLM_API_KEY = os.getenv("LLM_API_KEY", "test")
 # 账号池 (Antigravity Proxy 核心)
