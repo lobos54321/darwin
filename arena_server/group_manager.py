@@ -314,6 +314,19 @@ class GroupManager:
                 logger.error(f"Hive Mind error (Group {group.group_id}): {e}")
         return patches
 
+    # ========== Agent Removal ==========
+
+    def remove_agent(self, agent_id: str) -> bool:
+        """Remove an agent completely from its group"""
+        group_id = self.agent_to_group.pop(agent_id, None)
+        if group_id is None:
+            return False
+        group = self.groups.get(group_id)
+        if group:
+            group.members.discard(agent_id)
+            group.engine.accounts.pop(agent_id, None)
+        return True
+
     # ========== Stats ==========
 
     def get_stats(self) -> dict:

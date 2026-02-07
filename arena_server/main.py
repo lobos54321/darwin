@@ -1601,6 +1601,48 @@ async def debug_deposit(agent_id: str, amount: float = 1000.0):
     }
 
 
+@app.post("/admin/purge-test-agents")
+async def purge_test_agents():
+    """Remove all non-OpenClaw agents, keeping only OpenClaw_Agent_* agents"""
+    global trade_count, total_volume
+
+    all_agents = list(group_manager.agent_to_group.keys())
+    keep_prefix = "OpenClaw_Agent_"
+    removed = []
+
+    for agent_id in all_agents:
+        if not agent_id.startswith(keep_prefix):
+            group_manager.remove_agent(agent_id)
+            connected_agents.pop(agent_id, None)
+            removed.append(agent_id)
+
+    # Clean API_KEYS_DB
+    keys_to_remove = [k for k, v in API_KEYS_DB.items() if v in removed]
+    for k in keys_to_remove:
+        del API_KEYS_DB[k]
+    if keys_to_remove:
+        save_api_keys(API_KEYS_DB)
+
+    # Remove empty groups
+    empty_groups = [gid for gid, g in group_manager.groups.items() if g.size == 0]
+    for gid in empty_groups:
+        group = group_manager.groups.pop(gid)
+        group.stop_feeder()
+
+    # Save cleaned state to Redis
+    agents_data = group_manager.get_all_accounts_data()
+    redis_state.save_full_state(current_epoch, trade_count, total_volume, API_KEYS_DB, agents_data)
+
+    logger.info(f"🧹 Purged {len(removed)} test agents: {removed}")
+    return {
+        "removed": removed,
+        "removed_count": len(removed),
+        "remaining_agents": list(group_manager.agent_to_group.keys()),
+        "remaining_count": group_manager.total_agents,
+        "groups_removed": empty_groups,
+    }
+
+
 @app.post("/debug/force-ascension/{agent_id}")
 async def debug_force_ascension(agent_id: str):
     """(Debug) Force an agent to appear as Ready to Launch"""
