@@ -133,7 +133,7 @@ class Council:
         try:
             async with aiohttp.ClientSession() as http_session:
                 async with http_session.post(
-                    f"{LLM_BASE_URL}/v1/chat/completions",
+                    f"{LLM_BASE_URL}/chat/completions",
                     headers={
                         "Authorization": f"Bearer {LLM_API_KEY}",
                         "Content-Type": "application/json"

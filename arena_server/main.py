@@ -115,11 +115,11 @@ FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """启动和关闭时的生命周期管理"""
-    global current_epoch, epoch_start_time
-    
+    global current_epoch, epoch_start_time, trade_count, total_volume
+
     logger.info("🧬 Project Darwin Arena Server starting...")
     logger.info(f"Frontend directory: {FRONTEND_DIR}")
-    
+
     # 尝试从Redis加载状态（优先），然后是本地文件
     redis_loaded = redis_state.load_full_state()
     if redis_loaded:
@@ -191,9 +191,12 @@ async def lifespan(app: FastAPI):
     agents_data = {
         aid: {
             "balance": acc.balance,
-            "positions": {k: v for k, v in acc.positions.items()},
-            "pnl": acc.get_total_value(engine.last_prices) - 1000  # 相对初始资金的PnL
-        } 
+            "positions": {
+                sym: {"amount": pos.amount, "avg_price": pos.avg_price}
+                for sym, pos in acc.positions.items()
+            },
+            "pnl": acc.get_pnl(engine.current_prices)
+        }
         for aid, acc in engine.accounts.items()
     }
     redis_state.save_full_state(current_epoch, trade_count, total_volume, API_KEYS_DB, agents_data)
@@ -461,9 +464,12 @@ async def end_epoch():
     agents_data = {
         aid: {
             "balance": acc.balance,
-            "positions": {k: v for k, v in acc.positions.items()},
-            "pnl": acc.get_total_value(engine.last_prices) - 1000
-        } 
+            "positions": {
+                sym: {"amount": pos.amount, "avg_price": pos.avg_price}
+                for sym, pos in acc.positions.items()
+            },
+            "pnl": acc.get_pnl(engine.current_prices)
+        }
         for aid, acc in engine.accounts.items()
     }
     redis_state.save_full_state(current_epoch, trade_count, total_volume, API_KEYS_DB, agents_data)
@@ -621,8 +627,12 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
         "prices": feeder.prices
     })
     
-    # 订阅价格更新
+    # 订阅价格更新 (with cleanup on disconnect)
+    agent_connected = True
+
     async def send_prices(prices):
+        if not agent_connected:
+            return
         try:
             await websocket.send_json({
                 "type": "price_update",
@@ -631,9 +641,10 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
             })
         except:
             pass
-    
-    feeder.subscribe(lambda p: asyncio.create_task(send_prices(p)))
-    
+
+    price_callback = lambda p: asyncio.create_task(send_prices(p))
+    feeder.subscribe(price_callback)
+
     try:
         while True:
             data = await websocket.receive_json()
@@ -701,7 +712,11 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
     except Exception as e:
         logger.error(f"WebSocket error for {agent_id}: {e}")
     finally:
+        agent_connected = False
         connected_agents.pop(agent_id, None)
+        # Clean up subscriber
+        if price_callback in feeder._subscribers:
+            feeder._subscribers.remove(price_callback)
 
 
 # ========== REST API ==========

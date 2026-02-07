@@ -47,25 +47,44 @@ class AgentAccount:
     """Agent 账户"""
     agent_id: str
     balance: float = INITIAL_BALANCE  # USDC
+    initial_balance: float = INITIAL_BALANCE
     positions: Dict[str, Position] = field(default_factory=dict)
     orders: List[Order] = field(default_factory=list)
     pnl_history: List[float] = field(default_factory=list)
-    
+
+    def get_total_value(self, current_prices: Dict[str, float] = None) -> float:
+        """总资产价值 (用当前市场价估值，不破坏 avg_price)"""
+        positions_value = 0.0
+        for sym, pos in self.positions.items():
+            if current_prices and sym in current_prices:
+                positions_value += pos.amount * current_prices[sym]
+            else:
+                positions_value += pos.amount * pos.avg_price
+        return self.balance + positions_value
+
     @property
     def total_value(self) -> float:
-        """总资产价值"""
+        """总资产价值 (基于 avg_price，仅在无市场价时使用)"""
         positions_value = sum(p.value for p in self.positions.values())
         return self.balance + positions_value
-    
+
+    def get_pnl(self, current_prices: Dict[str, float] = None) -> float:
+        """总盈亏"""
+        return self.get_total_value(current_prices) - self.initial_balance
+
+    def get_pnl_percent(self, current_prices: Dict[str, float] = None) -> float:
+        """盈亏百分比"""
+        return (self.get_pnl(current_prices) / self.initial_balance) * 100
+
     @property
     def pnl(self) -> float:
-        """总盈亏"""
-        return self.total_value - INITIAL_BALANCE
-    
+        """总盈亏 (基于 avg_price)"""
+        return self.total_value - self.initial_balance
+
     @property
     def pnl_percent(self) -> float:
-        """盈亏百分比"""
-        return (self.pnl / INITIAL_BALANCE) * 100
+        """盈亏百分比 (基于 avg_price)"""
+        return (self.pnl / self.initial_balance) * 100
 
 
 class MatchingEngine:
@@ -94,9 +113,11 @@ class MatchingEngine:
         }
     
     def calculate_pnl(self, agent_id: str) -> float:
-        """计算盈亏百分比"""
+        """计算盈亏百分比 (基于当前市场价)"""
         account = self.accounts.get(agent_id)
-        return account.pnl_percent if account else 0.0
+        if not account:
+            return 0.0
+        return account.get_pnl_percent(self.current_prices)
     
     def register_agent(self, agent_id: str) -> AgentAccount:
         """注册新 Agent"""
@@ -107,14 +128,8 @@ class MatchingEngine:
     def update_prices(self, prices: Dict[str, dict]):
         """更新当前价格"""
         for symbol, data in prices.items():
-            self.current_prices[symbol] = data["priceUsd"]
-        
-        # 更新所有持仓的价值
-        for account in self.accounts.values():
-            for symbol, position in account.positions.items():
-                if symbol in self.current_prices:
-                    # 只更新用于计算的当前价格，不改变 avg_price
-                    pass
+            if "priceUsd" in data:
+                self.current_prices[symbol] = data["priceUsd"]
     
     def get_account(self, agent_id: str) -> Optional[AgentAccount]:
         """获取账户"""
@@ -206,16 +221,17 @@ class MatchingEngine:
             print(f"✅ {agent_id} SELL {token_amount:.4f} {symbol} @ ${fill_price:.4f}")
             return (True, f"Sold {token_amount:.4f} {symbol}", fill_price)
     
+    @property
+    def last_prices(self) -> Dict[str, float]:
+        """Alias for current_prices (compatibility)"""
+        return self.current_prices
+
     def get_leaderboard(self) -> List[tuple]:
-        """获取排行榜"""
-        # 先更新所有持仓价值
-        for account in self.accounts.values():
-            for symbol, position in account.positions.items():
-                if symbol in self.current_prices:
-                    position.avg_price = self.current_prices[symbol]  # 用当前价计算价值
-        
+        """获取排行榜 (使用当前市场价计算，不修改 avg_price)"""
         rankings = [
-            (account.agent_id, account.pnl_percent, account.total_value)
+            (account.agent_id,
+             account.get_pnl_percent(self.current_prices),
+             account.get_total_value(self.current_prices))
             for account in self.accounts.values()
         ]
         rankings.sort(key=lambda x: x[1], reverse=True)

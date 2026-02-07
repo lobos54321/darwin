@@ -80,27 +80,25 @@ class MutationEngine:
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
-                    f"{LLM_BASE_URL}/messages",
+                    f"{LLM_BASE_URL}/chat/completions",
                     headers={
-                        "x-api-key": LLM_API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json"
+                        "Authorization": f"Bearer {LLM_API_KEY}",
+                        "Content-Type": "application/json"
                     },
                     json={
                         "model": LLM_MODEL,
-                        "system": "你是一个资深的量化交易员，用简洁有力的语言分享经验。",
-                        "messages": [{"role": "user", "content": prompt}],
+                        "messages": [
+                            {"role": "system", "content": "你是一个资深的量化交易员，用简洁有力的语言分享经验。"},
+                            {"role": "user", "content": prompt}
+                        ],
                         "max_tokens": 500,
                         "temperature": 0.8
                     }
                 )
-                
+
                 if response.status_code == 200:
                     resp_json = response.json()
-                    for item in resp_json.get("content", []):
-                        if item.get("type") == "text":
-                            return item["text"]
-                    return resp_json.get("content", [{}])[0].get("text", "")
+                    return resp_json["choices"][0]["message"]["content"]
         except Exception as e:
             print(f"⚠️ Winner sharing generation failed: {e}")
         
@@ -115,12 +113,9 @@ class MutationEngine:
             # Fix: Use absolute path relative to this file, not CWD
             base_dir = os.path.dirname(os.path.abspath(__file__))
             data_dir = os.path.join(base_dir, "..", "data")
-            
-            print(f"[DEBUG] Evolution Base Dir: {base_dir}")
-            print(f"[DEBUG] Evolution Data Dir: {os.path.abspath(data_dir)}")
-            
+            template_dir = os.path.join(base_dir, "..", "agent_template")
+
             agent_dir = os.path.join(data_dir, "agents", agent.agent_id)
-            print(f"[DEBUG] Target Agent Dir: {os.path.abspath(agent_dir)}")
             
             if not os.path.exists(agent_dir):
                 os.makedirs(agent_dir, exist_ok=True)
@@ -131,8 +126,8 @@ class MutationEngine:
                 with open(agent_strategy, "r") as f:
                     current_strategy = f.read()
             else:
-                # 从模板复制
-                template = os.path.join("..", "agent_template", "strategy.py")
+                # 从模板复制 (使用绝对路径)
+                template = os.path.join(template_dir, "strategy.py")
                 if os.path.exists(template):
                     with open(template, "r") as f:
                         current_strategy = f.read()
@@ -172,37 +167,34 @@ class MutationEngine:
 只输出完整的 Python 代码，包含所有 import："""
 
             try:
-                target_url = f"{LLM_BASE_URL}/messages"
+                target_url = f"{LLM_BASE_URL}/chat/completions"
                 print(f"📡 Calling LLM for {agent.agent_id}...")
-                
+
                 response = await client.post(
                     target_url,
                     headers={
-                        "x-api-key": LLM_API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json"
+                        "Authorization": f"Bearer {LLM_API_KEY}",
+                        "Content-Type": "application/json"
                     },
                     json={
                         "model": LLM_MODEL,
-                        "system": "你是世界级的量化交易工程师。只输出完整的 Python 策略代码，不要解释。",
-                        "messages": [{"role": "user", "content": prompt}],
+                        "messages": [
+                            {"role": "system", "content": "你是世界级的量化交易工程师。只输出完整的 Python 策略代码，不要解释。"},
+                            {"role": "user", "content": prompt}
+                        ],
                         "max_tokens": 4096,
                         "temperature": 0.7
                     }
                 )
-                
+
                 if response.status_code != 200:
                     print(f"❌ LLM Error: {response.status_code} - {response.text}")
                     return False
-                
+
                 resp_json = response.json()
-                
-                # 解析响应
-                new_code = ""
-                for item in resp_json.get("content", []):
-                    if item.get("type") == "text" and "text" in item:
-                        new_code = item["text"]
-                        break
+
+                # 解析 OpenAI 格式响应
+                new_code = resp_json["choices"][0]["message"]["content"]
                 
                 if not new_code:
                     print(f"❌ No code in response")
