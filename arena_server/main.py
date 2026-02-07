@@ -1672,6 +1672,34 @@ async def purge_test_agents():
     }
 
 
+@app.post("/admin/reset-arena")
+async def reset_arena():
+    """Reset all agents to fresh $1000 balance, clear positions and trade history"""
+    global trade_count, total_volume, current_epoch
+
+    reset_agents = []
+    for group in group_manager.groups.values():
+        for agent_id, account in group.engine.accounts.items():
+            account.balance = INITIAL_BALANCE
+            account.positions.clear()
+            reset_agents.append(agent_id)
+        group.engine.trade_history.clear()
+        group.engine.order_count = 0
+
+    trade_count = 0
+    total_volume = 0.0
+    current_epoch += 1
+
+    save_all_state_to_redis()
+
+    logger.info(f"🔄 Arena reset! {len(reset_agents)} agents reset to ${INITIAL_BALANCE}")
+    return {
+        "status": "ok",
+        "reset_agents": reset_agents,
+        "new_epoch": current_epoch,
+    }
+
+
 @app.post("/debug/force-ascension/{agent_id}")
 async def debug_force_ascension(agent_id: str):
     """(Debug) Force an agent to appear as Ready to Launch"""
