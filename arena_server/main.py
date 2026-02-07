@@ -457,7 +457,7 @@ async def end_epoch():
 # ========== 鉴权 API ==========
 
 # === Agent 数量限制 ===
-MAX_AGENTS_PER_IP = 5  # 每个IP最多5个Agent
+from config import MAX_AGENTS_PER_IP
 ip_agent_count: Dict[str, int] = {}  # IP -> count
 
 @app.post("/auth/register")
