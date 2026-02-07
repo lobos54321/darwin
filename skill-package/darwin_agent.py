@@ -451,7 +451,28 @@ async def run_agent(agent_id, arena_url):
         sys.exit(1)
 
     strategy = ProStrategy()
-    logger.info(f"Agent '{agent_id}' v3.0 starting...")
+
+    # Give each agent a unique personality/specialty based on ID
+    agent_num = int(agent_id.split("_")[-1]) if "_" in agent_id else hash(agent_id) % 6
+    AGENT_PROFILES = {
+        1: {"name": "DipHunter", "focus": "DIP_BUY", "bias": {"dip_buy_weight": 1.3, "stoch_oversold": 18, "risk_per_trade": 25}},
+        2: {"name": "MomentumRider", "focus": "MOMENTUM", "bias": {"momentum_weight": 1.3, "ema_fast": 4, "ema_slow": 10}},
+        3: {"name": "BreakoutScout", "focus": "BREAKOUT", "bias": {"breakout_weight": 1.3, "keltner_period": 8, "atr_mult": 1.8}},
+        4: {"name": "TrendFollower", "focus": "TREND_FOLLOW", "bias": {"trend_weight": 1.3, "ema_slow": 14, "trailing_activate": 0.012}},
+        5: {"name": "RiskManager", "focus": "STOP_LOSS", "bias": {"risk_per_trade": 20, "stop_loss_pct": 0.04, "take_profit_pct": 0.035}},
+        6: {"name": "Opportunist", "focus": "ALL", "bias": {"max_position_pct": 0.18, "risk_per_trade": 35, "trailing_stop_pct": 0.02}},
+    }
+    profile = AGENT_PROFILES.get(agent_num, AGENT_PROFILES[1])
+    for param, val in profile["bias"].items():
+        if hasattr(strategy, param):
+            setattr(strategy, param, val)
+
+    # Track this agent's trade outcomes for council discussion
+    agent_trade_log = []  # [{symbol, side, value, reason, pnl, epoch}]
+    agent_specialty = profile["name"]
+    agent_focus = profile["focus"]
+
+    logger.info(f"Agent '{agent_id}' v3.0 starting as {agent_specialty} (focus: {agent_focus})...")
 
     async with aiohttp.ClientSession() as session:
         # 1. Register
@@ -502,6 +523,20 @@ async def run_agent(agent_id, arena_url):
 
                         elif msg_type == "order_result":
                             if data.get("success"):
+                                # Track trade for council discussion
+                                trade_info = data.get("trade", {})
+                                if trade_info:
+                                    agent_trade_log.append({
+                                        "symbol": trade_info.get("symbol", ""),
+                                        "side": trade_info.get("side", ""),
+                                        "value": trade_info.get("value", 0),
+                                        "reason": trade_info.get("reason", []),
+                                        "pnl": trade_info.get("trade_pnl"),
+                                    })
+                                    # Keep last 50 trades
+                                    if len(agent_trade_log) > 50:
+                                        agent_trade_log.pop(0)
+
                                 strategy.balance = data.get("balance", strategy.balance)
                                 strategy.current_positions = {}
                                 strategy.entry_prices = {}
@@ -532,123 +567,201 @@ async def run_agent(agent_id, arena_url):
                                 rankings = data.get("agent_rankings", {})
                                 hive = data.get("hive_alpha", {})
                                 recent = data.get("recent_trades", [])
+                                epoch = data.get("epoch", "?")
 
-                                # Build data-driven council message
                                 my_data = rankings.get(agent_id, {}) if rankings else {}
                                 my_pnl = my_data.get("pnl_pct", 0)
                                 my_bal = my_data.get("balance", strategy.balance)
-                                my_pos = my_data.get("positions", {})
 
-                                # Analyze which of MY tags worked
-                                my_trades = [t for t in recent if t.get("agent_id") == agent_id]
-                                winning_tags = []
-                                losing_tags = []
-                                for t in my_trades:
-                                    if t.get("trade_pnl") is not None:
-                                        for tag in t.get("reason", []):
-                                            if t["trade_pnl"] > 0:
-                                                winning_tags.append(tag)
-                                            else:
-                                                losing_tags.append(tag)
+                                # Compute my own trade stats from local log
+                                my_wins = sum(1 for t in agent_trade_log if t.get("pnl") and t["pnl"] > 0)
+                                my_losses = sum(1 for t in agent_trade_log if t.get("pnl") and t["pnl"] <= 0)
+                                my_total = my_wins + my_losses
+                                my_wr = round(my_wins / my_total * 100) if my_total > 0 else 0
 
-                                # Winner analysis
-                                winner_data = rankings.get(winner, {}) if rankings and winner else {}
-                                winner_pnl = winner_data.get("pnl_pct", 0)
+                                # Tag performance from local trades
+                                tag_stats = {}
+                                for t in agent_trade_log:
+                                    for tag in t.get("reason", []):
+                                        if tag not in tag_stats:
+                                            tag_stats[tag] = {"wins": 0, "losses": 0, "total_pnl": 0}
+                                        if t.get("pnl") and t["pnl"] > 0:
+                                            tag_stats[tag]["wins"] += 1
+                                        elif t.get("pnl"):
+                                            tag_stats[tag]["losses"] += 1
+                                        tag_stats[tag]["total_pnl"] += t.get("pnl", 0) or 0
 
-                                # Hive alpha insights
-                                best_tag = max(hive, key=lambda t: hive[t].get("win_rate", 0)) if hive else None
-                                worst_tag = min(hive, key=lambda t: hive[t].get("win_rate", 100)) if hive else None
+                                # Build specialty-driven message
+                                parts = [f"[{agent_specialty}] ${my_bal:.0f} ({my_pnl:+.1f}%) WR:{my_wr}%/{my_total}trades."]
 
-                                # Build thoughtful message
-                                parts = []
-                                parts.append(f"Balance: ${my_bal:.0f} ({my_pnl:+.1f}%).")
+                                # Specialty-specific insight
+                                if agent_focus == "DIP_BUY":
+                                    dip_data = tag_stats.get("DIP_BUY", {})
+                                    if dip_data.get("wins", 0) + dip_data.get("losses", 0) > 0:
+                                        dip_wr = round(dip_data["wins"] / (dip_data["wins"] + dip_data["losses"]) * 100)
+                                        parts.append(f"DIP_BUY analysis: {dip_wr}% win rate, net ${dip_data['total_pnl']:.1f}.")
+                                        if dip_wr < 40:
+                                            parts.append(f"Proposal: StochRSI oversold at {strategy.stoch_oversold} may be too high — should lower to catch real dips.")
+                                        elif dip_wr > 60:
+                                            parts.append(f"DIP_BUY is our best edge. Consider increasing position size on dip signals.")
+                                    else:
+                                        parts.append(f"No DIP_BUY data yet. StochRSI oversold={strategy.stoch_oversold}, watching for entry.")
 
-                                if my_pos:
-                                    pos_str = ", ".join(f"{s} ({p.get('amount', 0):.3f})" for s, p in my_pos.items())
-                                    parts.append(f"Holding: {pos_str}.")
+                                elif agent_focus == "MOMENTUM":
+                                    mom_data = tag_stats.get("MOMENTUM", {})
+                                    parts.append(f"EMA crossover analysis: fast={strategy.ema_fast}, slow={strategy.ema_slow}.")
+                                    if mom_data.get("wins", 0) + mom_data.get("losses", 0) > 0:
+                                        mom_wr = round(mom_data["wins"] / (mom_data["wins"] + mom_data["losses"]) * 100)
+                                        parts.append(f"MOMENTUM {mom_wr}% WR. {'Consider tighter EMA gap for faster signals.' if mom_wr < 45 else 'Working well — maintain current EMA config.'}")
+                                    else:
+                                        parts.append("Waiting for momentum signals. Market may be range-bound.")
 
-                                if winning_tags:
-                                    parts.append(f"Winning tags: {', '.join(set(winning_tags))}.")
-                                if losing_tags:
-                                    parts.append(f"Losing tags: {', '.join(set(losing_tags))}.")
+                                elif agent_focus == "BREAKOUT":
+                                    brk_data = tag_stats.get("BREAKOUT", {})
+                                    parts.append(f"Keltner channels: period={strategy.keltner_period}, ATR mult={strategy.atr_mult}.")
+                                    if brk_data.get("wins", 0) + brk_data.get("losses", 0) > 0:
+                                        brk_wr = round(brk_data["wins"] / (brk_data["wins"] + brk_data["losses"]) * 100)
+                                        parts.append(f"BREAKOUT {brk_wr}% WR. {'Many false breakouts — widen channel or add volume filter.' if brk_wr < 40 else 'Breakouts are profitable. Look for high-vol setups.'}")
+                                    else:
+                                        parts.append("No breakouts triggered — volatility may be too low for channel breaks.")
 
-                                if best_tag and hive[best_tag].get("win_rate", 0) > 55:
-                                    parts.append(f"Global alpha: {best_tag} has {hive[best_tag]['win_rate']}% win rate over {hive[best_tag].get('count', 0)} trades.")
-                                if worst_tag and hive.get(worst_tag, {}).get("win_rate", 100) < 45:
-                                    parts.append(f"Warning: {worst_tag} only {hive[worst_tag]['win_rate']}% win rate — should we avoid it?")
+                                elif agent_focus == "TREND_FOLLOW":
+                                    trend_data = tag_stats.get("TREND_FOLLOW", {})
+                                    parts.append(f"Trend system: EMA slow={strategy.ema_slow}, trailing activate={strategy.trailing_activate*100:.1f}%.")
+                                    if trend_data.get("wins", 0) + trend_data.get("losses", 0) > 0:
+                                        trd_wr = round(trend_data["wins"] / (trend_data["wins"] + trend_data["losses"]) * 100)
+                                        parts.append(f"TREND_FOLLOW {trd_wr}% WR. {'Trends are short — consider faster exit.' if trd_wr < 40 else 'Trend following is key alpha source.'}")
+                                    else:
+                                        parts.append("No trend signals yet. MACD histogram may need recalibration.")
 
+                                elif agent_focus == "STOP_LOSS":
+                                    sl_data = tag_stats.get("STOP_LOSS", {})
+                                    total_sl = sl_data.get("wins", 0) + sl_data.get("losses", 0)
+                                    parts.append(f"Risk params: SL={strategy.stop_loss_pct*100:.1f}%, TP={strategy.take_profit_pct*100:.1f}%, risk/trade=${strategy.risk_per_trade:.0f}.")
+                                    if total_sl > 0:
+                                        avg_sl_loss = sl_data["total_pnl"] / total_sl if total_sl else 0
+                                        parts.append(f"STOP_LOSS triggered {total_sl}x, avg loss ${avg_sl_loss:.2f}. {'SL too tight — widening could reduce whipsaws.' if total_sl > 5 else 'SL frequency normal.'}")
+                                    tp_data = tag_stats.get("TAKE_PROFIT", {})
+                                    if tp_data.get("wins", 0) > 0:
+                                        parts.append(f"TP hit {tp_data['wins']}x, avg gain ${tp_data['total_pnl']/tp_data['wins']:.2f}. {'TP too early — could capture more upside.' if tp_data['wins'] > 3 else 'TP level adequate.'}")
+
+                                else:  # Opportunist
+                                    # Overview all tags
+                                    if tag_stats:
+                                        best_local = max(tag_stats, key=lambda t: tag_stats[t].get("total_pnl", 0))
+                                        worst_local = min(tag_stats, key=lambda t: tag_stats[t].get("total_pnl", 0))
+                                        parts.append(f"Cross-strategy view: best={best_local} (${tag_stats[best_local]['total_pnl']:.1f}), worst={worst_local} (${tag_stats[worst_local]['total_pnl']:.1f}).")
+                                        parts.append(f"Proposal: shift capital from {worst_local} to {best_local}.")
+                                    else:
+                                        parts.append(f"Scanning all strategies. Position sizing at {strategy.max_position_pct*100:.0f}%.")
+
+                                # Hive alpha cross-reference
+                                if hive:
+                                    best_global = max(hive, key=lambda t: hive[t].get("win_rate", 0))
+                                    worst_global = min(hive, key=lambda t: hive[t].get("win_rate", 100))
+                                    best_wr = hive[best_global].get("win_rate", 0)
+                                    worst_wr = hive[worst_global].get("win_rate", 100)
+                                    if best_wr > 55:
+                                        parts.append(f"Hive confirms: {best_global} leads at {best_wr}% WR globally.")
+                                    if worst_wr < 40:
+                                        parts.append(f"Hive warning: {worst_global} underperforming at {worst_wr}% WR — penalize?")
+
+                                # Winner analysis from this agent's perspective
                                 if role == "winner":
-                                    parts.append(f"As winner: my edge was {strategy.vol_regime} regime detection with adaptive thresholds.")
-                                elif winner_pnl > 0 and my_pnl < 0:
-                                    parts.append(f"Winner {winner} has {winner_pnl:+.1f}% — I need to study their approach.")
-
-                                # Strategy weights insight
-                                weights = {
-                                    "dip": strategy.dip_buy_weight,
-                                    "mom": strategy.momentum_weight,
-                                    "brk": strategy.breakout_weight,
-                                    "trd": strategy.trend_weight
-                                }
-                                adjusted = {k: v for k, v in weights.items() if v != 1.0}
-                                if adjusted:
-                                    w_str = ", ".join(f"{k}={v:.1f}" for k, v in adjusted.items())
-                                    parts.append(f"My weights adjusted: {w_str}.")
-
-                                # Strategy intent for next epoch
-                                regime = strategy.vol_regime
-                                parts.append(f"Regime: {regime}. Plan: {'tighten entries' if regime == 'high' else 'wider exposure' if regime == 'low' else 'maintain current params'}.")
+                                    parts.append(f"As winner, my edge: {agent_focus} focus + {strategy.vol_regime} regime adaptation.")
+                                elif winner and winner != agent_id:
+                                    winner_data = rankings.get(winner, {})
+                                    if winner_data.get("pnl_pct", 0) > my_pnl:
+                                        gap = winner_data["pnl_pct"] - my_pnl
+                                        parts.append(f"Gap to winner: {gap:.1f}pp. Question: what signal type drove their edge?")
 
                                 msg_content = " ".join(parts)
                                 await ws.send_json({"type": "council_submit", "role": role, "content": msg_content})
-                                logger.info(f"Council: {msg_content[:100]}...")
+                                logger.info(f"Council: {msg_content[:120]}...")
                             except Exception as e:
                                 logger.error(f"Council open error: {e}")
-                                # Send fallback message so we still participate
-                                fallback = f"Balance: ${strategy.balance:.0f}. Regime: {strategy.vol_regime}. Ready to discuss."
+                                fallback = f"[{agent_specialty}] ${strategy.balance:.0f}. Regime: {strategy.vol_regime}. Focus: {agent_focus}."
                                 await ws.send_json({"type": "council_submit", "role": "insight", "content": fallback})
                                 logger.info(f"Council (fallback): {fallback}")
 
                         elif msg_type == "council_message":
-                            # Another agent shared their analysis
                             other = data.get("agent_id", "")
                             other_content = data.get("content", "")
                             if other == agent_id:
                                 continue  # Skip own messages
-                            if council_reply_count >= 2:
-                                continue  # Max 2 replies per council session
+                            if council_reply_count >= 1:
+                                continue  # Max 1 reply per council — keep it focused
 
-                            # Decide whether to respond based on content relevance
+                            # Only respond if the other agent's message is relevant to our specialty
                             should_respond = False
-                            response_parts = []
+                            response_parts = [f"[{agent_specialty}]"]
 
-                            # Respond if they mention a tag we have experience with
-                            for tag in ["DIP_BUY", "MOMENTUM", "BREAKOUT", "STOP_LOSS", "TAKE_PROFIT", "TREND_FOLLOW"]:
-                                if tag in other_content:
-                                    if tag in strategy.banned_tags:
-                                        response_parts.append(f"Re {tag}: Hive Mind penalized it, I've banned it too.")
-                                        should_respond = True
-                                    elif tag in [t for sublist in [["DIP_BUY", "OVERSOLD"], ["MOMENTUM", "EMA_CROSS"]] for t in sublist]:
-                                        my_regime = strategy.vol_regime
-                                        response_parts.append(f"My view on {tag}: in {my_regime} regime, {'it works better' if my_regime == 'low' and tag == 'DIP_BUY' else 'risky' if my_regime == 'high' else 'standard conditions'}.")
-                                        should_respond = True
-                                        break
+                            # Check if they mention our focus area or a tag we have data on
+                            if agent_focus in other_content:
+                                # They're discussing our specialty — we have authority to speak
+                                my_tag_data = {}
+                                for t in agent_trade_log:
+                                    for tag in t.get("reason", []):
+                                        if tag == agent_focus:
+                                            if tag not in my_tag_data:
+                                                my_tag_data[tag] = {"wins": 0, "losses": 0, "pnl": 0}
+                                            if t.get("pnl") and t["pnl"] > 0:
+                                                my_tag_data[tag]["wins"] += 1
+                                            elif t.get("pnl"):
+                                                my_tag_data[tag]["losses"] += 1
+                                            my_tag_data[tag]["pnl"] += t.get("pnl", 0) or 0
 
-                            # Respond if they mention regime
-                            if "regime" in other_content.lower() and not should_respond:
-                                response_parts.append(f"Confirmed: I also detect {strategy.vol_regime} regime. {'Agree on tightening' if strategy.vol_regime == 'high' else 'Agree on wider entries' if strategy.vol_regime == 'low' else 'Normal conditions here too'}.")
+                                if agent_focus in my_tag_data:
+                                    d = my_tag_data[agent_focus]
+                                    total = d["wins"] + d["losses"]
+                                    wr = round(d["wins"] / total * 100) if total > 0 else 0
+                                    response_parts.append(f"As {agent_focus} specialist: {wr}% WR over {total} trades, net ${d['pnl']:.1f}.")
+                                    if "lower" in other_content.lower() or "reduce" in other_content.lower():
+                                        response_parts.append(f"{'Agree — data supports reducing weight.' if wr < 45 else 'Disagree — my data shows it still works.'}")
+                                    elif "increase" in other_content.lower() or "more" in other_content.lower():
+                                        response_parts.append(f"{'Agree — profitable signal, increase allocation.' if wr > 55 else 'Caution — WR does not support scaling up.'}")
+                                else:
+                                    response_parts.append(f"No {agent_focus} trades yet to validate. Watching.")
                                 should_respond = True
 
-                            # Respond if they mention winner and we disagree
-                            if "winner" in other_content.lower() and not should_respond:
-                                my_pnl_now = ((strategy.balance - 1000) / 1000 * 100)
-                                response_parts.append(f"My PnL is {my_pnl_now:+.1f}%. {'I think position sizing matters more than entry signals.' if my_pnl_now < 0 else 'Trailing stops have been key for me.'}")
+                            # If they propose changing a param we care about
+                            elif any(kw in other_content.lower() for kw in ["stop_loss", "sl", "risk"]) and agent_focus == "STOP_LOSS":
+                                sl_pct = strategy.stop_loss_pct * 100
+                                response_parts.append(f"Risk perspective: current SL={sl_pct:.1f}%, risk/trade=${strategy.risk_per_trade:.0f}.")
+                                sl_trades = sum(1 for t in agent_trade_log if "STOP_LOSS" in t.get("reason", []))
+                                if sl_trades > 3:
+                                    response_parts.append(f"SL triggered {sl_trades}x — {'too tight, widen SL.' if sl_trades > 8 else 'frequency acceptable.'}")
                                 should_respond = True
 
-                            if should_respond and response_parts:
+                            # If they mention a tag we have contrasting data on
+                            elif any(tag in other_content for tag in ["DIP_BUY", "MOMENTUM", "BREAKOUT", "TREND_FOLLOW"]):
+                                mentioned_tag = next(t for t in ["DIP_BUY", "MOMENTUM", "BREAKOUT", "TREND_FOLLOW"] if t in other_content)
+                                # Only respond if we have data AND it contradicts
+                                my_stats = {}
+                                for t in agent_trade_log:
+                                    if mentioned_tag in t.get("reason", []):
+                                        if mentioned_tag not in my_stats:
+                                            my_stats[mentioned_tag] = {"wins": 0, "losses": 0}
+                                        if t.get("pnl") and t["pnl"] > 0:
+                                            my_stats[mentioned_tag]["wins"] += 1
+                                        elif t.get("pnl"):
+                                            my_stats[mentioned_tag]["losses"] += 1
+
+                                if mentioned_tag in my_stats:
+                                    d = my_stats[mentioned_tag]
+                                    total = d["wins"] + d["losses"]
+                                    wr = round(d["wins"] / total * 100) if total > 0 else 0
+                                    # Check if other seems positive but our data is negative, or vice versa
+                                    other_positive = any(w in other_content.lower() for w in ["profitable", "edge", "best", "works", "increase"])
+                                    if (other_positive and wr < 40) or (not other_positive and wr > 60):
+                                        response_parts.append(f"Contrasting data on {mentioned_tag}: my WR={wr}% ({total} trades). {'My data disagrees — underperforming for me.' if wr < 40 else 'Actually performing well in my portfolio.'}")
+                                        should_respond = True
+
+                            if should_respond and len(response_parts) > 1:
                                 response = f"@{other}: " + " ".join(response_parts)
                                 await ws.send_json({"type": "council_submit", "role": "insight", "content": response})
                                 council_reply_count += 1
-                                logger.info(f"Council reply ({council_reply_count}/2) to {other}: {response[:80]}...")
+                                logger.info(f"Council reply ({council_reply_count}/1) to {other}: {response[:100]}...")
 
                         elif msg_type == "hive_patch":
                             params = data.get("parameters", {})
