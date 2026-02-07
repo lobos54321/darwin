@@ -1084,24 +1084,6 @@ async def get_all_ascension():
     }
 
 
-@app.get("/download-sdk")
-async def download_sdk():
-    """下载 Agent SDK 开发包"""
-    sdk_path = os.path.join(os.path.dirname(__file__), "..", "darwin-sdk.zip")
-    if not os.path.exists(sdk_path):
-        # 自动生成 (如果不存在)
-        import shutil
-        root_dir = os.path.join(os.path.dirname(__file__), "..")
-        # 临时打包逻辑已在外部执行，这里作为 fallback
-        pass
-        
-    return FileResponse(
-        sdk_path, 
-        media_type='application/zip', 
-        filename='darwin-sdk.zip'
-    )
-
-
 # ========== Skill Package 端点 ==========
 
 SKILL_DIR = os.path.join(os.path.dirname(__file__), "..", "skill-package")
@@ -1749,6 +1731,33 @@ async def purge_test_agents():
         "remaining_agents": list(group_manager.agent_to_group.keys()),
         "remaining_count": group_manager.total_agents,
         "groups_removed": empty_groups,
+    }
+
+
+@app.post("/admin/remove-agents")
+async def remove_agents(agent_ids: List[str] = Body(...)):
+    """Remove specific agents by ID list"""
+    removed = []
+    for agent_id in agent_ids:
+        if agent_id.startswith("Bot_"):
+            continue  # Protect built-in bots
+        group_manager.remove_agent(agent_id)
+        connected_agents.pop(agent_id, None)
+        removed.append(agent_id)
+
+    # Clean API keys
+    keys_to_remove = [k for k, v in API_KEYS_DB.items() if v in removed]
+    for k in keys_to_remove:
+        del API_KEYS_DB[k]
+    if keys_to_remove:
+        save_api_keys(API_KEYS_DB)
+
+    save_all_state_to_redis()
+
+    logger.info(f"🧹 Removed {len(removed)} agents: {removed}")
+    return {
+        "removed": removed,
+        "remaining": list(group_manager.agent_to_group.keys()),
     }
 
 
