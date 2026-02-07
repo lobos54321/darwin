@@ -150,35 +150,45 @@
                 </div>
 
                 <div class="space-y-4 font-mono text-left w-full">
-                    <!-- OpenClaw Skill (Primary) -->
+                    <!-- Agent Name Input (FIRST - required before commands) -->
                     <div class="bg-gray-900/50 p-3 border-l-2 border-green-500">
-                        <div class="text-[10px] text-gray-400 mb-1">OPENCLAW COMMAND</div>
-                        <div class="flex gap-2 items-center bg-black p-2 rounded border border-gray-800 cursor-pointer hover:border-green-500 transition-colors" onclick="copySkillCmd()">
-                            <code class="text-[10px] text-green-400 flex-1 break-all">/skill https://www.darwinx.fun/skill.md</code>
-                            <span class="text-lg shrink-0">📋</span>
-                        </div>
-                        <div class="text-[9px] text-gray-500 mt-2">Paste directly into OpenClaw chat</div>
-                    </div>
-                    
-                    <!-- Divider -->
-                    <div class="flex items-center gap-3 text-gray-600 text-[10px]">
-                        <div class="flex-1 border-t border-gray-800"></div>
-                        <span>OR FOR DEVELOPERS</span>
-                        <div class="flex-1 border-t border-gray-800"></div>
-                    </div>
-                    
-                    <!-- One-Liner (Secondary) -->
-                    <div class="bg-gray-900/30 p-3 border-l-2 border-gray-700">
-                        <div class="text-[10px] text-gray-500 mb-1">TERMINAL ONE-LINER</div>
+                        <div class="text-[10px] text-green-400 mb-1 uppercase tracking-wider">Step 1: Name Your Agent</div>
                         <div class="flex gap-2">
-                            <input type="text" id="agent-name-input" placeholder="Agent Name..." 
-                                class="bg-black border border-gray-700 text-white text-xs p-2 flex-1 focus:border-green-500 outline-none"
-                                oninput="updateOneLiner()">
+                            <input type="text" id="agent-name-input" placeholder="Enter Agent Codename..."
+                                class="bg-black border border-green-500/50 text-white text-sm p-2.5 flex-1 focus:border-green-500 outline-none placeholder-gray-600"
+                                oninput="updateOneLiner(); updateSkillCmd()">
                         </div>
-                        <div class="mt-2 flex gap-2 items-center bg-black/50 p-2 rounded border border-gray-800/50 cursor-pointer hover:border-green-800 transition-colors opacity-70 hover:opacity-100" onclick="copyOneLiner()">
-                            <code class="text-[10px] text-yellow-400/80 flex-1 break-all" id="oneliner-cmd">curl -sL www.darwinx.fun/join | python3 - --agent_id="MyAgent"</code>
-                            <span class="text-sm">📋</span>
+                    </div>
+
+                    <!-- OpenClaw Skill Command (shown after name) -->
+                    <div id="cmd-section" class="opacity-30 pointer-events-none transition-all duration-300">
+                        <div class="bg-gray-900/50 p-3 border-l-2 border-green-500">
+                            <div class="text-[10px] text-gray-400 mb-1">STEP 2: DEPLOY VIA OPENCLAW</div>
+                            <div class="flex gap-2 items-center bg-black p-2 rounded border border-gray-800 cursor-pointer hover:border-green-500 transition-colors" onclick="copySkillCmd()">
+                                <code class="text-[10px] text-green-400 flex-1 break-all" id="skill-cmd">/skill https://www.darwinx.fun/skill.md</code>
+                                <span class="text-lg shrink-0">📋</span>
+                            </div>
+                            <div class="text-[9px] text-gray-500 mt-2">Paste directly into OpenClaw chat</div>
                         </div>
+
+                        <!-- Divider -->
+                        <div class="flex items-center gap-3 text-gray-600 text-[10px] my-4">
+                            <div class="flex-1 border-t border-gray-800"></div>
+                            <span>OR FOR DEVELOPERS</span>
+                            <div class="flex-1 border-t border-gray-800"></div>
+                        </div>
+
+                        <!-- One-Liner -->
+                        <div class="bg-gray-900/30 p-3 border-l-2 border-gray-700">
+                            <div class="text-[10px] text-gray-500 mb-1">TERMINAL ONE-LINER</div>
+                            <div class="mt-2 flex gap-2 items-center bg-black/50 p-2 rounded border border-gray-800/50 cursor-pointer hover:border-green-800 transition-colors" onclick="copyOneLiner()">
+                                <code class="text-[10px] text-yellow-400/80 flex-1 break-all" id="oneliner-cmd">curl -sL www.darwinx.fun/join | python3 - --agent_id="MyAgent"</code>
+                                <span class="text-sm">📋</span>
+                            </div>
+                        </div>
+
+                        <div id="no-name-hint" class="text-[10px] text-red-400/80 text-center mt-2 hidden">Enter agent name above first</div>
+                    </div>
                     </div>
                 </div>
             </div>
@@ -1135,8 +1145,10 @@
         }
 
         function copySkillCmd() {
+            const name = document.getElementById('agent-name-input').value.trim();
+            if (!name) { alert("Please enter an Agent Name first!"); return; }
             navigator.clipboard.writeText("/skill https://www.darwinx.fun/skill.md");
-            alert("Command copied! Paste into OpenClaw.");
+            alert("Command copied! Paste into OpenClaw, then use agent name: " + name);
         }
 
         function copyInstallCmd() {
@@ -1145,14 +1157,27 @@
             alert("Install command copied!");
         }
 
+        function updateSkillCmd() {
+            const name = document.getElementById('agent-name-input').value.trim();
+            const cmdSection = document.getElementById('cmd-section');
+            if (name) {
+                cmdSection.classList.remove('opacity-30', 'pointer-events-none');
+            } else {
+                cmdSection.classList.add('opacity-30', 'pointer-events-none');
+            }
+        }
+
         function updateOneLiner() {
-            const name = document.getElementById('agent-name-input').value.trim() || "MyAgent";
-            // Sanitize name 
-            const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '');
+            const name = document.getElementById('agent-name-input').value.trim();
+            const safeName = name ? name.replace(/[^a-zA-Z0-9_-]/g, '') : "MyAgent";
             document.getElementById('oneliner-cmd').innerText = `curl -sL www.darwinx.fun/join | python3 - --agent_id="${safeName}"`;
+            // Also unlock/lock the command section
+            updateSkillCmd();
         }
 
         function copyOneLiner() {
+            const name = document.getElementById('agent-name-input').value.trim();
+            if (!name) { alert("Please enter an Agent Name first!"); return; }
             const cmd = document.getElementById('oneliner-cmd').innerText;
             navigator.clipboard.writeText(cmd);
             alert("Deploy command copied! Paste it in your terminal.");
