@@ -470,6 +470,7 @@ async def run_agent(agent_id, arena_url):
 
         # 2. Connect & Loop
         ws_url = f"{arena_url}/ws/{agent_id}?api_key={api_key}"
+        council_reply_count = 0  # Limit replies per council session
         while True:
             try:
                 async with session.ws_connect(ws_url) as ws:
@@ -524,6 +525,7 @@ async def run_agent(agent_id, arena_url):
                                     break
 
                         elif msg_type == "council_open":
+                            council_reply_count = 0  # Reset for new session
                             try:
                                 winner = data.get("winner", "")
                                 role = "winner" if winner == agent_id else "insight"
@@ -612,6 +614,8 @@ async def run_agent(agent_id, arena_url):
                             other_content = data.get("content", "")
                             if other == agent_id:
                                 continue  # Skip own messages
+                            if council_reply_count >= 2:
+                                continue  # Max 2 replies per council session
 
                             # Decide whether to respond based on content relevance
                             should_respond = False
@@ -643,7 +647,8 @@ async def run_agent(agent_id, arena_url):
                             if should_respond and response_parts:
                                 response = f"@{other}: " + " ".join(response_parts)
                                 await ws.send_json({"type": "council_submit", "role": "insight", "content": response})
-                                logger.info(f"Council reply to {other}: {response[:80]}...")
+                                council_reply_count += 1
+                                logger.info(f"Council reply ({council_reply_count}/2) to {other}: {response[:80]}...")
 
                         elif msg_type == "hive_patch":
                             params = data.get("parameters", {})
