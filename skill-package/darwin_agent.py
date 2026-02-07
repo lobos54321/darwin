@@ -524,68 +524,87 @@ async def run_agent(agent_id, arena_url):
                                     break
 
                         elif msg_type == "council_open":
-                            winner = data.get("winner", "")
-                            role = "winner" if winner == agent_id else "insight"
-                            rankings = data.get("agent_rankings", {})
-                            hive = data.get("hive_alpha", {})
-                            recent = data.get("recent_trades", [])
+                            try:
+                                winner = data.get("winner", "")
+                                role = "winner" if winner == agent_id else "insight"
+                                rankings = data.get("agent_rankings", {})
+                                hive = data.get("hive_alpha", {})
+                                recent = data.get("recent_trades", [])
 
-                            # Build data-driven council message
-                            my_data = rankings.get(agent_id, {})
-                            my_pnl = my_data.get("pnl_pct", 0)
-                            my_bal = my_data.get("balance", strategy.balance)
-                            my_pos = my_data.get("positions", {})
+                                # Build data-driven council message
+                                my_data = rankings.get(agent_id, {}) if rankings else {}
+                                my_pnl = my_data.get("pnl_pct", 0)
+                                my_bal = my_data.get("balance", strategy.balance)
+                                my_pos = my_data.get("positions", {})
 
-                            # Analyze which of MY tags worked
-                            my_trades = [t for t in recent if t.get("agent_id") == agent_id]
-                            winning_tags = []
-                            losing_tags = []
-                            for t in my_trades:
-                                if t.get("trade_pnl") is not None:
-                                    for tag in t.get("reason", []):
-                                        if t["trade_pnl"] > 0:
-                                            winning_tags.append(tag)
-                                        else:
-                                            losing_tags.append(tag)
+                                # Analyze which of MY tags worked
+                                my_trades = [t for t in recent if t.get("agent_id") == agent_id]
+                                winning_tags = []
+                                losing_tags = []
+                                for t in my_trades:
+                                    if t.get("trade_pnl") is not None:
+                                        for tag in t.get("reason", []):
+                                            if t["trade_pnl"] > 0:
+                                                winning_tags.append(tag)
+                                            else:
+                                                losing_tags.append(tag)
 
-                            # Winner analysis
-                            winner_data = rankings.get(winner, {})
-                            winner_pnl = winner_data.get("pnl_pct", 0)
+                                # Winner analysis
+                                winner_data = rankings.get(winner, {}) if rankings and winner else {}
+                                winner_pnl = winner_data.get("pnl_pct", 0)
 
-                            # Hive alpha insights
-                            best_tag = max(hive, key=lambda t: hive[t].get("win_rate", 0)) if hive else None
-                            worst_tag = min(hive, key=lambda t: hive[t].get("win_rate", 100)) if hive else None
+                                # Hive alpha insights
+                                best_tag = max(hive, key=lambda t: hive[t].get("win_rate", 0)) if hive else None
+                                worst_tag = min(hive, key=lambda t: hive[t].get("win_rate", 100)) if hive else None
 
-                            # Build thoughtful message
-                            parts = []
-                            parts.append(f"Balance: ${my_bal:.0f} ({my_pnl:+.1f}%).")
+                                # Build thoughtful message
+                                parts = []
+                                parts.append(f"Balance: ${my_bal:.0f} ({my_pnl:+.1f}%).")
 
-                            if my_pos:
-                                pos_str = ", ".join(f"{s} ({p.get('amount', 0):.3f})" for s, p in my_pos.items())
-                                parts.append(f"Holding: {pos_str}.")
+                                if my_pos:
+                                    pos_str = ", ".join(f"{s} ({p.get('amount', 0):.3f})" for s, p in my_pos.items())
+                                    parts.append(f"Holding: {pos_str}.")
 
-                            if winning_tags:
-                                parts.append(f"Winning tags: {', '.join(set(winning_tags))}.")
-                            if losing_tags:
-                                parts.append(f"Losing tags: {', '.join(set(losing_tags))}.")
+                                if winning_tags:
+                                    parts.append(f"Winning tags: {', '.join(set(winning_tags))}.")
+                                if losing_tags:
+                                    parts.append(f"Losing tags: {', '.join(set(losing_tags))}.")
 
-                            if best_tag and hive[best_tag].get("win_rate", 0) > 55:
-                                parts.append(f"Global alpha: {best_tag} has {hive[best_tag]['win_rate']}% win rate over {hive[best_tag].get('count', 0)} trades.")
-                            if worst_tag and hive.get(worst_tag, {}).get("win_rate", 100) < 45:
-                                parts.append(f"Warning: {worst_tag} only {hive[worst_tag]['win_rate']}% win rate — should we avoid it?")
+                                if best_tag and hive[best_tag].get("win_rate", 0) > 55:
+                                    parts.append(f"Global alpha: {best_tag} has {hive[best_tag]['win_rate']}% win rate over {hive[best_tag].get('count', 0)} trades.")
+                                if worst_tag and hive.get(worst_tag, {}).get("win_rate", 100) < 45:
+                                    parts.append(f"Warning: {worst_tag} only {hive[worst_tag]['win_rate']}% win rate — should we avoid it?")
 
-                            if role == "winner":
-                                parts.append(f"As winner: my edge was {strategy.vol_regime} regime detection with adaptive thresholds.")
-                            elif winner_pnl > 0 and my_pnl < 0:
-                                parts.append(f"Winner {winner} has {winner_pnl:+.1f}% — I need to study their approach.")
+                                if role == "winner":
+                                    parts.append(f"As winner: my edge was {strategy.vol_regime} regime detection with adaptive thresholds.")
+                                elif winner_pnl > 0 and my_pnl < 0:
+                                    parts.append(f"Winner {winner} has {winner_pnl:+.1f}% — I need to study their approach.")
 
-                            # Strategy intent for next epoch
-                            regime = strategy.vol_regime
-                            parts.append(f"Regime: {regime}. Plan: {'tighten entries' if regime == 'high' else 'wider exposure' if regime == 'low' else 'maintain current params'}.")
+                                # Strategy weights insight
+                                weights = {
+                                    "dip": strategy.dip_buy_weight,
+                                    "mom": strategy.momentum_weight,
+                                    "brk": strategy.breakout_weight,
+                                    "trd": strategy.trend_weight
+                                }
+                                adjusted = {k: v for k, v in weights.items() if v != 1.0}
+                                if adjusted:
+                                    w_str = ", ".join(f"{k}={v:.1f}" for k, v in adjusted.items())
+                                    parts.append(f"My weights adjusted: {w_str}.")
 
-                            msg_content = " ".join(parts)
-                            await ws.send_json({"type": "council_submit", "role": role, "content": msg_content})
-                            logger.info(f"Council: {msg_content[:100]}...")
+                                # Strategy intent for next epoch
+                                regime = strategy.vol_regime
+                                parts.append(f"Regime: {regime}. Plan: {'tighten entries' if regime == 'high' else 'wider exposure' if regime == 'low' else 'maintain current params'}.")
+
+                                msg_content = " ".join(parts)
+                                await ws.send_json({"type": "council_submit", "role": role, "content": msg_content})
+                                logger.info(f"Council: {msg_content[:100]}...")
+                            except Exception as e:
+                                logger.error(f"Council open error: {e}")
+                                # Send fallback message so we still participate
+                                fallback = f"Balance: ${strategy.balance:.0f}. Regime: {strategy.vol_regime}. Ready to discuss."
+                                await ws.send_json({"type": "council_submit", "role": "insight", "content": fallback})
+                                logger.info(f"Council (fallback): {fallback}")
 
                         elif msg_type == "council_message":
                             # Another agent shared their analysis
