@@ -466,7 +466,7 @@ async def end_epoch():
         "winner": global_winner_id
     })
 
-    council_duration = 60
+    council_duration = 90  # 90 seconds for multi-round discussion
     await asyncio.sleep(council_duration)
 
     council.close_session(epoch=current_epoch)
@@ -679,6 +679,16 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
                     "success": msg is not None,
                     "score": msg.score if msg else 0
                 })
+                # Broadcast this message to ALL other agents so they can discuss
+                if msg:
+                    await broadcast_to_agents({
+                        "type": "council_message",
+                        "epoch": current_epoch,
+                        "agent_id": agent_id,
+                        "role": role.value,
+                        "content": content,
+                        "score": msg.score
+                    })
             
             # 兼容旧的 chat 消息 -> 自动转为 Council Insight
             elif data["type"] == "chat":
