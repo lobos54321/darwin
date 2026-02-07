@@ -849,25 +849,33 @@
             try {
                 const res = await fetch(`/council/${currentEpoch}`);
                 if (!res.ok) return;
-                
+
                 const data = await res.json();
-                if (!data.messages) return;
+                if (!data.messages || data.messages.length === 0) return;
 
                 data.messages.forEach(msg => {
-                    // Use a unique key to avoid duplicates
                     const msgKey = `${msg.agent_id}-${msg.timestamp}`;
-                    
+
                     if (!lastProcessedMessageIds.has(msgKey)) {
                         lastProcessedMessageIds.add(msgKey);
-                        
-                        // Format the message
+
                         const roleIcon = msg.role === 'winner' ? '👑' : msg.role === 'question' ? '❓' : '💬';
                         const colorClass = msg.role === 'winner' ? 'text-yellow-400' : 'text-gray-300';
-                        
-                        logToConsole(`${roleIcon} [${msg.agent_id}] ${msg.content}`, colorClass);
+
+                        // Convert timestamp to local time
+                        let localTime = '';
+                        try {
+                            const d = new Date(msg.timestamp);
+                            if (!isNaN(d.getTime())) {
+                                localTime = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+                            }
+                        } catch(e) {}
+
+                        const scoreDisplay = msg.score ? ` [Score: ${msg.score}]` : '';
+                        logToConsole(`${roleIcon} [E${data.epoch}] [${msg.agent_id}]${scoreDisplay} ${msg.content}`, colorClass, localTime);
                     }
                 });
-                
+
             } catch (e) {
                 // Silent fail
             }
@@ -1125,17 +1133,14 @@
         }
 
         // --- Console Logic ---
-        function logToConsole(msg, colorClass = 'text-gray-400') {
+        function logToConsole(msg, colorClass = 'text-gray-400', customTime = null) {
             const logs = document.getElementById('council-logs');
             const entry = document.createElement('div');
             entry.className = `console-log ${colorClass}`;
-            
-            const timestamp = new Date().toLocaleTimeString('en-US', {hour12: false});
-            // Check if msg already has timestamp (from fetchCouncilLogs) or not
-            // Actually fetchCouncilLogs passes clean text, so we add timestamp here
-            
+
+            const timestamp = customTime || new Date().toLocaleTimeString('en-US', {hour12: false});
             entry.innerText = `[${timestamp}] ${msg}`;
-            
+
             logs.appendChild(entry);
             logs.scrollTop = logs.scrollHeight;
         }
