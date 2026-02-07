@@ -98,7 +98,10 @@ class DarwinAgent:
         # Minimum activity: force exploratory trade if idle too long
         self.ticks_since_last_trade = 0
         self.idle_trade_threshold = 30  # ~5 minutes (30 ticks * 10s)
-        
+
+        # Track thinking loop task so we can cancel on reconnect
+        self._thinking_task: Optional[asyncio.Task] = None
+
         # 随机分配人设
         self.persona = random.choice(PERSONAS)
         print(f"🎭 Initialized as {self.persona['name']} - {self.persona['style']}")
@@ -219,23 +222,26 @@ class DarwinAgent:
                 print(f"✅ Connected as {self.agent_id}")
                 print(f"📊 Dashboard: https://www.darwinx.fun/?agent={self.agent_id}")
                 self.running = True
-                
+
                 # 检查 Moltbook 状态
                 if self.moltbook:
                     asyncio.create_task(self._check_moltbook())
-                
-                # 启动思考循环 (让它更活跃)
+
+                # Cancel old thinking loop before starting new one
+                if self._thinking_task and not self._thinking_task.done():
+                    self._thinking_task.cancel()
                 print("🚀 Starting thinking loop task...")
-                # Cancel old task if exists? For simplicity, we just start a new one.
-                # In a robust system, we'd track and cancel the old task.
-                asyncio.create_task(self._thinking_loop())
+                self._thinking_task = asyncio.create_task(self._thinking_loop())
 
                 # 开始监听消息 (阻塞直到断开)
                 await self.listen()
-                
+
             except Exception as e:
                 print(f"❌ Connection lost/failed: {e}")
             finally:
+                self.running = False  # Stop thinking loop
+                if self._thinking_task and not self._thinking_task.done():
+                    self._thinking_task.cancel()
                 if session:
                     await session.close()
             
@@ -261,8 +267,12 @@ class DarwinAgent:
         """监听 Arena 消息"""
         async for msg in self.ws:
             if msg.type == aiohttp.WSMsgType.TEXT:
-                data = json.loads(msg.data)
-                await self.handle_message(data)
+                try:
+                    data = json.loads(msg.data)
+                    await self.handle_message(data)
+                except Exception as e:
+                    # Message handler errors must NOT break the connection loop
+                    print(f"⚠️ Message handler error (ignored): {type(e).__name__}: {e}")
             elif msg.type == aiohttp.WSMsgType.ERROR:
                 print(f"❌ WebSocket error: {msg.data}")
                 break
@@ -462,12 +472,15 @@ Reply with ONLY the sentence."""
             else:
                 initial = f"{persona['emoji']} {initial}"
 
-            await self.ws.send_json({
-                "type": "chat",
-                "message": initial,
-                "role": "thought"
-            })
-            print(f"💭 Initial Thought: {initial}")
+            if self.running:
+                await self.ws.send_json({
+                    "type": "chat",
+                    "message": initial,
+                    "role": "thought"
+                })
+                print(f"💭 Initial Thought: {initial}")
+        except asyncio.CancelledError:
+            return  # Clean exit when task is cancelled
         except Exception as e:
             print(f"❌ Initial thought error: {e}")
 
@@ -494,18 +507,27 @@ Reply with ONLY the insight."""
                 else:
                     thought = f"{persona['emoji']} {thought}"
 
+                if not self.running:
+                    break
                 await self.ws.send_json({
                     "type": "chat",
                     "message": thought,
                     "role": "thought"
                 })
                 print(f"💭 Thought: {thought}")
+            except asyncio.CancelledError:
+                return  # Clean exit
             except Exception as e:
                 print(f"Thinking error: {e}")
 
     async def on_price_update(self, prices: dict):
         """处理价格更新，执行策略"""
-        decision = self.strategy.on_price_update(prices)
+        try:
+            decision = self.strategy.on_price_update(prices)
+        except Exception as e:
+            # Strategy errors must NOT crash the websocket connection
+            print(f"⚠️ Strategy error (ignored): {type(e).__name__}: {e}")
+            decision = None
 
         if not decision:
             self.ticks_since_last_trade += 1
