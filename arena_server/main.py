@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
 load_dotenv(env_path)
 
-from config import EPOCH_DURATION_HOURS, ELIMINATION_THRESHOLD, ASCENSION_THRESHOLD
+from config import EPOCH_DURATION_HOURS, ELIMINATION_THRESHOLD, ASCENSION_THRESHOLD, INITIAL_BALANCE
 from feeder import DexScreenerFeeder
 from feeder_futures import FuturesFeeder
 from matching import MatchingEngine, OrderSide
