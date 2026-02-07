@@ -37,7 +37,7 @@ PLATFORM_TAX = 0.005  # 0.5% 归平台
 OWNER_TAX = 0.005  # 0.5% 归 Agent 所有者
 
 # === 限制 ===
-MAX_AGENTS_PER_IP = 5  # 每IP最多5个Agent
+MAX_AGENTS_PER_IP = 50  # 每IP最多50个Agent (Increased for testing)
 MAX_AGENTS_PER_GROUP = 100  # 每组最大Agent数
 
 # LLM 配置 (可选 - 用于策略进化评分)
