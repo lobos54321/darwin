@@ -180,7 +180,7 @@ class MatchingEngine:
             # Record trade with TAGS
             self.trade_history.appendleft({
                 "time": datetime.now().strftime("%H:%M:%S"),
-                "agent": agent_id,
+                "agent_id": agent_id,
                 "side": "BUY",
                 "symbol": symbol,
                 "amount": token_amount,
@@ -214,7 +214,7 @@ class MatchingEngine:
             # Record trade with TAGS + per-trade PnL
             self.trade_history.appendleft({
                 "time": datetime.now().strftime("%H:%M:%S"),
-                "agent": agent_id,
+                "agent_id": agent_id,
                 "side": "SELL",
                 "symbol": symbol,
                 "amount": token_amount,

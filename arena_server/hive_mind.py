@@ -47,7 +47,7 @@ class HiveMind:
         buy_index = defaultdict(list)  # {(agent, symbol): [trade, ...]}
         for t in trades:
             if t.get("side") == "BUY":
-                key = (t["agent"], t["symbol"])
+                key = (t.get("agent_id", t.get("agent")), t["symbol"])
                 buy_index[key].append(t)
 
         # Process all SELL trades with known PnL
@@ -58,7 +58,7 @@ class HiveMind:
             if trade_pnl is None:
                 continue
 
-            agent_id = t["agent"]
+            agent_id = t.get("agent_id", t.get("agent"))
             symbol = t["symbol"]
             is_win = trade_pnl > 0
 

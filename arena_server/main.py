@@ -112,6 +112,17 @@ total_volume = 0.0
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 
 
+def save_all_state_to_redis():
+    """Save full arena state including trade history and council to Redis"""
+    agents_data = group_manager.get_all_accounts_data()
+    trade_history = list(engine.trade_history)
+    council_data = council.serialize_sessions()
+    redis_state.save_full_state(
+        current_epoch, trade_count, total_volume, API_KEYS_DB, agents_data,
+        trade_history=trade_history, council_sessions=council_data,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """启动和关闭时的生命周期管理"""
@@ -136,6 +147,23 @@ async def lifespan(app: FastAPI):
             group_manager.restore_agent(agent_id, balance, positions_raw, saved_group_id)
 
         logger.info(f"🔄 Resumed from Redis: Epoch {current_epoch}, {len(saved_agents)} agents restored across {len(group_manager.groups)} groups")
+
+        # 🔧 恢复交易记录到各组引擎
+        saved_trades = redis_loaded.get("trade_history", [])
+        if saved_trades:
+            # Distribute trades back to their group engines
+            for trade in reversed(saved_trades):  # reversed because appendleft
+                agent_id = trade.get("agent_id", trade.get("agent"))
+                group = group_manager.get_group(agent_id)
+                if group:
+                    group.engine.trade_history.appendleft(trade)
+            logger.info(f"📊 Restored {len(saved_trades)} trade records")
+
+        # 🔧 恢复议事厅记录
+        saved_council = redis_loaded.get("council_sessions", {})
+        if saved_council:
+            council.restore_sessions(saved_council)
+            logger.info(f"🏛️ Restored {len(saved_council)} council sessions")
     else:
         # 尝试加载本地状态
         saved_state = state_manager.load_state()
@@ -185,8 +213,7 @@ async def lifespan(app: FastAPI):
 
     # 保存最终状态到本地和Redis
     state_manager.save_state(current_epoch)
-    agents_data = group_manager.get_all_accounts_data()
-    redis_state.save_full_state(current_epoch, trade_count, total_volume, API_KEYS_DB, agents_data)
+    save_all_state_to_redis()
 
     group_manager.stop_all_feeders()
     futures_task.cancel()
@@ -450,8 +477,7 @@ async def end_epoch():
 
     # 保存状态
     state_manager.save_state(current_epoch)
-    agents_data = group_manager.get_all_accounts_data()
-    redis_state.save_full_state(current_epoch, trade_count, total_volume, API_KEYS_DB, agents_data)
+    save_all_state_to_redis()
 
 
 # ========== 鉴权 API ==========
@@ -919,8 +945,12 @@ async def get_groups():
 @app.get("/council/{epoch}")
 async def get_council_session(epoch: int):
     session = council.sessions.get(epoch)
+    if not session and council.sessions:
+        # Fall back to most recent session if requested epoch has no data
+        latest_epoch = max(council.sessions.keys())
+        session = council.sessions[latest_epoch]
+        epoch = latest_epoch
     if not session:
-        # Return empty session structure instead of error
         return {
             "epoch": epoch,
             "is_open": True,
@@ -1630,8 +1660,7 @@ async def purge_test_agents():
         group.stop_feeder()
 
     # Save cleaned state to Redis
-    agents_data = group_manager.get_all_accounts_data()
-    redis_state.save_full_state(current_epoch, trade_count, total_volume, API_KEYS_DB, agents_data)
+    save_all_state_to_redis()
 
     logger.info(f"🧹 Purged {len(removed)} test agents: {removed}")
     return {

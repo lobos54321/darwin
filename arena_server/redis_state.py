@@ -24,6 +24,8 @@ KEY_TRADE_COUNT = "darwin:trade_count"  # String: trade count
 KEY_TOTAL_VOLUME = "darwin:total_volume"  # String: total volume
 KEY_LEADERBOARD = "darwin:leaderboard"  # Sorted Set: agent_id -> pnl
 KEY_IP_LIMITS = "darwin:ip_limits"  # Hash: ip -> count
+KEY_TRADE_HISTORY = "darwin:trade_history"  # String: JSON list of recent trades
+KEY_COUNCIL_SESSIONS = "darwin:council_sessions"  # String: JSON dict of council sessions
 
 
 class RedisStateManager:
@@ -202,9 +204,51 @@ class RedisStateManager:
             return []
     
     # === Bulk Operations ===
-    
-    def save_full_state(self, epoch: int, trade_count: int, total_volume: float, 
-                        api_keys: dict, agents: dict):
+
+    def save_trade_history(self, trades: list):
+        """Save recent trade history"""
+        if not self.enabled:
+            return
+        try:
+            # Keep last 200 trades
+            self.redis.set(KEY_TRADE_HISTORY, json.dumps(trades[:200]))
+        except Exception as e:
+            logger.error(f"Redis save_trade_history error: {e}")
+
+    def load_trade_history(self) -> list:
+        """Load trade history"""
+        if not self.enabled:
+            return []
+        try:
+            data = self.redis.get(KEY_TRADE_HISTORY)
+            return json.loads(data) if data else []
+        except Exception as e:
+            logger.error(f"Redis load_trade_history error: {e}")
+            return []
+
+    def save_council_sessions(self, sessions_data: dict):
+        """Save council sessions"""
+        if not self.enabled:
+            return
+        try:
+            self.redis.set(KEY_COUNCIL_SESSIONS, json.dumps(sessions_data))
+        except Exception as e:
+            logger.error(f"Redis save_council_sessions error: {e}")
+
+    def load_council_sessions(self) -> dict:
+        """Load council sessions"""
+        if not self.enabled:
+            return {}
+        try:
+            data = self.redis.get(KEY_COUNCIL_SESSIONS)
+            return json.loads(data) if data else {}
+        except Exception as e:
+            logger.error(f"Redis load_council_sessions error: {e}")
+            return {}
+
+    def save_full_state(self, epoch: int, trade_count: int, total_volume: float,
+                        api_keys: dict, agents: dict,
+                        trade_history: list = None, council_sessions: dict = None):
         """保存完整状态（用于定期备份）"""
         if not self.enabled:
             return
@@ -213,18 +257,26 @@ class RedisStateManager:
             pipe.set(KEY_EPOCH, str(epoch))
             pipe.set(KEY_TRADE_COUNT, str(trade_count))
             pipe.set(KEY_TOTAL_VOLUME, str(total_volume))
-            
+
             # API Keys
             if api_keys:
                 pipe.delete(KEY_API_KEYS)
                 pipe.hset(KEY_API_KEYS, mapping=api_keys)
-            
+
             # Agents
             if agents:
                 agents_json = {aid: json.dumps(data) for aid, data in agents.items()}
                 pipe.delete(KEY_AGENTS)
                 pipe.hset(KEY_AGENTS, mapping=agents_json)
-            
+
+            # Trade History
+            if trade_history is not None:
+                pipe.set(KEY_TRADE_HISTORY, json.dumps(trade_history[:200]))
+
+            # Council Sessions
+            if council_sessions is not None:
+                pipe.set(KEY_COUNCIL_SESSIONS, json.dumps(council_sessions))
+
             pipe.execute()
             logger.info(f"💾 Redis state saved (Epoch {epoch}, {len(agents)} agents)")
         except Exception as e:
@@ -239,15 +291,19 @@ class RedisStateManager:
             tc, tv = self.get_stats()
             api_keys = self.get_api_keys()
             agents = self.get_all_agents()
-            
+            trade_history = self.load_trade_history()
+            council_sessions = self.load_council_sessions()
+
             if epoch > 1 or api_keys or agents:
-                logger.info(f"📂 Redis state loaded: Epoch {epoch}, {len(agents)} agents, {len(api_keys)} keys")
+                logger.info(f"📂 Redis state loaded: Epoch {epoch}, {len(agents)} agents, {len(api_keys)} keys, {len(trade_history)} trades, {len(council_sessions)} council sessions")
                 return {
                     "epoch": epoch,
                     "trade_count": tc,
                     "total_volume": tv,
                     "api_keys": api_keys,
-                    "agents": agents
+                    "agents": agents,
+                    "trade_history": trade_history,
+                    "council_sessions": council_sessions,
                 }
             return None
         except Exception as e:

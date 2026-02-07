@@ -174,6 +174,58 @@ class Council:
         rankings.sort(key=lambda x: x[1], reverse=True)
         return rankings
 
+    def serialize_sessions(self) -> dict:
+        """Serialize all sessions for Redis persistence"""
+        result = {}
+        for epoch, session in self.sessions.items():
+            result[str(epoch)] = {
+                "epoch": session.epoch,
+                "is_open": session.is_open,
+                "winner_id": session.winner_id,
+                "messages": [
+                    {
+                        "id": m.id,
+                        "agent_id": m.agent_id,
+                        "role": m.role.value,
+                        "content": m.content,
+                        "score": m.score,
+                        "epoch": m.epoch,
+                        "timestamp": m.timestamp.isoformat(),
+                    }
+                    for m in session.messages
+                ]
+            }
+        return result
+
+    def restore_sessions(self, data: dict):
+        """Restore sessions from Redis data"""
+        for epoch_str, session_data in data.items():
+            epoch = int(epoch_str)
+            session = CouncilSession(
+                epoch=epoch,
+                is_open=session_data.get("is_open", False),
+                winner_id=session_data.get("winner_id"),
+            )
+            for m_data in session_data.get("messages", []):
+                msg = CouncilMessage(
+                    id=m_data["id"],
+                    agent_id=m_data["agent_id"],
+                    role=MessageRole(m_data["role"]),
+                    content=m_data["content"],
+                    score=m_data.get("score", 0),
+                    epoch=m_data.get("epoch", epoch),
+                    timestamp=datetime.fromisoformat(m_data["timestamp"]) if m_data.get("timestamp") else datetime.now(),
+                )
+                session.messages.append(msg)
+                # Restore contribution scores
+                if msg.agent_id not in self.contribution_scores:
+                    self.contribution_scores[msg.agent_id] = 0
+                self.contribution_scores[msg.agent_id] += msg.score
+            self.sessions[epoch] = session
+            self.message_count += len(session.messages)
+        if data:
+            self.current_epoch = max(int(k) for k in data.keys())
+
 
 # 测试
 if __name__ == "__main__":
