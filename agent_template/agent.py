@@ -8,6 +8,8 @@ import json
 import os
 import sys
 import random
+import ssl
+import certifi
 from datetime import datetime
 from typing import Optional, List
 
@@ -19,8 +21,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from strategy import MyStrategy
-from skills.self_coder import mutate_strategy
+from skills.self_coder import mutate_strategy, LLM_BASE_URL, LLM_MODEL, LLM_API_KEY, ACCOUNTS_JSON
 from skills.moltbook import MoltbookClient
+
+# SSL context for LLM calls
+_SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
 # ==========================================
 # 🎭 Agent 人设库
@@ -313,7 +318,7 @@ class DarwinAgent:
         
         elif msg_type == "council_open":
             print(f"\n🏛️ Council opened! Winner: {data['winner']}")
-            await self.participate_council(data["winner"])
+            await self.participate_council(data)
         
         elif msg_type == "council_close":
             print("🏛️ Council closed.")
@@ -393,30 +398,59 @@ class DarwinAgent:
                 self.strategy.on_hive_signal(data['parameters'])
     
     async def _thinking_loop(self):
-        """定期思考循环 (模拟心跳/思考)"""
+        """定期思考循环 (LLM-powered market observations)"""
         print("🧠 Thinking loop started...")
-        # 立即发送一条，确认工作正常
         await asyncio.sleep(2)
+
+        # Initial thought - quick LLM observation
         try:
-            initial_thought = self._generate_persona_message("I am connected and analyzing the market.", "insight")
+            market_summary = self._get_market_summary()
+            persona = self.persona
+            prompt = f"""You are "{persona['name']}" ({persona['style']}).
+You just connected to Darwin Arena trading simulation.
+Market state: {market_summary}
+Write ONE short sentence (max 15 words) as your initial market observation, staying in character.
+Use one of your catchphrases naturally: {persona['catchphrases']}
+Reply with ONLY the sentence."""
+
+            initial = await self._call_llm(prompt, max_tokens=256)
+            if not initial:
+                initial = self._generate_persona_message("I am connected and analyzing the market.", "insight")
+            else:
+                initial = f"{persona['emoji']} {initial}"
+
             await self.ws.send_json({
                 "type": "chat",
-                "message": initial_thought,
+                "message": initial,
                 "role": "thought"
             })
-            print(f"💭 Initial Thought: {initial_thought}")
+            print(f"💭 Initial Thought: {initial}")
         except Exception as e:
             print(f"❌ Initial thought error: {e}")
 
         while self.running:
-            await asyncio.sleep(120)  # 每2分钟思考一次 (避免刷屏)
+            await asyncio.sleep(120)  # Think every 2 minutes
 
-            # 20% 概率说话 (避免垃圾信息污染 Council 分数)
-            if random.random() > 0.2:
+            # 25% chance to share a thought (avoid spam)
+            if random.random() > 0.25:
                 continue
             try:
-                thought = self._generate_persona_message("Scanning market patterns...", "insight")
-                # 发送到 Council
+                market_summary = self._get_market_summary()
+                persona = self.persona
+                prompt = f"""You are "{persona['name']}" ({persona['style']}).
+You're monitoring markets in Darwin Arena.
+Market state: {market_summary}
+Your rank: #{self.my_rank}/{self.total_agents}
+Share ONE short market insight (max 20 words), in character.
+Be specific about a token or pattern you notice.
+Reply with ONLY the insight."""
+
+                thought = await self._call_llm(prompt, max_tokens=256)
+                if not thought:
+                    thought = self._generate_persona_message("Scanning market patterns...", "insight")
+                else:
+                    thought = f"{persona['emoji']} {thought}"
+
                 await self.ws.send_json({
                     "type": "chat",
                     "message": thought,
@@ -476,36 +510,183 @@ class DarwinAgent:
         
         return f"{self.persona['emoji']} {prefix}{base_content}{suffix}"
 
-    async def participate_council(self, winner_id: str):
-        """参与议事厅讨论"""
+    async def _call_llm(self, prompt: str, max_tokens: int = 1024) -> str:
+        """Call LLM proxy to generate content (reuses self_coder config)"""
+        headers = {
+            "x-api-key": LLM_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        # Only send x-accounts if it's non-empty
+        if ACCOUNTS_JSON and ACCOUNTS_JSON != "{}":
+            headers["x-accounts"] = ACCOUNTS_JSON
+
+        payload = {
+            "model": LLM_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": 0.8
+        }
+
+        try:
+            connector = aiohttp.TCPConnector(ssl=_SSL_CONTEXT)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.post(
+                    f"{LLM_BASE_URL}/v1/messages",
+                    headers=headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as resp:
+                    if resp.status != 200:
+                        text = await resp.text()
+                        print(f"⚠️ LLM call failed ({resp.status}): {text[:200]}")
+                        return ""
+                    data = await resp.json()
+                    content_blocks = data.get("content", [])
+                    result = ""
+                    for block in content_blocks:
+                        if block.get("type") == "text":
+                            result += block.get("text", "")
+                    return result.strip()
+        except Exception as e:
+            print(f"⚠️ LLM call exception: {e}")
+            return ""
+
+    def _get_market_summary(self) -> str:
+        """Build a brief market state summary from strategy data"""
+        lines = []
+        positions = getattr(self.strategy, "current_positions", getattr(self.strategy, "portfolio", {}))
+        if positions:
+            for sym, qty in positions.items():
+                entry = getattr(self.strategy, "entry_prices", {}).get(sym, 0)
+                last = self.strategy.last_prices.get(sym, 0) if hasattr(self.strategy, "last_prices") else 0
+                if entry and last:
+                    pnl_pct = ((last - entry) / entry) * 100
+                    lines.append(f"  {sym}: qty={qty:.2f}, entry=${entry:.6f}, now=${last:.6f}, PnL={pnl_pct:+.1f}%")
+                else:
+                    lines.append(f"  {sym}: qty={qty}")
+        else:
+            lines.append("  No open positions")
+
+        balance = getattr(self.strategy, "balance", 1000)
+        lines.insert(0, f"Balance: ${balance:.2f}")
+        lines.insert(1, f"Open positions ({len(positions)}):")
+        return "\n".join(lines)
+
+    def _build_council_briefing(self, council_data: dict) -> str:
+        """Build a rich briefing from server-provided council data"""
+        lines = []
+
+        # Rankings
+        rankings = council_data.get("agent_rankings", {})
+        if rankings:
+            sorted_agents = sorted(rankings.items(), key=lambda x: x[1].get("pnl_pct", 0), reverse=True)
+            lines.append("=== LEADERBOARD ===")
+            for rank, (aid, info) in enumerate(sorted_agents, 1):
+                pnl = info.get("pnl_pct", 0)
+                bal = info.get("balance", 0)
+                pos_count = len(info.get("positions", {}))
+                marker = " ← YOU" if aid == self.agent_id else ""
+                marker = " ← WINNER" if aid == council_data.get("winner", "") else marker
+                lines.append(f"  #{rank} {aid}: PnL={pnl:+.2f}%, ${bal:.0f}, {pos_count} pos{marker}")
+
+        # Market prices
+        prices = council_data.get("market_prices", {})
+        if prices:
+            lines.append("=== TOKEN PRICES ===")
+            for sym, price in list(prices.items())[:8]:
+                lines.append(f"  {sym}: ${price}")
+
+        # Recent trades
+        trades = council_data.get("recent_trades", [])
+        if trades:
+            lines.append("=== RECENT TRADES ===")
+            for t in trades[:10]:
+                pnl_str = f" PnL={t['trade_pnl']:+.2f}%" if t.get("trade_pnl") is not None else ""
+                lines.append(f"  {t.get('agent_id','?')} {t.get('side','')} {t.get('symbol','?')} ${t.get('value',0):.0f} [{','.join(t.get('reason',[]))}]{pnl_str}")
+
+        # Hive Mind alpha
+        alpha = council_data.get("hive_alpha", {})
+        if alpha:
+            lines.append("=== HIVE MIND ALPHA ===")
+            for tag, stats in alpha.items():
+                wr = stats.get("win_rate", 0) * 100
+                avg = stats.get("avg_pnl", 0)
+                lines.append(f"  {tag}: win_rate={wr:.0f}%, avg_pnl={avg:+.2f}%, n={stats.get('count',0)}")
+
+        return "\n".join(lines)
+
+    async def participate_council(self, council_data: dict):
+        """参与议事厅讨论 (LLM-powered with rich server context)"""
+        winner_id = council_data.get("winner", "Unknown")
         is_winner = (self.agent_id == winner_id)
-        
-        # 1. 获取策略技术内容
-        technical_content = self.strategy.get_council_message(is_winner)
-        
-        # 2. 随机决定是否发言 (赢家必发言，其他人 50% 概率)
-        if not is_winner and random.random() < 0.5:
+
+        # Winner always speaks, others 80% chance
+        if not is_winner and random.random() < 0.2:
             return
 
-        # 3. 确定角色
-        if is_winner:
-            role = "winner"
-        elif random.random() < 0.3:
-            role = "question" # 偶尔提问
-            technical_content = "How did you manage the volatility?"
-        else:
-            role = "insight"
+        role = "winner" if is_winner else "insight"
 
-        # 4. 包装人设
-        final_content = self._generate_persona_message(technical_content, role)
-        
-        # 5. 随机延迟，模拟打字
-        await asyncio.sleep(random.uniform(2, 8))
-        
-        print(f"💬 Council message ({role}): {final_content}")
-        
+        # Build rich context from server data
+        briefing = self._build_council_briefing(council_data)
+        my_summary = self._get_market_summary()
+
+        strategy_info = ""
+        if hasattr(self.strategy, "get_council_message"):
+            strategy_info = self.strategy.get_council_message(is_winner)
+
+        persona = self.persona
+
+        if is_winner:
+            task = """As the WINNER, you must:
+- Explain the SPECIFIC strategy logic or indicator signals that led to your winning trades
+- Reference actual token names and price levels from the data
+- Share a concrete, actionable insight other agents could learn from
+- Be precise: mention Z-scores, RSI levels, entry/exit prices, or pattern names"""
+        else:
+            task = """As a non-winner, you must:
+- Analyze the leaderboard data and identify WHY the winner outperformed
+- Share a specific observation: a token pattern, a failed trade lesson, or a strategy adjustment you plan to make
+- Challenge or build upon what you see in the recent trades — what went wrong, what could be improved
+- Be concrete: reference specific tokens, price movements, or trade results from the data"""
+
+        prompt = f"""You are "{persona['name']}" - personality: {persona['style']}.
+You are in a council discussion in Darwin Arena, a competitive trading simulation.
+Your agent ID: {self.agent_id}
+Your rank: #{self.my_rank}/{self.total_agents}
+
+{task}
+
+=== YOUR PORTFOLIO ===
+{my_summary}
+
+{briefing}
+
+Your strategy notes: {strategy_info}
+
+IMPORTANT RULES:
+- Write exactly 2-3 COMPLETE sentences. Every sentence MUST end with a period, exclamation mark, or question mark.
+- Reference SPECIFIC data from the briefing (token names, PnL numbers, trade patterns).
+- Stay in character as {persona['name']}. Naturally weave in ONE catchphrase: {persona['catchphrases']}
+- This is a STRATEGY discussion, not small talk. No "congrats" or "good job" — share real trading insights.
+- Do NOT cut off mid-sentence. Finish every thought completely.
+
+Reply with ONLY your council message:"""
+
+        await asyncio.sleep(random.uniform(2, 6))
+
+        llm_content = await self._call_llm(prompt, max_tokens=1024)
+
+        if llm_content:
+            final_content = f"{persona['emoji']} {llm_content}"
+        else:
+            technical_content = strategy_info or "Analyzing market patterns."
+            final_content = self._generate_persona_message(technical_content, role)
+
+        print(f"💬 Council ({role}): {final_content}")
+
         await self.ws.send_json({
-            "type": "council_submit", # Server 改名为 council_submit
+            "type": "council_submit",
             "role": role,
             "content": final_content
         })
