@@ -80,6 +80,12 @@ class ProStrategy:
         self.trailing_stop_pct = 0.025
         self.trailing_activate = 0.015
 
+        # Strategy Weights (adjusted by Hive Mind)
+        self.dip_buy_weight = 1.0
+        self.momentum_weight = 1.0
+        self.breakout_weight = 1.0
+        self.trend_weight = 1.0
+
         # Volatility Regime
         self.vol_regime = "normal"
 
@@ -194,16 +200,86 @@ class ProStrategy:
     # --- Hive Mind ---
 
     def on_hive_signal(self, signal: dict):
+        """
+        Receive global intelligence and ADAPT strategy parameters.
+        Not just ban/unban — fine-tune weights, thresholds, and sizing.
+        """
         penalize = signal.get("penalize", [])
-        if penalize:
-            self.banned_tags.update(penalize)
-            logger.info(f"Hive Mind: Banning {penalize}")
         boost = signal.get("boost", [])
-        if boost:
-            if "DIP_BUY" in boost or "OVERSOLD" in boost:
-                self.stoch_oversold = min(30, self.stoch_oversold + 5)
-            if "MOMENTUM" in boost or "BREAKOUT" in boost:
-                self.stoch_overbought = min(90, self.stoch_overbought + 5)
+        alpha = signal.get("alpha_factors", signal.get("stats", {}))
+
+        changes = []
+
+        for tag in penalize:
+            tag_data = alpha.get(tag, {})
+            win_rate = tag_data.get("win_rate", 50)
+
+            if tag in ("DIP_BUY", "OVERSOLD"):
+                # Don't ban entirely — tighten the entry threshold
+                old = self.stoch_oversold
+                self.stoch_oversold = max(10, self.stoch_oversold - 5)  # Harder to trigger
+                self.dip_buy_weight = max(0.2, getattr(self, 'dip_buy_weight', 1.0) - 0.3)
+                changes.append(f"DIP_BUY weight {getattr(self, 'dip_buy_weight', 1.0):.1f}, stoch_oversold {old}→{self.stoch_oversold}")
+
+            elif tag in ("MOMENTUM", "EMA_CROSS", "MACD_BULL"):
+                self.momentum_weight = max(0.2, getattr(self, 'momentum_weight', 1.0) - 0.3)
+                changes.append(f"MOMENTUM weight→{self.momentum_weight:.1f}")
+
+            elif tag in ("BREAKOUT", "KELTNER_BREAK"):
+                self.breakout_weight = max(0.2, getattr(self, 'breakout_weight', 1.0) - 0.3)
+                changes.append(f"BREAKOUT weight→{self.breakout_weight:.1f}")
+
+            elif tag in ("TREND_FOLLOW", "MULTI_CONFIRM"):
+                self.trend_weight = max(0.2, getattr(self, 'trend_weight', 1.0) - 0.3)
+                changes.append(f"TREND_FOLLOW weight→{self.trend_weight:.1f}")
+
+            elif tag == "STOP_LOSS":
+                # SL being penalized means we're entering badly, tighten entries
+                old_risk = self.risk_per_trade
+                self.risk_per_trade = max(15.0, self.risk_per_trade - 5.0)
+                self.stop_loss_pct = max(0.03, self.stop_loss_pct - 0.005)  # Tighter stop
+                changes.append(f"Risk {old_risk:.0f}→{self.risk_per_trade:.0f}, SL→{self.stop_loss_pct:.1%}")
+
+            elif tag == "RANDOM_TEST":
+                pass  # Exploration is always allowed
+
+            else:
+                # Unknown tag — soft ban
+                self.banned_tags.add(tag)
+                changes.append(f"Banned {tag}")
+
+        for tag in boost:
+            tag_data = alpha.get(tag, {})
+            win_rate = tag_data.get("win_rate", 50)
+
+            if tag in ("DIP_BUY", "OVERSOLD"):
+                old = self.stoch_oversold
+                self.stoch_oversold = min(30, self.stoch_oversold + 5)  # Easier to trigger
+                self.dip_buy_weight = min(1.5, getattr(self, 'dip_buy_weight', 1.0) + 0.2)
+                changes.append(f"DIP_BUY weight→{self.dip_buy_weight:.1f}, stoch_oversold {old}→{self.stoch_oversold}")
+
+            elif tag in ("MOMENTUM", "EMA_CROSS", "MACD_BULL"):
+                self.momentum_weight = min(1.5, getattr(self, 'momentum_weight', 1.0) + 0.2)
+                changes.append(f"MOMENTUM weight→{self.momentum_weight:.1f}")
+
+            elif tag in ("BREAKOUT", "KELTNER_BREAK"):
+                self.breakout_weight = min(1.5, getattr(self, 'breakout_weight', 1.0) + 0.2)
+                changes.append(f"BREAKOUT weight→{self.breakout_weight:.1f}")
+
+            elif tag in ("TREND_FOLLOW", "MULTI_CONFIRM"):
+                self.trend_weight = min(1.5, getattr(self, 'trend_weight', 1.0) + 0.2)
+                changes.append(f"TREND_FOLLOW weight→{self.trend_weight:.1f}")
+
+            elif tag == "TAKE_PROFIT":
+                # TP being boosted means our exits are good, widen slightly
+                self.take_profit_pct = min(0.06, self.take_profit_pct + 0.005)
+                changes.append(f"TP→{self.take_profit_pct:.1%}")
+
+            # Unban if it was previously banned
+            self.banned_tags.discard(tag)
+
+        if changes:
+            logger.info(f"🧠 Hive Patch applied: {'; '.join(changes)}")
 
     # --- Position Management ---
 
@@ -287,28 +363,32 @@ class ProStrategy:
 
         # A: DIP_BUY
         if stoch < so and cur <= kl * 1.005:
-            score = 3.0 + (2.0 if div == "bullish" else 0) + (1.0 if mh > 0 else 0)
-            return {"symbol": symbol, "side": "BUY", "amount": round(min(risk, self.balance * self.max_position_pct), 2),
-                    "reason": ["DIP_BUY", "OVERSOLD", "KELTNER"], "score": score}
+            score = (3.0 + (2.0 if div == "bullish" else 0) + (1.0 if mh > 0 else 0)) * self.dip_buy_weight
+            if score >= 1.5:  # Weight can suppress below threshold
+                return {"symbol": symbol, "side": "BUY", "amount": round(min(risk * self.dip_buy_weight, self.balance * self.max_position_pct), 2),
+                        "reason": ["DIP_BUY", "OVERSOLD", "KELTNER"], "score": score}
 
         # B: MOMENTUM (EMA cross)
         if ema_cross and mh > 0 and 30 < stoch < 70:
-            score = 3.5 + (1.0 if cur > km else 0)
-            return {"symbol": symbol, "side": "BUY", "amount": round(min(risk * 0.8, self.balance * self.max_position_pct), 2),
-                    "reason": ["MOMENTUM", "EMA_CROSS", "MACD_BULL"], "score": score}
+            score = (3.5 + (1.0 if cur > km else 0)) * self.momentum_weight
+            if score >= 1.5:
+                return {"symbol": symbol, "side": "BUY", "amount": round(min(risk * 0.8 * self.momentum_weight, self.balance * self.max_position_pct), 2),
+                        "reason": ["MOMENTUM", "EMA_CROSS", "MACD_BULL"], "score": score}
 
         # C: BREAKOUT
         if cur > ku and ema_bull and mh > 0 and stoch > 50:
             if len(pl) >= 2 and pl[-2] <= ku:
-                score = 3.0 + (1.0 if 55 < rsi < 75 else 0)
-                return {"symbol": symbol, "side": "BUY", "amount": round(min(risk * 0.7, self.balance * self.max_position_pct), 2),
-                        "reason": ["BREAKOUT", "KELTNER_BREAK"], "score": score}
+                score = (3.0 + (1.0 if 55 < rsi < 75 else 0)) * self.breakout_weight
+                if score >= 1.5:
+                    return {"symbol": symbol, "side": "BUY", "amount": round(min(risk * 0.7 * self.breakout_weight, self.balance * self.max_position_pct), 2),
+                            "reason": ["BREAKOUT", "KELTNER_BREAK"], "score": score}
 
         # D: TREND_FOLLOW
         if ema_bull and ml > ms and 40 < stoch < 65 and cur > km:
-            score = 2.0 + (0.5 if 50 < rsi < 65 else 0)
-            return {"symbol": symbol, "side": "BUY", "amount": round(min(risk * 0.6, self.balance * self.max_position_pct), 2),
-                    "reason": ["TREND_FOLLOW", "MULTI_CONFIRM"], "score": score}
+            score = (2.0 + (0.5 if 50 < rsi < 65 else 0)) * self.trend_weight
+            if score >= 1.0:
+                return {"symbol": symbol, "side": "BUY", "amount": round(min(risk * 0.6 * self.trend_weight, self.balance * self.max_position_pct), 2),
+                        "reason": ["TREND_FOLLOW", "MULTI_CONFIRM"], "score": score}
 
         # E: EXPLORE
         if random.random() < 0.05:
@@ -548,7 +628,9 @@ async def run_agent(agent_id, arena_url):
 
                         elif msg_type == "hive_patch":
                             params = data.get("parameters", {})
-                            strategy.on_hive_signal(params)
+                            # Pass full data including alpha_factors for fine-tuned adaptation
+                            full_signal = {**params, "alpha_factors": data.get("alpha_factors", data.get("stats", {}))}
+                            strategy.on_hive_signal(full_signal)
                             boost = params.get("boost", [])
                             penalize = params.get("penalize", [])
                             if boost or penalize:
