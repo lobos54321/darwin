@@ -131,39 +131,99 @@ class DarwinAgent:
         from strategy import MyStrategy
         return MyStrategy()
     
-    async def connect(self):
-        """连接到 Arena Server"""
-        session = aiohttp.ClientSession()
-        url = f"{self.arena_url}/ws/{self.agent_id}"
+    async def _auto_register(self):
+        """Auto-register to get API Key if missing"""
+        # 1. Check local cache
+        # Path: data/agents/{agent_id}/.api_key
+        key_file = os.path.join(os.path.dirname(__file__), "..", "data", "agents", self.agent_id, ".api_key")
+        key_file = os.path.abspath(key_file)
         
-        # 如果有 API Key，拼接到 URL 参数里
-        if self.api_key:
-            url += f"?api_key={self.api_key}"
-            print(f"🔑 Authenticating with API Key: {self.api_key[:4]}***")
+        if os.path.exists(key_file):
+            try:
+                with open(key_file, "r") as f:
+                    cached_key = f.read().strip()
+                if cached_key:
+                    self.api_key = cached_key
+                    print(f"🔑 Loaded cached API Key: {self.api_key[:6]}...")
+                    return
+            except Exception as e:
+                print(f"⚠️ Failed to read cached key: {e}")
+
+        # 2. Register via HTTP
+        # Convert ws:// -> http://, wss:// -> https://
+        http_url = self.arena_url.replace("ws://", "http://").replace("wss://", "https://")
+        # Remove /ws/agent_id suffix if present (simple heuristic)
+        if "/ws/" in http_url:
+            http_url = http_url.split("/ws/")[0]
+            
+        register_url = f"{http_url}/auth/register?agent_id={self.agent_id}"
         
-        print(f"🤖 Connecting to Arena: {url}")
+        print(f"📝 Auto-registering {self.agent_id} at {register_url}...")
         
         try:
-            self.ws = await session.ws_connect(url)
-            print(f"✅ Connected as {self.agent_id}")
-            print(f"📊 Dashboard: https://www.darwinx.fun/?agent={self.agent_id}")
-            self.running = True
-            
-            # 检查 Moltbook 状态
-            if self.moltbook:
-                asyncio.create_task(self._check_moltbook())
-            
-            # 启动思考循环 (让它更活跃)
-            print("🚀 Starting thinking loop task...")
-            asyncio.create_task(self._thinking_loop())
-
-            # 开始监听消息
-            await self.listen()
-            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(register_url) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        self.api_key = data["api_key"]
+                        print(f"✅ Registration successful! Key: {self.api_key[:6]}...")
+                        
+                        # Cache it
+                        os.makedirs(os.path.dirname(key_file), exist_ok=True)
+                        with open(key_file, "w") as f:
+                            f.write(self.api_key)
+                    else:
+                        text = await resp.text()
+                        print(f"❌ Registration failed ({resp.status}): {text}")
         except Exception as e:
-            print(f"❌ Connection failed: {e}")
-        finally:
-            await session.close()
+            print(f"❌ Registration connection error: {e}")
+
+    async def connect(self):
+        """连接到 Arena Server (带有自动重连机制)"""
+        # Auto-register if no key provided
+        if not self.api_key:
+            await self._auto_register()
+
+        url = f"{self.arena_url}/ws/{self.agent_id}"
+        
+        while True:
+            session = None
+            try:
+                session = aiohttp.ClientSession()
+                # 如果有 API Key，拼接到 URL 参数里
+                connect_url = url
+                if self.api_key:
+                    connect_url += f"?api_key={self.api_key}"
+                    print(f"🔑 Authenticating with API Key: {self.api_key[:4]}***")
+                
+                print(f"🤖 Connecting to Arena: {connect_url}")
+                
+                self.ws = await session.ws_connect(connect_url)
+                print(f"✅ Connected as {self.agent_id}")
+                print(f"📊 Dashboard: https://www.darwinx.fun/?agent={self.agent_id}")
+                self.running = True
+                
+                # 检查 Moltbook 状态
+                if self.moltbook:
+                    asyncio.create_task(self._check_moltbook())
+                
+                # 启动思考循环 (让它更活跃)
+                print("🚀 Starting thinking loop task...")
+                # Cancel old task if exists? For simplicity, we just start a new one.
+                # In a robust system, we'd track and cancel the old task.
+                asyncio.create_task(self._thinking_loop())
+
+                # 开始监听消息 (阻塞直到断开)
+                await self.listen()
+                
+            except Exception as e:
+                print(f"❌ Connection lost/failed: {e}")
+            finally:
+                if session:
+                    await session.close()
+            
+            print("🔄 Reconnecting in 5 seconds...")
+            await asyncio.sleep(5)
     
     async def _check_moltbook(self):
         """检查 Moltbook 认领状态"""
@@ -267,18 +327,29 @@ class DarwinAgent:
             if data["success"]:
                 print(f"✅ Order executed. New balance: ${data['balance']:.2f}")
                 self.strategy.balance = data["balance"]
-                
-                # 🦞 Moltbook Integration: Post about the trade
+
+                # Sync positions from server response (authoritative source)
+                positions = data.get("positions", {})
+                if hasattr(self.strategy, "current_positions"):
+                    self.strategy.current_positions = {}
+                    self.strategy.entry_prices = getattr(self.strategy, "entry_prices", {})
+                    for sym, pdata in positions.items():
+                        amount = pdata.get("amount", 0) if isinstance(pdata, dict) else pdata
+                        avg_price = pdata.get("avg_price", 0) if isinstance(pdata, dict) else 0
+                        if amount > 0:
+                            self.strategy.current_positions[sym] = amount
+                            if sym not in self.strategy.entry_prices or self.strategy.entry_prices[sym] <= 0.0001:
+                                self.strategy.entry_prices[sym] = avg_price
+
+                # 🦞 Moltbook Integration
                 if self.moltbook:
                     try:
                         trade_msg = f"Just executed order! Balance: ${data['balance']:.2f} 🚀 #ProjectDarwin"
-                        # Simple context if available (server doesn't send symbol in result yet, keeping it generic or we could track it)
                         await self.moltbook.post_update(content=trade_msg, title="Trade Executed")
-                        print("🦞 Posted trade update to Moltbook!")
                     except Exception as e:
                         print(f"⚠️ Failed to post to Moltbook: {e}")
             else:
-                print("❌ Order failed")
+                print(f"❌ Order failed: {data.get('message', '')}")
         
         elif msg_type == "ascension":
             if data["agent_id"] == self.agent_id:
