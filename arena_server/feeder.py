@@ -18,11 +18,12 @@ SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
 class DexScreenerFeeder:
     """DexScreener 数据抓取器"""
-    
-    def __init__(self):
+
+    def __init__(self, tokens: Dict[str, str] = None):
+        self._tokens = tokens or TARGET_TOKENS
         self.prices: Dict[str, dict] = {}
         self.history: Dict[str, deque] = {
-            sym: deque(maxlen=100) for sym in TARGET_TOKENS.keys()
+            sym: deque(maxlen=100) for sym in self._tokens.keys()
         }
         self.last_update: Optional[datetime] = None
         self._running = False
@@ -58,12 +59,12 @@ class DexScreenerFeeder:
         connector = aiohttp.TCPConnector(ssl=SSL_CONTEXT)
         async with aiohttp.ClientSession(connector=connector) as session:
             tasks = []
-            for symbol, address in TARGET_TOKENS.items():
+            for symbol, address in self._tokens.items():
                 tasks.append(self.fetch_token_price(session, address))
-            
+
             results = await asyncio.gather(*tasks)
-            
-            for symbol, result in zip(TARGET_TOKENS.keys(), results):
+
+            for symbol, result in zip(self._tokens.keys(), results):
                 if result:
                     self.prices[symbol] = result
                     # Append to history

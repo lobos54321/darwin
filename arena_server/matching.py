@@ -95,7 +95,7 @@ class MatchingEngine:
         self.agents = self.accounts  # Alias for compatibility
         self.current_prices: Dict[str, float] = {}
         self.order_count = 0
-        self.trade_history: deque = deque(maxlen=50) # Rolling history of last 50 trades
+        self.trade_history: deque = deque(maxlen=500) # Rolling history for Hive Mind attribution
     
     def get_balance(self, agent_id: str) -> float:
         """获取账户余额"""
@@ -186,7 +186,8 @@ class MatchingEngine:
                 "amount": token_amount,
                 "price": fill_price,
                 "value": amount_usd,
-                "reason": reason or [] # Store the strategy tags
+                "reason": reason or [],
+                "trade_pnl": None  # Unknown until position is closed
             })
             
             print(f"✅ {agent_id} BUY {token_amount:.4f} {symbol} @ ${fill_price:.4f} Tags:{reason}")
@@ -207,7 +208,10 @@ class MatchingEngine:
             
             self.order_count += 1
             
-            # Record trade
+            # Compute per-trade PnL for this sell
+            trade_pnl = ((fill_price - pos.avg_price) / pos.avg_price * 100) if pos.avg_price > 0 else 0
+
+            # Record trade with TAGS + per-trade PnL
             self.trade_history.appendleft({
                 "time": datetime.now().strftime("%H:%M:%S"),
                 "agent": agent_id,
@@ -215,10 +219,13 @@ class MatchingEngine:
                 "symbol": symbol,
                 "amount": token_amount,
                 "price": fill_price,
-                "value": token_amount * fill_price
+                "value": token_amount * fill_price,
+                "entry_price": pos.avg_price,
+                "trade_pnl": round(trade_pnl, 2),
+                "reason": reason or []  # SELL tags: TAKE_PROFIT, STOP_LOSS, etc.
             })
-            
-            print(f"✅ {agent_id} SELL {token_amount:.4f} {symbol} @ ${fill_price:.4f}")
+
+            print(f"✅ {agent_id} SELL {token_amount:.4f} {symbol} @ ${fill_price:.4f} PnL:{trade_pnl:+.1f}% Tags:{reason}")
             return (True, f"Sold {token_amount:.4f} {symbol}", fill_price)
     
     @property

@@ -32,6 +32,7 @@ from council import Council, MessageRole
 from chain import ChainIntegration, AscensionTracker
 from state_manager import StateManager
 from hive_mind import HiveMind
+from group_manager import GroupManager
 from tournament import TournamentManager
 from redis_state import redis_state
 
@@ -44,21 +45,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # 全局状态
-# 区分不同 Zone 的 Feeder
-feeders = {
-    "meme": DexScreenerFeeder(),
-    "contract": FuturesFeeder()
-}
-# 默认使用 Meme 区数据喂给 Engine (暂时共用一个 Engine，后续可拆分)
-feeder = feeders["meme"] 
-futures_feeder = feeders["contract"]
+# GroupManager 取代了全局 engine + hive_mind
+# 每个 Group 有自己的 engine + hive_mind + feeder (不同代币池)
+group_manager = GroupManager()
 
-engine = MatchingEngine()
+# 合约区 Feeder (全局，供所有组使用)
+futures_feeder = FuturesFeeder()
+
+# 兼容层: engine 指向 group_manager (提供相同接口)
+engine = group_manager
+
 council = Council()
-hive_mind = HiveMind(engine) # 🧠 初始化蜂巢大脑
 chain = ChainIntegration(testnet=True)
 ascension_tracker = AscensionTracker()
-state_manager = StateManager(engine, council, ascension_tracker)
+state_manager = StateManager(group_manager, council, ascension_tracker)
 tournament_manager = TournamentManager()  # 🏆 锦标赛管理器
 
 # --- Persistence: API Keys ---
@@ -126,28 +126,16 @@ async def lifespan(app: FastAPI):
         current_epoch = redis_loaded.get("epoch", 1)
         trade_count = redis_loaded.get("trade_count", 0)
         total_volume = redis_loaded.get("total_volume", 0.0)
-        
-        # 🔧 恢复Agent账户到matching engine（包含持仓）
-        from matching import Position
+
+        # 🔧 恢复Agent账户到 GroupManager（自动分组）
         saved_agents = redis_loaded.get("agents", {})
         for agent_id, agent_data in saved_agents.items():
             balance = agent_data.get("balance", 1000)
             positions_raw = agent_data.get("positions", {})
-            account = engine.register_agent(agent_id)
-            account.balance = balance
-            # Restore positions as proper Position objects
-            for sym, pdata in positions_raw.items():
-                if isinstance(pdata, dict):
-                    account.positions[sym] = Position(
-                        symbol=sym,
-                        amount=pdata.get("amount", 0.0),
-                        avg_price=pdata.get("avg_price", 0.0)
-                    )
-                else:
-                    # Legacy format: just a number
-                    account.positions[sym] = Position(symbol=sym, amount=float(pdata), avg_price=0.0)
-        
-        logger.info(f"🔄 Resumed from Redis: Epoch {current_epoch}, {len(saved_agents)} agents restored")
+            saved_group_id = agent_data.get("group_id")
+            group_manager.restore_agent(agent_id, balance, positions_raw, saved_group_id)
+
+        logger.info(f"🔄 Resumed from Redis: Epoch {current_epoch}, {len(saved_agents)} agents restored across {len(group_manager.groups)} groups")
     else:
         # 尝试加载本地状态
         saved_state = state_manager.load_state()
@@ -157,62 +145,50 @@ async def lifespan(app: FastAPI):
         else:
             current_epoch = 1
             logger.info("🆕 Starting fresh from Epoch 1")
-    
+
     epoch_start_time = datetime.now()
 
-    # 订阅价格更新到 matching engine
-    def update_engine_prices(prices):
-        engine.update_prices(prices)
-    
-    # Meme 区数据订阅
-    feeder.subscribe(update_engine_prices)
-    # 合约区数据也订阅 (混合模式)
-    futures_feeder.subscribe(update_engine_prices)
-    
+    # 合约区数据订阅 (全局推送给所有组的 engine)
+    futures_feeder.subscribe(lambda prices: group_manager.update_prices(prices))
+
     # 启动后台任务
-    price_task = asyncio.create_task(feeder.start())
+    # 每组的 feeder 在 assign_agent 时按需启动，这里启动已有组的 feeders
+    await group_manager.start_all_feeders()
     futures_task = asyncio.create_task(futures_feeder.start())
     epoch_task = asyncio.create_task(epoch_loop())
     autosave_task = asyncio.create_task(state_manager.auto_save_loop(lambda: current_epoch))
-    
-    # 🧠 启动蜂巢大脑任务 (每 60 秒分析一次)
+
+    # 🧠 蜂巢大脑: 每 60 秒对每个组独立分析
     async def hive_mind_loop():
         while True:
             await asyncio.sleep(60)
             try:
-                patch = hive_mind.generate_patch()
-                if patch:
-                    patch["epoch"] = current_epoch
-                    await broadcast_to_agents(patch)
+                async def send_patch_to_group(group_id, patch):
+                    await broadcast_to_group(group_id, patch)
+
+                count = await group_manager.hive_mind_tick(current_epoch, send_patch_to_group)
+                if count:
+                    logger.info(f"🧠 Hive Mind: {count} group patches generated")
             except Exception as e:
                 logger.error(f"Hive Mind Error: {e}")
-                
+
     hive_task = asyncio.create_task(hive_mind_loop())
-    
+
     logger.info("✅ Arena Server ready!")
     logger.info(f"📊 Live dashboard: http://localhost:8888/live")
-    
+    logger.info(f"📦 Groups: {len(group_manager.groups)} | Group size: {group_manager.dynamic_group_size()}")
+
     yield
-    
+
     # 关闭时
     logger.info("🛑 Shutting down Arena Server...")
-    
+
     # 保存最终状态到本地和Redis
     state_manager.save_state(current_epoch)
-    agents_data = {
-        aid: {
-            "balance": acc.balance,
-            "positions": {
-                sym: {"amount": pos.amount, "avg_price": pos.avg_price}
-                for sym, pos in acc.positions.items()
-            },
-            "pnl": acc.get_pnl(engine.current_prices)
-        }
-        for aid, acc in engine.accounts.items()
-    }
+    agents_data = group_manager.get_all_accounts_data()
     redis_state.save_full_state(current_epoch, trade_count, total_volume, API_KEYS_DB, agents_data)
-    
-    price_task.cancel()
+
+    group_manager.stop_all_feeders()
     futures_task.cancel()
     epoch_task.cancel()
     autosave_task.cancel()
@@ -281,65 +257,130 @@ async def epoch_loop():
 async def broadcast_to_agents(message: dict):
     """广播消息给所有连接的 Agent"""
     disconnected = []
-    
+
     for agent_id, ws in connected_agents.items():
         try:
             await ws.send_json(message)
         except Exception as e:
             logger.warning(f"Failed to send to {agent_id}: {e}")
             disconnected.append(agent_id)
-    
+
     # 清理断开的连接
     for agent_id in disconnected:
         connected_agents.pop(agent_id, None)
 
 
-async def end_epoch():
-    """结束当前 Epoch"""
-    global current_epoch
-    
-    logger.info(f"{'='*60}")
-    logger.info(f"🏁 EPOCH {current_epoch} ENDED")
-    logger.info(f"{'='*60}")
-    
-    # 获取排行榜
-    rankings = engine.get_leaderboard()
-    engine.print_leaderboard()
-    
-    if not rankings:
+async def broadcast_to_group(group_id: int, message: dict):
+    """广播消息给指定组内所有连接的 Agent"""
+    group = group_manager.get_group_by_id(group_id)
+    if not group:
         return
-    
-    # 确定赢家和输家
-    winner_id = rankings[0][0]
-    total_agents = len(rankings)
-    elimination_count = max(1, int(total_agents * ELIMINATION_THRESHOLD))
-    losers = [r[0] for r in rankings[-elimination_count:]]
-    
-    logger.info(f"🏆 Winner: {winner_id}")
-    logger.info(f"💀 Eliminated: {losers}")
-    
-    # === 保存冠军策略供外部用户下载 ===
+
+    disconnected = []
+    for agent_id in group.members:
+        ws = connected_agents.get(agent_id)
+        if ws:
+            try:
+                await ws.send_json(message)
+            except Exception as e:
+                logger.warning(f"Failed to send to {agent_id}: {e}")
+                disconnected.append(agent_id)
+
+    for agent_id in disconnected:
+        connected_agents.pop(agent_id, None)
+
+
+async def end_epoch():
+    """结束当前 Epoch — 每组独立评比+进化"""
+    global current_epoch
+
+    logger.info(f"{'='*60}")
+    logger.info(f"🏁 EPOCH {current_epoch} ENDED | {len(group_manager.groups)} groups")
+    logger.info(f"{'='*60}")
+
+    # === 全局排行（跨组）用于 Ascension ===
+    global_rankings = group_manager.get_leaderboard()
+    group_manager.print_leaderboard()
+
+    if not global_rankings:
+        return
+
+    global_winner_id = global_rankings[0][0]
+
+    # === 保存全局冠军策略 ===
     try:
-        winner_strategy_path = os.path.join(os.path.dirname(__file__), "..", "data", "agents", winner_id, "strategy.py")
+        winner_strategy_path = os.path.join(os.path.dirname(__file__), "..", "data", "agents", global_winner_id, "strategy.py")
         champion_save_path = os.path.join(os.path.dirname(__file__), "..", "skill-package", "champion_strategy.py")
-        
+
         if os.path.exists(winner_strategy_path):
             import shutil
             shutil.copy(winner_strategy_path, champion_save_path)
-            logger.info(f"🏆 Saved champion strategy from {winner_id}")
+            logger.info(f"🏆 Saved champion strategy from {global_winner_id}")
         else:
-            # 冠军没有自定义策略，使用默认模板
             template_path = os.path.join(os.path.dirname(__file__), "..", "agent_template", "strategy.py")
             if os.path.exists(template_path):
                 import shutil
                 shutil.copy(template_path, champion_save_path)
     except Exception as e:
         logger.warning(f"Could not save champion strategy: {e}")
-    
-    # 检查是否有 Agent 达到 L1 晋级或 L2 升天条件
-    ascension_results = ascension_tracker.record_epoch_result(rankings)
-    
-    # 1. 处理 L1 -> L2 晋级
+
+    # === 每组独立淘汰 + 进化 ===
+    all_losers = []
+    all_winners = []
+
+    for group_id, group in group_manager.groups.items():
+        rankings = group.engine.get_leaderboard()
+        if not rankings:
+            continue
+
+        winner_id = rankings[0][0]
+        total_in_group = len(rankings)
+        elimination_count = max(1, int(total_in_group * ELIMINATION_THRESHOLD))
+        losers = [r[0] for r in rankings[-elimination_count:]]
+
+        all_winners.append(winner_id)
+        all_losers.extend(losers)
+
+        logger.info(f"  Group {group_id}: 🏆 {winner_id} | 💀 {losers}")
+
+        # 组内广播 epoch_end
+        await broadcast_to_group(group_id, {
+            "type": "epoch_end",
+            "epoch": current_epoch,
+            "group_id": group_id,
+            "rankings": [{"agent_id": r[0], "pnl": r[1]} for r in rankings],
+            "winner": winner_id,
+            "eliminated": losers,
+        })
+
+        # 组内进化
+        try:
+            from evolution import run_council_and_evolution
+
+            results = await run_council_and_evolution(
+                engine=group.engine,
+                council=council,
+                epoch=current_epoch,
+                winner_id=winner_id,
+                losers=losers
+            )
+
+            await broadcast_to_group(group_id, {
+                "type": "evolution_complete",
+                "epoch": current_epoch,
+                "group_id": group_id,
+                "winner_id": winner_id,
+                "evolved": [k for k, v in results.items() if v],
+                "failed": [k for k, v in results.items() if not v]
+            })
+
+            logger.info(f"  Group {group_id}: 🧬 {len([v for v in results.values() if v])}/{len(results)} evolved")
+        except Exception as e:
+            logger.error(f"Evolution error (Group {group_id}): {e}")
+
+    # === Ascension (全局) ===
+    ascension_results = ascension_tracker.record_epoch_result(global_rankings)
+
     promoted_agents = ascension_results.get("promoted_to_l2", [])
     if promoted_agents:
         logger.info(f"🌟 PROMOTION: {promoted_agents} promoted to L2 Arena!")
@@ -347,16 +388,13 @@ async def end_epoch():
             "type": "promotion_l2",
             "epoch": current_epoch,
             "agents": promoted_agents,
-            "message": "Congratulations! You have qualified for the L2 Paid Arena (Entry Fee: 0.01 ETH)."
+            "message": "Congratulations! You have qualified for the L2 Paid Arena."
         })
 
-    # 2. 处理 L2 -> Ascension (发币)
     launch_candidates = ascension_results.get("ready_to_launch", [])
-    
     for ascension_candidate in launch_candidates:
         logger.info(f"🚀 ASCENSION: {ascension_candidate} qualifies for token launch!")
-        
-        # 读取 Agent 的策略代码
+
         strategy_code = "# Default strategy"
         try:
             strategy_path = os.path.join(os.path.dirname(__file__), "..", "data", "agents", ascension_candidate, "strategy.py")
@@ -364,33 +402,18 @@ async def end_epoch():
                 with open(strategy_path, "r") as f:
                     strategy_code = f.read()
             else:
-                 # Fallback to template if not found
                 strategy_path = os.path.join(os.path.dirname(__file__), "..", "agent_template", "strategy.py")
                 with open(strategy_path, "r") as f:
                     strategy_code = f.read()
         except Exception as e:
             logger.warning(f"Could not read strategy: {e}")
-        
-        # 获取 Agent 注册时绑定的钱包地址
+
         agent_registry = getattr(app.state, 'agent_registry', {})
-        owner_address = agent_registry.get(ascension_candidate, {}).get('wallet', 
+        owner_address = agent_registry.get(ascension_candidate, {}).get('wallet',
             os.getenv("DARWIN_PLATFORM_WALLET", "0x3775f940502fAbC9CD4C84478A8CB262e55AadF9"))
-        
-        # 获取议事厅贡献者信息 (L2 期间的贡献)
-        contribution_leaderboard = council.get_contribution_leaderboard()
-        contributors_data = []
-        for agent_id_contrib, score in contribution_leaderboard:
-            agent_wallet = agent_registry.get(agent_id_contrib, {}).get('wallet')
-            if agent_wallet and score > 0:
-                contributors_data.append({
-                    "agent_id": agent_id_contrib,
-                    "wallet": agent_wallet,
-                    "score": score
-                })
-        
-        # 准备发币数据 (等待用户手动触发)
+
         strategy_hash = chain.compute_strategy_hash(strategy_code)
-        
+
         launch_data = {
             "type": "ascension_ready",
             "epoch": current_epoch,
@@ -399,92 +422,35 @@ async def end_epoch():
             "strategy_hash": strategy_hash,
             "factory_address": os.getenv("DARWIN_FACTORY_ADDRESS", "0x63685E3Ff986Ae389496C08b6c18F30EBdb9fa71"),
             "chain_id": 84532,
-            "contributors": contributors_data,
-            "liquidity_pool_eth": 0.5, # 模拟 L2 资金池
-            "message": f"🚀 {ascension_candidate} achieved ASCENSION! Ready to launch with 0.5 ETH liquidity."
+            "liquidity_pool_eth": 0.5,
+            "message": f"🚀 {ascension_candidate} achieved ASCENSION!"
         }
-        
+
         if not hasattr(app.state, 'pending_launches'):
             app.state.pending_launches = []
         app.state.pending_launches.append(launch_data)
-        
         await broadcast_to_agents(launch_data)
-    
-    # 通知所有 Agent
-    await broadcast_to_agents({
-        "type": "epoch_end",
-        "epoch": current_epoch,
-        "rankings": [{"agent_id": r[0], "pnl": r[1]} for r in rankings],
-        "winner": winner_id,
-        "eliminated": losers,
-        "promoted": promoted_agents,
-        "ascended": launch_candidates
-    })
-    
-    # 开启议事厅
-    council.start_session(epoch=current_epoch, winner_id=winner_id)
-    
+
+    # 全局议事厅
+    council.start_session(epoch=current_epoch, winner_id=global_winner_id)
     await broadcast_to_agents({
         "type": "council_open",
         "epoch": current_epoch,
-        "winner": winner_id
+        "winner": global_winner_id
     })
-    
-    # 议事厅开放时间 (开发模式缩短)
-    council_duration = 60  # 60 秒 (测试用)
-    # council_duration = 30 * 60  # 30 分钟 (正式版)
-    
+
+    council_duration = 60
     await asyncio.sleep(council_duration)
-    
+
     council.close_session(epoch=current_epoch)
-    
     await broadcast_to_agents({
         "type": "council_close",
         "epoch": current_epoch
     })
-    
-    # 🏛️ + 🧬 完整的议事厅 + 进化流程
-    logger.info(f"🏛️🧬 Starting Council & Evolution Phase...")
-    try:
-        from evolution import run_council_and_evolution
-        
-        results = await run_council_and_evolution(
-            engine=engine,
-            council=council,
-            epoch=current_epoch,
-            winner_id=winner_id,
-            losers=losers
-        )
-        
-        # 广播进化结果
-        await broadcast_to_agents({
-            "type": "evolution_complete",
-            "epoch": current_epoch,
-            "winner_id": winner_id,
-            "winner_wisdom": council.get_winner_wisdom(current_epoch),
-            "evolved": [k for k, v in results.items() if v],
-            "failed": [k for k, v in results.items() if not v]
-        })
-        
-        logger.info(f"🧬 Evolution Phase completed! {len([v for v in results.values() if v])}/{len(results)} succeeded")
-    except Exception as e:
-        logger.error(f"Council & Evolution Phase error: {e}")
-        traceback.print_exc()
-    
-    # 保存状态到本地和Redis
+
+    # 保存状态
     state_manager.save_state(current_epoch)
-    # 保存到Redis（包含持仓和PnL）
-    agents_data = {
-        aid: {
-            "balance": acc.balance,
-            "positions": {
-                sym: {"amount": pos.amount, "avg_price": pos.avg_price}
-                for sym, pos in acc.positions.items()
-            },
-            "pnl": acc.get_pnl(engine.current_prices)
-        }
-        for aid, acc in engine.accounts.items()
-    }
+    agents_data = group_manager.get_all_accounts_data()
     redis_state.save_full_state(current_epoch, trade_count, total_volume, API_KEYS_DB, agents_data)
 
 
@@ -492,30 +458,7 @@ async def end_epoch():
 
 # === Agent 数量限制 ===
 MAX_AGENTS_PER_IP = 5  # 每个IP最多5个Agent
-MAX_AGENTS_PER_GROUP = 100  # 每组最大Agent数
 ip_agent_count: Dict[str, int] = {}  # IP -> count
-agent_groups: Dict[int, set] = {0: set()}  # group_id -> set of agent_ids
-agent_to_group: Dict[str, int] = {}  # agent_id -> group_id
-
-def get_or_assign_group(agent_id: str) -> int:
-    """为Agent分配组，满了就开新组"""
-    # 已有分组
-    if agent_id in agent_to_group:
-        return agent_to_group[agent_id]
-    
-    # 找一个未满的组
-    for group_id, members in agent_groups.items():
-        if len(members) < MAX_AGENTS_PER_GROUP:
-            members.add(agent_id)
-            agent_to_group[agent_id] = group_id
-            return group_id
-    
-    # 所有组都满了，开新组
-    new_group_id = max(agent_groups.keys()) + 1
-    agent_groups[new_group_id] = {agent_id}
-    agent_to_group[agent_id] = new_group_id
-    logger.info(f"🆕 Created new group {new_group_id} for {agent_id}")
-    return new_group_id
 
 @app.post("/auth/register")
 async def register_api_key(agent_id: str, request: Request):
@@ -535,8 +478,8 @@ async def register_api_key(agent_id: str, request: Request):
                 "message": "Welcome back!"
             }
 
-    # 分配组
-    group_id = get_or_assign_group(agent_id)
+    # 分配组 (通过 GroupManager)
+    # group assignment happens on WebSocket connect via assign_agent
     
     # 2. 每IP限制 (跳过本地开发)
     if client_ip not in ["127.0.0.1", "localhost"]:
@@ -624,23 +567,25 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
     
     await websocket.accept()
     connected_agents[agent_id] = websocket
-    
-    # 注册到 matching engine
-    engine.register_agent(agent_id)
-    
-    logger.info(f"🤖 Agent connected: {agent_id} (Total: {len(connected_agents)})")
-    
-    # 发送欢迎消息
+
+    # 分配到组 (GroupManager 自动分配代币池)
+    group = await group_manager.assign_agent(agent_id)
+
+    logger.info(f"🤖 Agent connected: {agent_id} → Group {group.group_id} ({group.token_symbols}) (Total: {len(connected_agents)})")
+
+    # 发送欢迎消息 (带组信息)
     await websocket.send_json({
         "type": "welcome",
         "agent_id": agent_id,
         "epoch": current_epoch,
+        "group_id": group.group_id,
+        "tokens": group.token_symbols,
         "balance": engine.get_balance(agent_id),
         "positions": engine.get_positions(agent_id),
-        "prices": feeder.prices
+        "prices": group.feeder.prices
     })
-    
-    # 订阅价格更新 (with cleanup on disconnect)
+
+    # 订阅该组的价格更新
     agent_connected = True
 
     async def send_prices(prices):
@@ -656,7 +601,7 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
             pass
 
     price_callback = lambda p: asyncio.create_task(send_prices(p))
-    feeder.subscribe(price_callback)
+    group.feeder.subscribe(price_callback)
 
     try:
         while True:
@@ -727,9 +672,9 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
     finally:
         agent_connected = False
         connected_agents.pop(agent_id, None)
-        # Clean up subscriber
-        if price_callback in feeder._subscribers:
-            feeder._subscribers.remove(price_callback)
+        # Clean up subscriber from group feeder
+        if price_callback in group.feeder._subscribers:
+            group.feeder._subscribers.remove(price_callback)
 
 
 # ========== REST API ==========
@@ -758,42 +703,40 @@ async def api_status():
 
 @app.post("/debug/force-mutation")
 async def force_mutation():
-    """Debug: Force full council + evolution cycle for losers"""
+    """Debug: Force full council + evolution cycle for losers (per-group)"""
     try:
         from evolution import run_council_and_evolution
-        
-        # Get rankings
-        rankings = engine.get_leaderboard()
-        if not rankings:
-            return {"status": "error", "message": "No agents found"}
-        
-        winner_id = rankings[0][0]
-        
-        # Bottom 50% are losers
-        cutoff = len(rankings) // 2
-        losers = [r[0] for r in rankings[cutoff:]]
-        
-        if not losers:
-            return {"status": "error", "message": "No losers found"}
-        
-        # 🟢 FIX: Start council session explicitly for debug
-        council.start_session(epoch=current_epoch, winner_id=winner_id)
-        
-        try:
-            # Run full council + evolution flow
-            results = await run_council_and_evolution(
-                engine=engine,
-                council=council,
-                epoch=current_epoch,
-                winner_id=winner_id,
-                losers=losers
-            )
-        finally:
-            # 🔴 FIX: Ensure session is closed even if errors occur
-            council.close_session(epoch=current_epoch)
-        
-        mutations = [{"agent_id": k, "success": v} for k, v in results.items()]
-        return {"status": "ok", "winner": winner_id, "mutations": mutations}
+
+        all_mutations = []
+        for group_id, group in group_manager.groups.items():
+            rankings = group.engine.get_leaderboard()
+            if not rankings:
+                continue
+
+            winner_id = rankings[0][0]
+            cutoff = len(rankings) // 2
+            losers = [r[0] for r in rankings[cutoff:]]
+
+            if not losers:
+                continue
+
+            council.start_session(epoch=current_epoch, winner_id=winner_id)
+
+            try:
+                results = await run_council_and_evolution(
+                    engine=group.engine,
+                    council=council,
+                    epoch=current_epoch,
+                    winner_id=winner_id,
+                    losers=losers
+                )
+            finally:
+                council.close_session(epoch=current_epoch)
+
+            for k, v in results.items():
+                all_mutations.append({"agent_id": k, "success": v, "group_id": group_id})
+
+        return {"status": "ok", "mutations": all_mutations}
         
     except Exception as e:
         traceback.print_exc()
@@ -868,11 +811,12 @@ async def health():
 
 @app.get("/history")
 async def get_history():
-    """Get historical price data for charts"""
-    return {
-        symbol: list(data) 
-        for symbol, data in feeder.history.items()
-    }
+    """Get historical price data for charts (all groups merged)"""
+    merged = {}
+    for group in group_manager.groups.values():
+        for symbol, data in group.feeder.history.items():
+            merged[symbol] = list(data)
+    return merged
 
 
 @app.get("/trades")
@@ -896,8 +840,8 @@ async def get_leaderboard():
 @app.get("/prices")
 async def get_prices():
     return {
-        "timestamp": feeder.last_update.isoformat() if feeder.last_update else None,
-        "prices": feeder.prices
+        "timestamp": datetime.now().isoformat(),
+        "prices": group_manager.current_prices
     }
 
 
@@ -905,20 +849,15 @@ async def get_prices():
 async def get_stats():
     """获取系统统计信息"""
     rankings = engine.get_leaderboard()
-    
+
     return {
         "epoch": current_epoch,
         "epoch_start": epoch_start_time.isoformat() if epoch_start_time else None,
         "connected_agents": len(connected_agents),
-        "total_agents": len(engine.accounts),
+        "total_agents": group_manager.total_agents,
         "trade_count": trade_count,
         "total_volume": total_volume,
-        "prices_last_update": feeder.last_update.isoformat() if feeder.last_update else None,
-        # 新增统计
-        "groups": {
-            "count": len(agent_groups),
-            "sizes": {gid: len(members) for gid, members in agent_groups.items()}
-        },
+        "groups": group_manager.get_stats(),
         "top_agent": rankings[0][0] if rankings else None,
         "top_pnl": rankings[0][1] if rankings else 0,
         "economy": {
@@ -931,21 +870,50 @@ async def get_stats():
 
 @app.get("/hive-mind")
 async def get_hive_mind_status():
-    """获取蜂巢大脑状态 (Alpha 因子 & 策略补丁)"""
+    """获取蜂巢大脑状态 (每组独立的 Alpha 因子 & 策略补丁)"""
     try:
-        # 获取当前分析报告
-        report = hive_mind.analyze_alpha()
-        # 获取最新补丁 (预览)
-        patch = hive_mind.generate_patch()
-        
+        group_reports = {}
+        for group_id, group in group_manager.groups.items():
+            report = group.hive_mind.analyze_alpha()
+            patch = group.hive_mind.generate_patch()
+            group_reports[group_id] = {
+                "tokens": group.token_symbols,
+                "members": group.size,
+                "alpha_report": report,
+                "latest_patch": patch
+            }
+
         return {
             "epoch": current_epoch,
-            "alpha_report": report,
-            "latest_patch": patch
+            "groups": group_reports
         }
     except Exception as e:
         logger.error(f"Hive Mind API Error: {e}")
         return {"error": str(e)}
+
+
+@app.get("/groups")
+async def get_groups():
+    """获取所有竞技小组信息"""
+    result = {}
+    for gid, group in group_manager.groups.items():
+        rankings = group.engine.get_leaderboard()
+        result[gid] = {
+            "tokens": group.token_symbols,
+            "members": list(group.members),
+            "size": group.size,
+            "max_size": group_manager.dynamic_group_size(),
+            "leaderboard": [
+                {"agent_id": r[0], "pnl": r[1], "total_value": r[2]}
+                for r in rankings[:10]
+            ]
+        }
+    return {
+        "total_groups": len(group_manager.groups),
+        "total_agents": group_manager.total_agents,
+        "group_size": group_manager.dynamic_group_size(),
+        "groups": result
+    }
 
 
 @app.get("/council/{epoch}")
