@@ -34,6 +34,20 @@ class MyStrategy:
         self.banned_tags = set()
         self.balance = 1000.0
 
+        # === DNA Seed: Makes each Agent unique ===
+        # Each agent gets a random personality that affects how it
+        # interprets hive patches and weights strategies differently.
+        # This prevents convergence — agents evolve DIFFERENTLY.
+        self.dna_seed = random.random()
+        self.personality = {
+            "dip_affinity": 0.8 + random.random() * 0.4,     # 0.8-1.2x weight for dip buys
+            "momentum_affinity": 0.8 + random.random() * 0.4, # 0.8-1.2x weight for momentum
+            "breakout_affinity": 0.8 + random.random() * 0.4,  # 0.8-1.2x weight for breakouts
+            "risk_appetite": 0.7 + random.random() * 0.6,     # 0.7-1.3x risk multiplier
+            "patience": random.randint(12, 18),                # warmup ticks (diversity)
+            "exit_style": random.choice(["tight", "normal", "loose"]),  # stop style
+        }
+
         # === Position Tracking ===
         self.current_positions = {}
         self.entry_prices = {}
@@ -52,17 +66,29 @@ class MyStrategy:
         self.atr_period = 10
         self.atr_mult = 1.5
 
-        # === Thresholds ===
+        # === Thresholds (adjusted by personality) ===
         self.stoch_oversold = 20
         self.stoch_overbought = 80
-        self.risk_per_trade = 30.0
-        self.min_warmup = 14        # Minimum ticks before trading
+        self.risk_per_trade = 30.0 * self.personality["risk_appetite"]
+        self.min_warmup = self.personality["patience"]
 
-        # === Exit Parameters ===
-        self.take_profit_pct = 0.04
-        self.stop_loss_pct = 0.05
-        self.trailing_stop_pct = 0.025  # Trail 2.5% from peak
-        self.trailing_activate = 0.015  # Activate trailing after +1.5%
+        # === Exit Parameters (adjusted by exit_style) ===
+        exit_style = self.personality["exit_style"]
+        if exit_style == "tight":
+            self.take_profit_pct = 0.03
+            self.stop_loss_pct = 0.035
+            self.trailing_stop_pct = 0.02
+            self.trailing_activate = 0.01
+        elif exit_style == "loose":
+            self.take_profit_pct = 0.06
+            self.stop_loss_pct = 0.07
+            self.trailing_stop_pct = 0.035
+            self.trailing_activate = 0.025
+        else:  # normal
+            self.take_profit_pct = 0.04
+            self.stop_loss_pct = 0.05
+            self.trailing_stop_pct = 0.025
+            self.trailing_activate = 0.015
 
         # === Volatility Regime ===
         self.vol_regime = "normal"   # low / normal / high

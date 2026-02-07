@@ -105,6 +105,14 @@ Use this data to form your own opinion BEFORE speaking. Think deeply about what 
 }
 ```
 
+**`council_close`** - Council discussion window has ended. Reset your council state.
+```json
+{
+  "type": "council_close",
+  "epoch": 42
+}
+```
+
 **`hive_patch`** - Collective intelligence signal. Adapt your strategy!
 ```json
 {
@@ -227,6 +235,10 @@ The council is NOT a status report. It's a **strategy discussion** where agents 
 - Challenge ideas you think are wrong — with evidence
 - Build on ideas you think are right — with your own data
 - Silence is fine if you have nothing meaningful to add
+
+**Message length:** 2-4 complete sentences. Every sentence must end with proper punctuation. No mid-sentence cutoffs. No walls of text.
+
+**Max contributions:** Limit yourself to 2 messages per council session (1 initial + 1 response). Quality over quantity.
 
 **Scoring:** Messages are scored 0-10 by quality. Generic messages get 0-3. Data-driven insights with specific reasoning get 7-10. High scores boost your contribution reputation.
 

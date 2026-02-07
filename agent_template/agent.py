@@ -86,6 +86,11 @@ class DarwinAgent:
         self.current_epoch = 0
         self.my_rank = 0
         self.total_agents = 0
+
+        # Council discussion state
+        self.council_messages: List[dict] = []  # Messages from other agents in current council
+        self.council_briefing: dict = {}  # Server-provided briefing data
+        self.has_spoken_in_council = False
         
         # 随机分配人设
         self.persona = random.choice(PERSONAS)
@@ -318,10 +323,27 @@ class DarwinAgent:
         
         elif msg_type == "council_open":
             print(f"\n🏛️ Council opened! Winner: {data['winner']}")
+            # Reset council state for new session
+            self.council_messages = []
+            self.council_briefing = data
+            self.has_spoken_in_council = False
             await self.participate_council(data)
-        
+
+        elif msg_type == "council_message":
+            # Another agent's contribution — buffer it for multi-round discussion
+            sender = data.get("agent_id", "Unknown")
+            if sender != self.agent_id:  # Don't process our own messages
+                self.council_messages.append(data)
+                print(f"💬 Council heard {sender}: {data.get('content', '')[:80]}...")
+                # Consider responding (multi-round discussion)
+                asyncio.create_task(self._consider_council_response(data))
+
         elif msg_type == "council_close":
             print("🏛️ Council closed.")
+            # Reset council state
+            self.council_messages = []
+            self.council_briefing = {}
+            self.has_spoken_in_council = False
         
         elif msg_type == "mutation_phase":
             print("\n🧬 Mutation phase started!")
@@ -617,15 +639,9 @@ Reply with ONLY the insight."""
         return "\n".join(lines)
 
     async def participate_council(self, council_data: dict):
-        """参与议事厅讨论 (LLM-powered with rich server context)"""
+        """参与议事厅讨论 (Aligned with skill.md rules)"""
         winner_id = council_data.get("winner", "Unknown")
         is_winner = (self.agent_id == winner_id)
-
-        # Winner always speaks, others 80% chance
-        if not is_winner and random.random() < 0.2:
-            return
-
-        role = "winner" if is_winner else "insight"
 
         # Build rich context from server data
         briefing = self._build_council_briefing(council_data)
@@ -637,23 +653,66 @@ Reply with ONLY the insight."""
 
         persona = self.persona
 
+        # --- VALUE-BASED SPEAKING DECISION (aligned with skill.md) ---
+        # Winner always speaks. Non-winners use LLM to decide if they have something valuable.
+        if not is_winner:
+            decide_prompt = f"""You are "{persona['name']}" in Darwin Arena council.
+Your rank: #{self.my_rank}/{self.total_agents}
+
+Review this market briefing:
+{briefing}
+
+Your portfolio: {my_summary}
+
+The council rule says: "You are NOT required to speak — only contribute when you have something valuable to add."
+
+Before speaking, answer these 4 questions internally:
+1. Why did the winner win? What did they do differently?
+2. Which strategy tags are actually working? Is the sample size reliable?
+3. Are there patterns in the market (trending, mean-reverting, volatile)?
+4. What would YOU do differently next epoch, and why?
+
+Based on your analysis, do you have a SPECIFIC, DATA-DRIVEN insight to share?
+Reply with ONLY "SPEAK" or "SILENT" (no explanation)."""
+
+            decision = await self._call_llm(decide_prompt, max_tokens=16)
+            if "SILENT" in (decision or "").upper():
+                print(f"🤫 Council: Choosing silence (nothing valuable to add)")
+                return
+
+        role = "winner" if is_winner else "insight"
+
+        # --- BUILD PROMPT WITH SKILL.MD ALIGNMENT ---
+        contribution_types = """Pick ONE contribution type:
+- Market Analysis: Identify specific price patterns, volume trends, or accumulation/distribution signals from the data
+- Strategy Critique: Challenge an existing approach citing win rates, sample sizes, or threshold effectiveness
+- Proposal: Suggest a concrete parameter change or strategy adjustment based on recent trade outcomes
+- Counter-argument: Dispute a common assumption using your own trade data as evidence
+- Question: Ask a specific question about another agent's positions or reasoning"""
+
         if is_winner:
-            task = """As the WINNER, you must:
-- Explain the SPECIFIC strategy logic or indicator signals that led to your winning trades
-- Reference actual token names and price levels from the data
-- Share a concrete, actionable insight other agents could learn from
+            task = f"""As the WINNER, explain:
+- The SPECIFIC strategy logic, indicators, or signals that led to your winning trades
+- Reference actual token names, price levels, and PnL numbers from the data
+- Share a concrete, actionable insight others can learn from
 - Be precise: mention Z-scores, RSI levels, entry/exit prices, or pattern names"""
         else:
-            task = """As a non-winner, you must:
-- Analyze the leaderboard data and identify WHY the winner outperformed
-- Share a specific observation: a token pattern, a failed trade lesson, or a strategy adjustment you plan to make
-- Challenge or build upon what you see in the recent trades — what went wrong, what could be improved
-- Be concrete: reference specific tokens, price movements, or trade results from the data"""
+            task = f"""As a non-winner, you must:
+{contribution_types}
+
+Analyze the leaderboard, trades, and hive alpha data to form your contribution.
+Reference SPECIFIC numbers, token names, and patterns from the briefing."""
 
         prompt = f"""You are "{persona['name']}" - personality: {persona['style']}.
 You are in a council discussion in Darwin Arena, a competitive trading simulation.
 Your agent ID: {self.agent_id}
 Your rank: #{self.my_rank}/{self.total_agents}
+
+PRE-SPEAKING ANALYSIS (think through these before writing):
+1. Why did the winner ({winner_id}) win? What did they do differently?
+2. Which strategy tags in the Hive Alpha are actually working? Is the sample size reliable?
+3. Are there patterns in the market (trending, mean-reverting, volatile)?
+4. What would YOU do differently next epoch, and why?
 
 {task}
 
@@ -664,12 +723,14 @@ Your rank: #{self.my_rank}/{self.total_agents}
 
 Your strategy notes: {strategy_info}
 
-IMPORTANT RULES:
-- Write exactly 2-3 COMPLETE sentences. Every sentence MUST end with a period, exclamation mark, or question mark.
-- Reference SPECIFIC data from the briefing (token names, PnL numbers, trade patterns).
-- Stay in character as {persona['name']}. Naturally weave in ONE catchphrase: {persona['catchphrases']}
-- This is a STRATEGY discussion, not small talk. No "congrats" or "good job" — share real trading insights.
-- Do NOT cut off mid-sentence. Finish every thought completely.
+RULES (from skill.md):
+- The council is NOT a status report. It is a strategy discussion.
+- Write 2-4 COMPLETE sentences. Every sentence MUST end with a period, exclamation mark, or question mark.
+- Reference SPECIFIC data from the briefing (token names, PnL numbers, trade patterns, hive alpha stats).
+- Stay in character as {persona['name']}. Weave in ONE catchphrase naturally: {persona['catchphrases']}
+- No "congrats", "good job", or generic praise — share real trading insights.
+- Do NOT cut off mid-sentence.
+- SCORING: Generic messages get 0-3. Data-driven insights with specific reasoning get 7-10.
 
 Reply with ONLY your council message:"""
 
@@ -684,11 +745,101 @@ Reply with ONLY your council message:"""
             final_content = self._generate_persona_message(technical_content, role)
 
         print(f"💬 Council ({role}): {final_content}")
+        self.has_spoken_in_council = True
 
         await self.ws.send_json({
             "type": "council_submit",
             "role": role,
             "content": final_content
+        })
+
+    async def _consider_council_response(self, incoming_msg: dict):
+        """Consider responding to another agent's council message (multi-round discussion)"""
+        # Don't respond if we haven't spoken yet (let participate_council go first)
+        # Don't spam — max 2 total contributions per council session
+        spoken_count = 1 if self.has_spoken_in_council else 0
+        my_responses = sum(1 for m in self.council_messages if m.get("_responded", False))
+        if spoken_count + my_responses >= 2:
+            return
+
+        # Wait a moment to let other messages accumulate
+        await asyncio.sleep(random.uniform(3, 8))
+
+        sender = incoming_msg.get("agent_id", "Unknown")
+        content = incoming_msg.get("content", "")
+        score = incoming_msg.get("score", 0)
+
+        persona = self.persona
+        briefing = self._build_council_briefing(self.council_briefing) if self.council_briefing else "No briefing available"
+        my_summary = self._get_market_summary()
+
+        # Collect all messages heard so far for context
+        discussion_so_far = ""
+        for m in self.council_messages:
+            discussion_so_far += f"\n  [{m.get('agent_id', '?')}] (score:{m.get('score', '?')}): {m.get('content', '')}"
+
+        # LLM decides whether to respond (skill.md: "ONLY reply if you have data or reasoning to add")
+        decide_prompt = f"""You are "{persona['name']}" in Darwin Arena council.
+
+Council discussion so far:{discussion_so_far}
+
+Latest message from {sender}: "{content}"
+
+Rules:
+- Do NOT reply with generic agreement (e.g., "Good point")
+- ONLY reply if you have data or reasoning to add
+- Challenge ideas you think are wrong — with evidence
+- Build on ideas you think are right — with your own data
+- Silence is fine if you have nothing meaningful to add
+
+Your portfolio: {my_summary}
+
+Do you have a SPECIFIC counter-argument, data-driven addition, or evidence-based challenge to add?
+Reply with ONLY "RESPOND" or "SILENT"."""
+
+        decision = await self._call_llm(decide_prompt, max_tokens=16)
+        if "SILENT" in (decision or "SILENT").upper():
+            return
+
+        # Generate response
+        response_prompt = f"""You are "{persona['name']}" - personality: {persona['style']}.
+Agent ID: {self.agent_id}, Rank: #{self.my_rank}/{self.total_agents}
+
+Council discussion so far:{discussion_so_far}
+
+You are responding to {sender}'s message: "{content}"
+
+{briefing}
+
+Your portfolio: {my_summary}
+
+Pick ONE response type:
+- Counter-argument: Dispute their claim using specific data from the briefing
+- Build: Add your own data that strengthens or extends their point
+- Question: Ask a specific question about their reasoning or positions
+
+RULES:
+- Write 1-2 COMPLETE sentences only. Every sentence MUST end with punctuation.
+- Reference SPECIFIC data (token names, PnL %, trade results).
+- Stay in character as {persona['name']}.
+- SCORING: Generic replies get 0-3. Evidence-based responses get 7-10.
+
+Reply with ONLY your response:"""
+
+        response = await self._call_llm(response_prompt, max_tokens=512)
+        if not response:
+            return
+
+        final = f"{persona['emoji']} {response}"
+        print(f"💬 Council (reply to {sender}): {final}")
+
+        # Mark this message as responded to
+        incoming_msg["_responded"] = True
+
+        await self.ws.send_json({
+            "type": "council_submit",
+            "role": "insight",
+            "content": final
         })
     
     async def evolve(self, winner_wisdom: str, winner_strategy: str = ""):

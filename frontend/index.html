@@ -707,14 +707,29 @@
                 // 2. Show Alpha Factors (from Hive Mind analysis)
                 if (hiveRes.ok) {
                     const data = await hiveRes.json();
-                    const report = data.alpha_report || {};
-                    
+                    // Merge alpha reports from all groups
+                    let report = {};
+                    let latestPatch = null;
+                    if (data.groups) {
+                        for (const [gid, gdata] of Object.entries(data.groups)) {
+                            Object.assign(report, gdata.alpha_report || {});
+                            if (gdata.latest_patch) latestPatch = gdata.latest_patch;
+                        }
+                    }
+                    // Fallback for flat format
+                    if (Object.keys(report).length === 0 && data.alpha_report) {
+                        report = data.alpha_report;
+                    }
+                    if (!latestPatch && data.latest_patch) {
+                        latestPatch = data.latest_patch;
+                    }
+
                     if (Object.keys(report).length > 0) {
                         html += `<div class="border-t border-purple-900 pt-2 mt-2">
                             <div class="text-[10px] text-gray-500 mb-2">⚡ ALPHA FACTORS</div>`;
-                        
-                        const sortedTags = Object.entries(report).sort(([,a], [,b]) => b.score - a.score);
-                        
+
+                        const sortedTags = Object.entries(report).sort(([,a], [,b]) => (b.score||0) - (a.score||0));
+
                         for (const [tag, stats] of sortedTags.slice(0, 5)) {
                             const isPositive = stats.impact === "POSITIVE";
                             const color = isPositive ? "text-green-400" : "text-red-400";
@@ -737,9 +752,9 @@
                     }
                     
                     // 3. Show Active Patch
-                    if (data.latest_patch && data.latest_patch.parameters) {
-                        const boost = data.latest_patch.parameters.boost || [];
-                        const penalize = data.latest_patch.parameters.penalize || [];
+                    if (latestPatch && latestPatch.parameters) {
+                        const boost = latestPatch.parameters.boost || [];
+                        const penalize = latestPatch.parameters.penalize || [];
                         
                         if (boost.length > 0 || penalize.length > 0) {
                             html += `<div class="mt-3 pt-2 border-t border-purple-900 text-[10px]">
