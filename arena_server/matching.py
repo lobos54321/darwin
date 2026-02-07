@@ -157,6 +157,9 @@ class MatchingEngine:
             fill_price = current_price * (1 - SIMULATED_SLIPPAGE)
         
         if side == OrderSide.BUY:
+            # Minimum trade size guard
+            if amount_usd < 0.01:
+                return (False, f"Trade value too small: ${amount_usd:.6f}", 0.0)
             # 检查余额
             if account.balance < amount_usd:
                 return (False, f"Insufficient balance: {account.balance:.2f} < {amount_usd:.2f}", 0.0)
@@ -195,15 +198,24 @@ class MatchingEngine:
             
         else:  # SELL
             token_amount = amount_usd / fill_price
-            
+
             if symbol not in account.positions or account.positions[symbol].amount < token_amount:
                 return (False, "Insufficient position to sell", 0.0)
-            
+
             pos = account.positions[symbol]
+
+            # Guard: reject dust trades worth less than $0.01
+            sell_value = token_amount * fill_price
+            if sell_value < 0.01:
+                # Auto-clean dust position
+                if pos.amount * fill_price < 0.01:
+                    del account.positions[symbol]
+                return (False, f"Trade value too small: ${sell_value:.6f}", 0.0)
+
             pos.amount -= token_amount
-            account.balance += token_amount * fill_price
-            
-            if pos.amount <= 0:
+            account.balance += sell_value
+
+            if pos.amount <= 0 or (pos.amount * fill_price < 0.01):
                 del account.positions[symbol]
             
             self.order_count += 1

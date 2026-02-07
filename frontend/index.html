@@ -584,6 +584,17 @@
                     return;
                 }
                 
+                // Smart price formatter: show full precision for tiny prices
+                function formatPrice(p) {
+                    const n = Number(p);
+                    if (n === 0) return '0';
+                    if (n >= 1) return n.toFixed(4);
+                    if (n >= 0.01) return n.toFixed(6);
+                    // For very small prices, show all significant digits
+                    const s = n.toExponential(4);
+                    return n.toPrecision(4);
+                }
+
                 container.innerHTML = displayTrades.slice(0, 20).map(t => { // Show up to 20 trades
                      const isBuy = t.side.toUpperCase() === 'BUY';
                      const color = isBuy ? 'text-green-400' : 'text-red-400';
@@ -611,7 +622,7 @@
                         </div>
                         <div class="flex justify-between text-[10px] text-gray-400">
                             <span class="text-white font-bold">${dollarVal}</span>
-                            <span>@ ${Number(t.price).toFixed(4)} ${pnlDisplay}</span>
+                            <span>@ ${formatPrice(t.price)} ${pnlDisplay}</span>
                         </div>
                         ${tagsDisplay}
                      </div>

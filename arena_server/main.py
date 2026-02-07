@@ -144,8 +144,10 @@ async def lifespan(app: FastAPI):
     redis_loaded = redis_state.load_full_state()
     if redis_loaded:
         current_epoch = redis_loaded.get("epoch", 1)
-        trade_count = redis_loaded.get("trade_count", 0)
-        total_volume = redis_loaded.get("total_volume", 0.0)
+        # Derive trade_count from actual restored trade history, not stale Redis counter
+        saved_trades_for_count = redis_loaded.get("trade_history", [])
+        trade_count = len(saved_trades_for_count)
+        total_volume = sum(t.get("value", 0) or 0 for t in saved_trades_for_count)
 
         # 🔧 恢复Agent账户到 GroupManager（自动分组）
         saved_agents = redis_loaded.get("agents", {})
