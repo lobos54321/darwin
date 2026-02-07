@@ -335,9 +335,11 @@ class DarwinAgent:
             print(f"❌ Initial thought error: {e}")
 
         while self.running:
-            await asyncio.sleep(15)  # 加快频率：每15秒思考一次
-            
-            # 100% 概率说话 (测试用)
+            await asyncio.sleep(120)  # 每2分钟思考一次 (避免刷屏)
+
+            # 20% 概率说话 (避免垃圾信息污染 Council 分数)
+            if random.random() > 0.2:
+                continue
             try:
                 thought = self._generate_persona_message("Scanning market patterns...", "insight")
                 # 发送到 Council
@@ -435,27 +437,33 @@ class DarwinAgent:
         })
     
     async def evolve(self, winner_wisdom: str):
-        """进化: 重写策略代码"""
+        """进化: 重写策略代码 (mutation_phase triggered by server)"""
         print("🧬 Starting evolution...")
-        
-        # 生成反思
-        reflection = self.strategy.on_epoch_end(
-            self.my_rank, 
-            self.total_agents, 
-            winner_wisdom
-        )
-        print(f"📝 Reflection:\n{reflection}")
-        
+
+        # Generate reflection from strategy if supported
+        reflection = ""
+        if hasattr(self.strategy, "get_council_message"):
+            reflection = self.strategy.get_council_message(is_winner=False)
+        print(f"📝 Reflection: {reflection}")
+
+        # Use winner_wisdom as penalty context (losers learn from winner)
+        penalty_tags = ["UNDERPERFORM"]  # Generic tag for mutation_phase evolution
+
         # 调用 self_coder 重写策略
-        success = await mutate_strategy(reflection, winner_wisdom)
-        
+        success = await mutate_strategy(
+            self.agent_id,
+            penalty_tags,
+            api_key=self.api_key,
+            arena_url=self.arena_url
+        )
+
         if success:
             print("🧬 Evolution complete! Reloading strategy...")
-            # 重新加载策略模块
-            import importlib
-            import strategy
-            importlib.reload(strategy)
-            self.strategy = strategy.DarwinStrategy()
+            try:
+                self.strategy = self._load_strategy()
+                print("✅ Strategy reloaded successfully!")
+            except Exception as e:
+                print(f"❌ Failed to reload strategy: {e}")
         else:
             print("❌ Evolution failed. Keeping current strategy.")
 

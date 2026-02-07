@@ -128,13 +128,24 @@ async def lifespan(app: FastAPI):
         total_volume = redis_loaded.get("total_volume", 0.0)
         
         # 🔧 恢复Agent账户到matching engine（包含持仓）
+        from matching import Position
         saved_agents = redis_loaded.get("agents", {})
         for agent_id, agent_data in saved_agents.items():
             balance = agent_data.get("balance", 1000)
-            positions = agent_data.get("positions", {})
-            account = engine.register_agent(agent_id)  # 使用正确的方法名
+            positions_raw = agent_data.get("positions", {})
+            account = engine.register_agent(agent_id)
             account.balance = balance
-            account.positions = positions
+            # Restore positions as proper Position objects
+            for sym, pdata in positions_raw.items():
+                if isinstance(pdata, dict):
+                    account.positions[sym] = Position(
+                        symbol=sym,
+                        amount=pdata.get("amount", 0.0),
+                        avg_price=pdata.get("avg_price", 0.0)
+                    )
+                else:
+                    # Legacy format: just a number
+                    account.positions[sym] = Position(symbol=sym, amount=float(pdata), avg_price=0.0)
         
         logger.info(f"🔄 Resumed from Redis: Epoch {current_epoch}, {len(saved_agents)} agents restored")
     else:
@@ -248,14 +259,16 @@ async def epoch_loop():
             epoch_duration = EPOCH_DURATION_HOURS * 3600  # 转换为秒
             # 开发模式：缩短为 5 分钟
             # epoch_duration = 300
-            
-            current_epoch += 1
+
+            # First iteration uses the current_epoch (restored from state)
+            # Subsequent iterations increment after end_epoch
             epoch_start_time = datetime.now()
-            
+
             logger.info(f"{'='*20} 🏁 EPOCH {current_epoch} STARTED @ {epoch_start_time} {'='*20}")
-            
+
             await asyncio.sleep(epoch_duration)
             await end_epoch()
+            current_epoch += 1  # Increment AFTER epoch ends, not before
             
         except asyncio.CancelledError:
             break
