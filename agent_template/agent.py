@@ -300,8 +300,9 @@ class DarwinAgent:
                         # will be updated on next tick, or we leave entry_prices empty 
                         # (strategy handles missing entry price)
                         if hasattr(self.strategy, "entry_prices") and symbol not in self.strategy.entry_prices:
-                             # Set a dummy entry price to avoid errors, updated on first price tick
-                             self.strategy.entry_prices[symbol] = 0.00000001 
+                             # Use 0 as sentinel; strategy will backfill with current market
+                             # price on next tick. Old dummy (0.00000001) caused absurd PnL.
+                             self.strategy.entry_prices[symbol] = 0 
             
         elif msg_type == "price_update":
             # 核心: 根据价格做决策

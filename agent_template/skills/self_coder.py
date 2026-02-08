@@ -6,10 +6,15 @@ Self-Coder Skill (Antigravity Proxy Edition)
 
 import os
 import ast
+import sys
 import shutil
 import ssl
 import certifi
 import json
+import types
+import random
+import tempfile
+import traceback
 from datetime import datetime
 from typing import Optional
 import aiohttp
@@ -78,6 +83,88 @@ def write_strategy(agent_id: str, new_code: str) -> bool:
     print(f"💾 Strategy Saved to {path}")
     return True
 
+def validate_strategy_code(code: str) -> bool:
+    """
+    Runtime validation gate: compile + execute the generated strategy
+    against realistic arena price data to catch errors BEFORE deployment.
+    Returns True only if 25 ticks complete without errors.
+    """
+    tmp_path = None
+    try:
+        # Step 1: Syntax check
+        ast.parse(code)
+
+        # Step 2: Write to temp file and import as module
+        fd, tmp_path = tempfile.mkstemp(suffix=".py", prefix="strat_validate_")
+        os.close(fd)
+        with open(tmp_path, "w") as f:
+            f.write(code)
+
+        spec = __import__("importlib").util.spec_from_file_location("_test_strat", tmp_path)
+        mod = __import__("importlib").util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        # Step 3: Find the Strategy class
+        strategy_cls = None
+        for name in dir(mod):
+            obj = getattr(mod, name)
+            if isinstance(obj, type) and hasattr(obj, "on_price_update") and name != "object":
+                strategy_cls = obj
+                break
+
+        if strategy_cls is None:
+            print("⚠️ Validation FAILED: No class with on_price_update() found")
+            return False
+
+        # Step 4: Instantiate
+        try:
+            strategy = strategy_cls()
+        except Exception as e:
+            print(f"⚠️ Validation FAILED (__init__): {e}")
+            return False
+
+        # Step 5: Run 25 ticks with realistic arena price data format
+        symbols = ["CLANKER", "WETH", "LOB", "MOLT", "PEPE"]
+        for tick in range(25):
+            prices = {}
+            for sym in symbols:
+                base = random.uniform(0.01, 100.0)
+                prices[sym] = {
+                    "priceUsd": base + random.uniform(-1, 1),
+                    "priceChange24h": random.uniform(-30, 30),
+                    "volume24h": random.uniform(1000, 1000000),
+                    "liquidity": random.uniform(10000, 5000000),
+                    "dex": "uniswap_v3",
+                    "pairAddress": f"0x{'ab' * 20}"
+                }
+
+            result = strategy.on_price_update(prices)
+
+            # Validate return format
+            if result is not None:
+                if not isinstance(result, dict):
+                    print(f"⚠️ Validation FAILED (tick {tick}): on_price_update returned {type(result).__name__}, expected dict or None")
+                    return False
+                for key in ("symbol", "side", "amount"):
+                    if key not in result:
+                        print(f"⚠️ Validation FAILED (tick {tick}): missing key '{key}' in result: {result}")
+                        return False
+
+        print("✅ Validation PASSED: 25 ticks completed without errors")
+        return True
+
+    except SyntaxError as e:
+        print(f"⚠️ Validation FAILED (syntax): {e}")
+        return False
+    except Exception as e:
+        print(f"⚠️ Validation FAILED (runtime): {e}")
+        traceback.print_exc()
+        return False
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
 async def mutate_strategy(agent_id: str, penalty_tags: list, api_key: str = None, arena_url: str = None, winner_wisdom: str = "", winner_strategy: str = "") -> bool:
     """
     基于 Hive Mind 惩罚标签 + 赢家智慧进化策略
@@ -106,8 +193,9 @@ Learn from the winner's approach but add your own unique mutations to avoid homo
 ## Requirements:
 1. **Fix the Penalized Logic**: If penalized for 'DIP_BUY', make the dip buying conditions stricter (e.g. lower RSI, deeper Z-score).
 2. **Keep Essential Methods**: You MUST preserve `__init__` and `on_price_update(self, prices)`.
-3. **Return Format**: `on_price_update` must return a dict like `{{'side': 'BUY', 'symbol': 'BTC', 'amount': 0.1, 'reason': ['TAG']}}`.
+3. **Return Format**: `on_price_update` must return a dict like `{{'side': 'BUY', 'symbol': 'BTC', 'amount': 0.1, 'reason': ['TAG']}}` or None.
 4. **Python Only**: Output ONLY valid Python code. No markdown, no explanations.
+5. **Price Data Format**: The `prices` dict maps symbol strings to dicts. Each value is a dict with keys: `priceUsd` (float), `priceChange24h` (float), `volume24h` (float), `liquidity` (float), `dex` (str), `pairAddress` (str). Access price via `prices[symbol]["priceUsd"]`. Do NOT treat price values as plain floats.
 
 ## Current Strategy:
 ```python
@@ -166,7 +254,12 @@ Learn from the winner's approach but add your own unique mutations to avoid homo
                     code = code.split("```")[1].split("```")[0]
                 
                 code = code.strip()
-                
+
+                # Validate before writing
+                if not validate_strategy_code(code):
+                    print(f"⚠️ Generated strategy for {agent_id} failed validation. Keeping old strategy.")
+                    return False
+
                 if write_strategy(agent_id, code):
                     print(f"✅ Evolution Successful! {agent_id} strategy updated.")
                     return True

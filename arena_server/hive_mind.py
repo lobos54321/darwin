@@ -127,12 +127,23 @@ class HiveMind:
         """
         report = self.analyze_alpha()
 
+        # Risk management tags must NEVER be penalized.
+        # STOP_LOSS always has negative PnL by design — that's its job.
+        # TAKE_PROFIT always has positive PnL — penalizing it kills profit-taking.
+        # Exit signals are protective mechanisms, not entry strategies.
+        PROTECTED_TAGS = {
+            "TAKE_PROFIT", "STOP_LOSS", "TRAILING_STOP",
+            "DIVERGENCE_EXIT", "BEARISH_DIV", "IDLE_EXIT",
+            "RANDOM_TEST", "EXPLORE",
+            "ATR_TRAIL_STOP", "VOL_TARGET_HIT", "TIME_DECAY", "STAGNANT",
+        }
+
         boost_tags = []
         penalize_tags = []
 
         for tag, data in report.items():
-            if tag in ("RANDOM_TEST",):  # Don't judge exploration
-                continue
+            if tag in PROTECTED_TAGS:
+                continue  # Never boost or penalize risk management / exploration tags
             if data["impact"] == "POSITIVE" and data["win_rate"] > 55 and data["trades"] >= 3:
                 boost_tags.append(tag)
             elif data["impact"] == "NEGATIVE" and data["win_rate"] < 45 and data["trades"] >= 3:

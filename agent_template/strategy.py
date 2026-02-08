@@ -345,9 +345,25 @@ class MyStrategy:
             cur = self.last_prices[symbol]
             entry = self.entry_prices[symbol]
             if entry <= 0:
+                # Entry price unknown (synced position, no market data yet).
+                # Backfill with current price so future ticks have a sane baseline.
+                self.entry_prices[symbol] = cur
+                self.peak_prices[symbol] = cur
+                continue
+
+            # Sanity check: if entry price is suspiciously small (dust/placeholder),
+            # the PnL math produces absurd values (e.g. 20982799999900%).
+            # Skip PnL-based exits and backfill entry with current price instead.
+            if entry < 0.001:
+                self.entry_prices[symbol] = cur
+                self.peak_prices[symbol] = cur
                 continue
 
             pnl = (cur - entry) / entry
+
+            # Cap displayed PnL to reasonable range to avoid log spam
+            # from stale or erroneous entry prices.
+            pnl = max(-0.99, min(pnl, 10.0))  # clamp between -99% and +1000%
 
             # Update peak price for trailing stop
             if symbol in self.peak_prices:
@@ -506,13 +522,14 @@ class MyStrategy:
             }
 
         # === STRATEGY E: EXPLORATION ===
-        if random.random() < 0.05:
+        # Reduced from 5% to 1% per symbol to keep random trades under 20%
+        if random.random() < 0.01:
             score = 0.5
-            amt = min(12.0, self.balance * 0.04)
+            amt = min(8.0, self.balance * 0.02)
             return {
                 "symbol": symbol, "side": "buy",
                 "amount": round(amt, 2),
-                "reason": ["RANDOM_TEST"],
+                "reason": ["EXPLORE"],
                 "score": score
             }
 
