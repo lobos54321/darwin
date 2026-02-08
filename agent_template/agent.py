@@ -27,6 +27,39 @@ from skills.moltbook import MoltbookClient
 # SSL context for LLM calls
 _SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
+
+# ========== Council Message Validation ==========
+
+def validate_council_message(content: str) -> tuple:
+    """
+    验证 council 消息是否完整
+    Returns: (is_valid, error_message)
+    """
+    # Remove emoji prefix
+    text = content
+    for emoji in ['🤓', '🐻', '🤖', '🦍', '🏆', '📝', '❓', '💡']:
+        text = text.replace(emoji, '').strip()
+
+    # Check 1: Must end with proper punctuation
+    if not text.endswith(('.', '!', '?')):
+        return False, "Message does not end with proper punctuation"
+
+    # Check 2: Must have at least 2 complete sentences
+    sentence_endings = text.count('.') + text.count('!') + text.count('?')
+    if sentence_endings < 2:
+        return False, f"Message has only {sentence_endings} sentence(s), need at least 2"
+
+    # Check 3: Must be at least 20 words
+    word_count = len(text.split())
+    if word_count < 20:
+        return False, f"Message too short ({word_count} words), need at least 20"
+
+    # Check 4: Must not exceed 150 words (prevent rambling)
+    if word_count > 150:
+        return False, f"Message too long ({word_count} words), max 150"
+
+    return True, ""
+
 # ==========================================
 # 🎭 Agent 人设库
 # ==========================================
@@ -600,7 +633,7 @@ Reply with ONLY the insight."""
             "model": LLM_MODEL,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": max_tokens,
-            "temperature": 0.8
+            "temperature": 0.3  # Lowered from 0.8 for more stable, complete outputs
         }
 
         try:
@@ -826,6 +859,41 @@ Reply with ONLY your council message:"""
 
         if llm_content:
             final_content = f"{persona['emoji']} {llm_content}"
+
+            # VALIDATION: Check if message is complete
+            is_valid, error = validate_council_message(final_content)
+
+            if not is_valid:
+                print(f"⚠️ Council message validation failed: {error}")
+                print(f"   Raw output: {final_content[:100]}...")
+
+                # Retry with stricter prompt
+                retry_prompt = f"""{prompt}
+
+CRITICAL: Your previous response was incomplete or invalid: "{llm_content[:100]}..."
+
+Error: {error}
+
+You MUST:
+1. Write EXACTLY 2-4 complete sentences
+2. Every sentence MUST end with . ! or ?
+3. Do NOT stop mid-sentence
+4. Keep it between 20-150 words
+5. Reference SPECIFIC data (numbers, token names, strategy tags)
+
+Try again with a complete, well-formed message:"""
+
+                llm_content = await self._call_llm(retry_prompt, max_tokens=1024)
+                final_content = f"{persona['emoji']} {llm_content}"
+
+                is_valid, error = validate_council_message(final_content)
+                if not is_valid:
+                    print(f"❌ Retry failed: {error}. Using fallback.")
+                    # Fallback to strategy-generated message
+                    technical_content = strategy_info or "Analyzing market patterns and position sizing."
+                    final_content = self._generate_persona_message(technical_content, role)
+                else:
+                    print(f"✅ Retry succeeded!")
         else:
             technical_content = strategy_info or "Analyzing market patterns."
             final_content = self._generate_persona_message(technical_content, role)

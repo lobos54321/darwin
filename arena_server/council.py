@@ -4,11 +4,69 @@ Agent 分享策略、讨论、获取贡献值
 """
 
 import asyncio
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
 from enum import Enum
 from llm_client import call_llm
+
+
+def score_council_message_rule_based(content: str) -> float:
+    """
+    Rule-based scoring (fallback when LLM unavailable)
+    Scores messages based on data density and quality indicators
+    """
+    score = 5.0  # Base score
+
+    # Remove emoji
+    text = content
+    for emoji in ['🤓', '🐻', '🤖', '🦍', '🏆', '📝', '❓', '💡']:
+        text = text.replace(emoji, '').strip()
+
+    # +2 points: References specific numbers (PnL, percentages, prices)
+    if any(char.isdigit() for char in text):
+        numbers = re.findall(r'[-+]?\d*\.?\d+%?', text)
+        if len(numbers) >= 2:
+            score += 2.0
+        elif len(numbers) >= 1:
+            score += 1.0
+
+    # +1 point: References specific tokens
+    tokens = ['CLANKER', 'WETH', 'LOB', 'MOLT', 'PEPE', 'SOL', 'BTC', 'ETH']
+    token_mentions = sum(1 for token in tokens if token in text.upper())
+    if token_mentions >= 1:
+        score += 1.0
+
+    # +1 point: References strategy tags
+    tags = ['BREAKOUT', 'DIP_BUY', 'MEAN_REVERSION', 'MOMENTUM', 'RSI', 'MACD', 'BOT', 'STOP_LOSS', 'TAKE_PROFIT']
+    tag_mentions = sum(1 for tag in tags if tag in text.upper())
+    if tag_mentions >= 1:
+        score += 1.0
+
+    # +1 point: Asks a question (encourages discussion)
+    if '?' in text:
+        score += 0.5
+
+    # +0.5 point: Uses backticks for code/tags (shows technical precision)
+    if '`' in text:
+        score += 0.5
+
+    # -2 points: Too short (less than 20 words)
+    word_count = len(text.split())
+    if word_count < 20:
+        score -= 2.0
+
+    # -1 point: Generic phrases (discourage empty praise)
+    generic_phrases = ['good job', 'congrats', 'nice work', 'well done', 'great trade', 'interesting']
+    if any(phrase in text.lower() for phrase in generic_phrases):
+        score -= 1.0
+
+    # -1 point: Incomplete sentence (doesn't end with punctuation)
+    if not text.endswith(('.', '!', '?')):
+        score -= 2.0
+
+    return max(0, min(10, score))
 
 
 class MessageRole(Enum):
@@ -108,12 +166,14 @@ class Council:
         return message
     
     async def _score_message(self, message: CouncilMessage, session: CouncilSession) -> float:
-        """用 LLM 评分消息质量 (如果 LLM 可用)"""
+        """用 LLM 评分消息质量 (如果 LLM 可用)，否则用规则评分"""
         from config import LLM_ENABLED
 
-        # 如果 LLM 未启用，返回默认分数
+        # 如果 LLM 未启用，使用规则评分
         if not LLM_ENABLED:
-            return 5.0
+            score = score_council_message_rule_based(message.content)
+            print(f"📊 Rule-based score: {score:.1f}/10")
+            return score
 
         prompt = f"""你是一个交易策略议事厅的评委。请给以下发言打分 (0-10):
 
@@ -143,8 +203,10 @@ class Council:
         except Exception as e:
             print(f"Scoring error (LLM unavailable): {e}")
 
-        # 默认给 5 分
-        return 5.0
+        # 默认使用规则评分
+        score = score_council_message_rule_based(message.content)
+        print(f"📊 Fallback rule-based score: {score:.1f}/10")
+        return score
     
     def get_winner_wisdom(self, epoch: int) -> str:
         """获取赢家的分享内容"""
