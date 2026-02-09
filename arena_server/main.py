@@ -1351,6 +1351,49 @@ async def get_single_file_agent():
     return FileResponse(agent_path, media_type="text/x-python", filename="darwin_agent.py")
 
 
+# ========== Darwin Trader Skill (OpenClaw LLM Agent) ==========
+
+@app.get("/skill/darwin-trader/SKILL.md")
+async def get_darwin_trader_skill():
+    """获取 Darwin Trader Skill 定义"""
+    skill_path = os.path.join(os.path.dirname(__file__), "..", "skill-package", "darwin-trader", "SKILL.md")
+    if not os.path.exists(skill_path):
+        raise HTTPException(status_code=404, detail="Darwin Trader SKILL.md not found")
+    return FileResponse(skill_path, media_type="text/markdown")
+
+@app.get("/skill/darwin-trader/darwin_trader.py")
+async def get_darwin_trader_script():
+    """获取 Darwin Trader Python 脚本"""
+    script_path = os.path.join(os.path.dirname(__file__), "..", "skill-package", "darwin-trader", "darwin_trader.py")
+    if not os.path.exists(script_path):
+        raise HTTPException(status_code=404, detail="darwin_trader.py not found")
+    return FileResponse(script_path, media_type="text/x-python", filename="darwin_trader.py")
+
+@app.get("/skill/darwin-trader/requirements.txt")
+async def get_darwin_trader_requirements():
+    """获取 Darwin Trader 依赖"""
+    req_path = os.path.join(os.path.dirname(__file__), "..", "skill-package", "darwin-trader", "requirements.txt")
+    if not os.path.exists(req_path):
+        raise HTTPException(status_code=404, detail="requirements.txt not found")
+    return FileResponse(req_path, media_type="text/plain", filename="requirements.txt")
+
+@app.get("/skill/darwin-trader/README.md")
+async def get_darwin_trader_readme():
+    """获取 Darwin Trader README"""
+    readme_path = os.path.join(os.path.dirname(__file__), "..", "skill-package", "darwin-trader", "README.md")
+    if not os.path.exists(readme_path):
+        raise HTTPException(status_code=404, detail="README.md not found")
+    return FileResponse(readme_path, media_type="text/markdown")
+
+@app.get("/skill/darwin-trader.md")
+async def get_darwin_trader_skill_shortcut():
+    """
+    Darwin Trader Skill 快捷入口
+    用法: /skill https://www.darwinx.fun/skill/darwin-trader.md
+    """
+    return await get_darwin_trader_skill()
+
+
 # ========== One-Liner & Install Short URLs ==========
 
 @app.get("/join")

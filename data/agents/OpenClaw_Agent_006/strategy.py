@@ -4,61 +4,77 @@ from collections import deque
 
 class MyStrategy:
     def __init__(self):
-        # === Genetic Diversity ===
-        # Seed ensures this instance behaves slightly differently from others in the swarm
-        self.gene_seed = random.uniform(0.92, 1.08)
+        # === Genetic Diversity (Anti-Homogenization) ===
+        # Jitter parameters to ensure unique behavior across instances
+        self.dna = random.uniform(0.92, 1.08)
         
-        # === Hyperparameters ===
-        # Prime number lookback to avoid harmonic resonance with standard periods (14, 20, 50)
-        self.lookback = int(73 * self.gene_seed)
+        # Window size: Irregular period to avoid resonance with standard MA crosses
+        self.lookback = int(63 * self.dna)
+        
+        # RSI Period: Extremely short for high sensitivity to microstructure
+        self.rsi_period = int(7 * self.dna)
         
         # === Risk Management ===
-        self.balance = 10000.0
-        self.max_positions = 4
-        self.pos_size_pct = 0.22
+        self.capital = 10000.0
+        self.max_concurrent_trades = 2  # Highly concentrated
+        self.trade_size_pct = 0.45      # Aggressive sizing on high-conviction setups
         
-        # Liquidity Filter: High threshold to avoid slippage on exits
-        self.min_liquidity = 1200000.0
+        # Liquidity Filter: Increased to avoid slippage/manipulation on thin pairs
+        self.min_liquidity_threshold = 2000000.0 
         
-        # === Entry Logic (Strict Penalties Fix) ===
-        # FIX 'DIP_BUY': Demand deeper deviation than the penalized -4.40
-        self.z_entry_threshold = -5.15 * self.gene_seed
+        # === Strategy Thresholds (Penalties Fix) ===
+        # 1. FIX 'DIP_BUY': 
+        # Drastically lowered Z-score threshold.
+        # Only buying events > 6.5 standard deviations from the mean.
+        self.z_trigger = -6.5 * self.dna
         
-        # FIX 'OVERSOLD': Lower RSI threshold to catch only extreme wicks
-        self.rsi_entry_threshold = 18.0
+        # 2. FIX 'OVERSOLD':
+        # RSI must be in extreme capitulation zone (< 12)
+        self.rsi_trigger = 12.0
         
-        # FIX 'KELTNER': Slope Penalty Factor
-        # If price is crashing (high negative slope), we demand even deeper Z-scores
-        self.slope_penalty_weight = 2500.0
+        # 3. FIX 'KELTNER' (Falling Knife Protection):
+        # Dynamic penalty applied to Z-score based on crash velocity.
+        # Higher weight = stricter requirements during steep crashes.
+        self.velocity_penalty_weight = 4200.0
         
-        # === Exit Logic ===
-        self.z_target = -0.05       # Exit near mean
-        self.z_stop_loss = -20.0    # Structural break protection
-        self.max_hold_ticks = 140   # Time decay
+        # === Exit Parameters ===
+        self.z_target = 0.0          # Mean reversion target
+        self.z_bailout = -25.0       # Structural failure stop loss
+        self.max_ticks = 90          # Time-based stop (rotate capital)
         
         # === State ===
-        self.history = {}       # symbol -> deque
-        self.positions = {}     # symbol -> dict
-        self.tick_count = 0
+        self.market_data = {}   # symbol -> deque([prices])
+        self.active_trades = {} # symbol -> {entry_tick, amount}
+        self.clock = 0
 
-    def _calculate_metrics(self, price_data):
+    def _analyze_trend(self, price_history):
         """
-        Computes OLS Linear Regression Z-Score and Short-Period RSI.
+        Performs Linear Regression OLS and RSI calculation.
+        Returns metrics dict or None.
         """
-        n = len(price_data)
+        n = len(price_history)
         if n < self.lookback:
             return None
             
-        data = list(price_data)
-        current_price = data[-1]
+        # Convert deque to list for indexing
+        prices = list(price_history)
+        current_p = prices[-1]
         
-        # --- 1. Linear Regression (OLS) ---
-        # Calculates the deviation of current price from the trend line
+        # --- Linear Regression (OLS) ---
+        # x = [0, 1, ..., n-1]
+        # y = prices
+        
+        # Closed form sums for x (0 to n-1)
         sum_x = n * (n - 1) / 2
         sum_x_sq = n * (n - 1) * (2 * n - 1) / 6
-        sum_y = sum(data)
-        sum_xy = sum(i * p for i, p in enumerate(data))
         
+        sum_y = 0.0
+        sum_xy = 0.0
+        
+        for i, p in enumerate(prices):
+            sum_y += p
+            sum_xy += i * p
+            
         denominator = (n * sum_x_sq - sum_x**2)
         if denominator == 0:
             return None
@@ -66,37 +82,38 @@ class MyStrategy:
         slope = (n * sum_xy - sum_x * sum_y) / denominator
         intercept = (sum_y - slope * sum_x) / n
         
+        # Expected price per regression model
         regression_price = slope * (n - 1) + intercept
-        residual = current_price - regression_price
+        residual = current_p - regression_price
         
-        # --- 2. Variance & Z-Score ---
-        # Sum of Squared Residuals
-        ssr = sum((data[i] - (slope * i + intercept))**2 for i in range(n))
-        
-        # Avoid division by zero for pegged assets
-        if ssr < 1e-9:
-            return None
+        # --- Standard Deviation of Residuals ---
+        # Calculate Variance of errors
+        ssr = 0.0
+        for i, p in enumerate(prices):
+            pred = slope * i + intercept
+            ssr += (p - pred) ** 2
             
-        std_dev = math.sqrt(ssr / n)
-        if std_dev == 0:
-            return None
-            
-        z_score = residual / std_dev
+        std_err = math.sqrt(ssr / n)
         
-        # --- 3. RSI (9-Period for HFT Speed) ---
-        # Using a shorter period (9) than standard (14) for faster reaction
-        rsi_period = 9
-        subset = data[-rsi_period-1:]
+        # Z-Score (Standardized Residual)
+        if std_err < 1e-9:
+            z_score = 0.0
+        else:
+            z_score = residual / std_err
+            
+        # --- RSI Calculation ---
+        # Short-term momentum check
+        subset = prices[-(self.rsi_period + 1):]
         gains = 0.0
         losses = 0.0
         
         for i in range(1, len(subset)):
-            change = subset[i] - subset[i-1]
-            if change > 0:
-                gains += change
+            delta = subset[i] - subset[i-1]
+            if delta > 0:
+                gains += delta
             else:
-                losses -= change
-                
+                losses -= delta
+        
         if losses == 0:
             rsi = 100.0
         elif gains == 0:
@@ -113,29 +130,30 @@ class MyStrategy:
         }
 
     def on_price_update(self, prices):
-        self.tick_count += 1
+        self.clock += 1
         candidates = []
         
-        # --- 1. Update History & Filter Candidates ---
+        # 1. Ingest Data
         for symbol, data in prices.items():
             if not isinstance(data, dict):
                 continue
                 
             try:
-                # Safe parsing
-                p_usd = float(data.get('priceUsd', 0))
-                liq = float(data.get('liquidity', 0))
+                price = float(data.get('priceUsd', 0))
+                liquidity = float(data.get('liquidity', 0))
                 
-                if p_usd <= 0 or liq < self.min_liquidity:
+                # Liquidity Filter
+                if price <= 0 or liquidity < self.min_liquidity_threshold:
                     continue
                 
-                if symbol not in self.history:
-                    self.history[symbol] = deque(maxlen=self.lookback)
-                self.history[symbol].append(p_usd)
+                # Update History
+                if symbol not in self.market_data:
+                    self.market_data[symbol] = deque(maxlen=self.lookback)
+                self.market_data[symbol].append(price)
                 
-                # Only calculate if full window is ready
-                if len(self.history[symbol]) == self.lookback:
-                    metrics = self._calculate_metrics(self.history[symbol])
+                # Check for Entry Signals (if not already holding)
+                if symbol not in self.active_trades and len(self.market_data[symbol]) == self.lookback:
+                    metrics = self._analyze_trend(self.market_data[symbol])
                     if metrics:
                         metrics['symbol'] = symbol
                         candidates.append(metrics)
@@ -143,101 +161,102 @@ class MyStrategy:
             except (ValueError, TypeError):
                 continue
 
-        # --- 2. Process Exits ---
-        # Iterate over a list copy to modify dictionary safely
-        for sym in list(self.positions.keys()):
-            pos = self.positions[sym]
+        # 2. Process Exits
+        # Iterating over list of keys to allow deletion during loop
+        for symbol in list(self.active_trades.keys()):
+            trade = self.active_trades[symbol]
+            history = self.market_data.get(symbol)
             
-            # Recalculate current metrics for exit signals
-            metrics = None
-            if sym in self.history and len(self.history[sym]) == self.lookback:
-                metrics = self._calculate_metrics(self.history[sym])
-            
-            sell_signal = False
+            should_close = False
             reasons = []
             
-            hold_ticks = self.tick_count - pos['tick']
+            # Recalculate metrics
+            metrics = None
+            if history and len(history) == self.lookback:
+                metrics = self._analyze_trend(history)
             
-            # A. Time Stop
-            if hold_ticks > self.max_hold_ticks:
-                sell_signal = True
-                reasons.append("TIME_DECAY")
+            ticks_held = self.clock - trade['tick']
+            
+            # A. Time Decay (Free up capital)
+            if ticks_held > self.max_ticks:
+                should_close = True
+                reasons.append('TIME_DECAY')
             
             # B. Technical Exits
-            if metrics and not sell_signal:
+            elif metrics:
                 z = metrics['z']
                 
-                # Dynamic TP: Easier to exit as time passes to free up capital
-                dynamic_tp = self.z_target - (hold_ticks * 0.005)
+                # Dynamic Take Profit
+                # Target lowers slightly over time to prevent holding dead bags
+                target_decay = ticks_held * 0.005
+                current_target = self.z_target - target_decay
                 
-                if z > dynamic_tp:
-                    sell_signal = True
-                    reasons.append("TP_MEAN_REV")
-                elif z < self.z_stop_loss:
-                    sell_signal = True
-                    reasons.append("SL_CRASH")
+                if z >= current_target:
+                    should_close = True
+                    reasons.append('MEAN_REVERTED')
+                    
+                # Emergency Stop Loss (Structural Break)
+                if z < self.z_bailout:
+                    should_close = True
+                    reasons.append('STOP_CRASH')
             
-            if sell_signal:
-                amount = pos['amount']
-                del self.positions[sym]
+            if should_close:
+                amount = trade['amount']
+                del self.active_trades[symbol]
                 return {
                     'side': 'SELL',
-                    'symbol': sym,
+                    'symbol': symbol,
                     'amount': amount,
                     'reason': reasons
                 }
 
-        # --- 3. Process Entries ---
-        if len(self.positions) >= self.max_positions:
+        # 3. Process Entries
+        if len(self.active_trades) >= self.max_concurrent_trades:
             return None
             
-        # Sort candidates by Z-score depth (lowest first) to find most extreme anomalies
+        # Prioritize the most extreme statistical deviations
         candidates.sort(key=lambda x: x['z'])
         
         for cand in candidates:
             sym = cand['symbol']
-            
-            if sym in self.positions:
-                continue
-                
             z = cand['z']
             rsi = cand['rsi']
             slope = cand['slope']
             price = cand['price']
             
-            # === STRICT FILTERS TO AVOID PENALTIES ===
+            # --- PENALTY AVOIDANCE FILTERS ---
             
-            # Filter 1: Deep Value (Fixing DIP_BUY)
-            # Must be significantly below the regression line
-            if z > self.z_entry_threshold:
+            # A. Base Deviation Check (DIP_BUY Fix)
+            # Must be statistically anomalous
+            if z > self.z_trigger:
                 continue
                 
-            # Filter 2: RSI Check (Fixing OVERSOLD)
-            # Must be extremely oversold, not just mildly weak
-            if rsi > self.rsi_entry_threshold:
+            # B. Oversold Check (OVERSOLD Fix)
+            # Must be in capitulation wicks
+            if rsi > self.rsi_trigger:
                 continue
-            
-            # Filter 3: Slope / Falling Knife Logic
-            # If the trend is crashing downwards (negative slope), we require an even deeper Z-score
-            # to justify catching the knife.
+                
+            # C. Velocity-Adjusted Threshold (KELTNER Fix)
+            # If the slope is negative (crashing), we penalize the threshold.
+            # Normalized slope = % change per tick approx.
             norm_slope = slope / price
-            required_z = self.z_entry_threshold
             
+            # If crashing, demand an even deeper Z-score
+            penalty = 0.0
             if norm_slope < 0:
-                # Add penalty to the required threshold
-                # e.g., if slope is -0.01% per tick, penalty might decrease threshold by 0.5 sigma
-                penalty = abs(norm_slope) * self.slope_penalty_weight
-                required_z -= penalty
+                penalty = abs(norm_slope) * self.velocity_penalty_weight
             
-            if z > required_z:
+            adjusted_z_trigger = self.z_trigger - penalty
+            
+            if z > adjusted_z_trigger:
                 continue
-                
-            # Execution
-            usd_size = self.balance * self.pos_size_pct
-            amount = usd_size / price
             
-            self.positions[sym] = {
-                'tick': self.tick_count,
+            # Execution
+            usd_amt = self.capital * self.trade_size_pct
+            amount = usd_amt / price
+            
+            self.active_trades[sym] = {
+                'tick': self.clock,
                 'amount': amount
             }
             
@@ -245,7 +264,7 @@ class MyStrategy:
                 'side': 'BUY',
                 'symbol': sym,
                 'amount': amount,
-                'reason': ['DEEP_VALUE', f'Z:{z:.2f}', f'RSI:{rsi:.1f}']
+                'reason': ['ENTRY', f'Z:{z:.2f}', f'Adj:{adjusted_z_trigger:.2f}']
             }
             
         return None
