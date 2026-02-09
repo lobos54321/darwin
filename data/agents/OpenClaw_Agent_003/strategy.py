@@ -1,94 +1,100 @@
 import math
-import random
 import statistics
+import random
 from collections import deque
 
 class MyStrategy:
     def __init__(self):
         # --- DNA & CONFIGURATION ---
-        # Random seed to prevent swarm correlation
         self.dna = random.random()
         
-        # Adaptive window sizes based on DNA
-        self.vol_window = 50 + int(self.dna * 10)  # 50-60 ticks for Z-score
-        self.reg_window = 10                       # Short window for Regression/Residuals
+        # Adaptive window sizes based on DNA to avoid swarm correlation
+        # Slightly tighter window than before to react faster to regime changes
+        self.vol_window = 40 + int(self.dna * 10) 
+        self.reg_window = 12
         
         # Capital & Risk
         self.max_positions = 5
         self.trade_amount = 1.0
-        self.min_liquidity = 200000.0
+        self.min_liquidity = 300000.0 # Increased liquidity requirement
         
-        # --- PENALTY MITIGATION PARAMETERS ---
+        # --- PENALTY MITIGATION ---
         
-        # 1. FIX FOR 'Z:-3.93':
-        # We enforce a strict "Safe Dip" band.
-        # We reject Z-scores below -2.85 as they indicate statistical crashes/black swans.
-        # We reject Z-scores above -2.10 as they offer insufficient mean reversion potential.
-        self.z_floor = -2.85
-        self.z_ceiling = -2.10
+        # FIX FOR 'Z:-3.93':
+        # The penalty indicates we bought a "Black Swan" event or a crash.
+        # We enforce a "Sweet Spot" for Mean Reversion.
+        # We want significant dips (Z < -2.0) but reject crashes (Z < -3.2).
+        self.z_entry_ceiling = -2.05
+        self.z_entry_floor = -3.20
         
-        # 2. FIX FOR 'LR_RESIDUAL':
-        # High residuals in Linear Regression imply chaotic price action (noise).
-        # We calculate the Normalized Root Mean Squared Error (NRMSE) of the trend.
-        # We only enter if the trend fit is "clean" (low residual error).
-        self.max_residual_error = 0.0015  # 0.15% max deviation from regression line
+        # FIX FOR 'LR_RESIDUAL':
+        # We tighten the allowed NRMSE (Normalized Root Mean Sq Error).
+        # Previous 0.0015 was too loose. We drop to 0.0008 (0.08%).
+        # This forces entries only on "smooth" dips, rejecting chaotic noise.
+        self.max_nrmse = 0.0008
         
-        # Slope Filter: Reject "Falling Knives"
-        # If the normalized slope is too steep negative, price is crashing, not dipping.
-        self.slope_cutoff = -0.0008 
+        # Additional Filters
+        self.rsi_limit = 28.0      # Stricter than standard 30
+        self.slope_min = -0.0012   # Reject if falling too vertically
         
         # Exit Parameters
-        self.roi_target = 0.019 + (self.dna * 0.003) # ~2%
-        self.stop_loss = 0.045                       # 4.5%
-        self.time_limit = 100                        # Ticks
+        self.roi_target = 0.022    # ~2.2%
+        self.stop_loss = 0.05      # 5%
+        self.time_limit = 80       # Ticks
         
-        # State Management
-        self.history = {}      # symbol -> deque
-        self.positions = {}    # symbol -> dict
-        self.cooldowns = {}    # symbol -> tick
+        # State
+        self.history = {} 
+        self.positions = {}
+        self.cooldowns = {}
         self.tick_count = 0
 
-    def _calc_regression_quality(self, price_list):
+    def _get_regression_metrics(self, prices):
         """
-        Calculates Linear Regression Slope and Normalized Residual Error (Quality).
-        Returns: (normalized_slope, normalized_residual_error)
+        Calculates Linear Regression Slope and Normalized RMSE (Fit Quality).
         """
-        n = len(price_list)
-        if n < 5: return 0.0, 1.0
+        n = len(prices)
+        if n < 3: return 0.0, 1.0
         
         x = list(range(n))
-        y = price_list
+        y = prices
         
         sum_x = sum(x)
         sum_y = sum(y)
         sum_xy = sum(i * j for i, j in zip(x, y))
         sum_xx = sum(i * i for i in x)
         
-        # Calculate Slope (m)
-        numerator = (n * sum_xy) - (sum_x * sum_y)
-        denominator = (n * sum_xx) - (sum_x ** 2)
+        # Slope (m)
+        denom = (n * sum_xx - sum_x * sum_x)
+        if denom == 0: return 0.0, 1.0
+        m = (n * sum_xy - sum_x * sum_y) / denom
         
-        if denominator == 0: return 0.0, 1.0
-        m = numerator / denominator
+        # Intercept (b)
+        b = (sum_y - m * sum_x) / n
         
-        # Calculate Intercept (b)
-        b = (sum_y - (m * sum_x)) / n
-        
-        # Calculate Residuals (Error of fit)
-        # Sum of Squared Errors
+        # Residuals
         sse = sum((y[i] - (m * x[i] + b)) ** 2 for i in range(n))
-        
-        # Standard Error / RMSE
         rmse = math.sqrt(sse / n)
         
-        # Normalize by average price
-        avg_price = sum_y / n
-        if avg_price == 0: return 0.0, 1.0
+        # Normalize
+        avg_p = sum_y / n
+        if avg_p == 0: return 0.0, 1.0
         
-        norm_slope = m / avg_price
-        norm_residual = rmse / avg_price
+        return (m / avg_p), (rmse / avg_p)
+
+    def _get_rsi(self, prices):
+        """
+        Calculates 14-period RSI using simple moving average for speed.
+        """
+        if len(prices) < 15: return 50.0
+        deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
+        subset = deltas[-14:]
         
-        return norm_slope, norm_residual
+        gains = sum(d for d in subset if d > 0)
+        losses = sum(abs(d) for d in subset if d < 0)
+        
+        if losses == 0: return 100.0
+        rs = gains / losses
+        return 100.0 - (100.0 / (1.0 + rs))
 
     def on_price_update(self, prices):
         self.tick_count += 1
@@ -97,32 +103,26 @@ class MyStrategy:
         expired = [s for s, t in self.cooldowns.items() if self.tick_count >= t]
         for s in expired: del self.cooldowns[s]
         
-        # 2. Portfolio Management (Exits)
+        # 2. Exits
         active_symbols = list(self.positions.keys())
         for sym in active_symbols:
             if sym not in prices: continue
             
             try:
-                curr_price = float(prices[sym]['priceUsd'])
-            except (ValueError, TypeError): continue
+                curr = float(prices[sym]['priceUsd'])
+            except: continue
                 
             pos = self.positions[sym]
-            entry_price = pos['entry_price']
-            entry_tick = pos['entry_tick']
-            
-            pnl = (curr_price - entry_price) / entry_price
+            roi = (curr - pos['entry']) / pos['entry']
             
             reason = None
-            if pnl < -self.stop_loss:
-                reason = 'STOP_LOSS'
-            elif pnl > self.roi_target:
-                reason = 'TAKE_PROFIT'
-            elif self.tick_count - entry_tick > self.time_limit:
-                reason = 'TIME_LIMIT'
-                
+            if roi <= -self.stop_loss: reason = 'STOP_LOSS'
+            elif roi >= self.roi_target: reason = 'TAKE_PROFIT'
+            elif self.tick_count - pos['tick'] >= self.time_limit: reason = 'TIMEOUT'
+            
             if reason:
                 del self.positions[sym]
-                self.cooldowns[sym] = self.tick_count + 15
+                self.cooldowns[sym] = self.tick_count + 10
                 return {
                     'side': 'SELL',
                     'symbol': sym,
@@ -130,10 +130,9 @@ class MyStrategy:
                     'reason': [reason]
                 }
                 
-        # 3. Entry Logic
-        if len(self.positions) >= self.max_positions:
-            return None
-            
+        # 3. Entries
+        if len(self.positions) >= self.max_positions: return None
+        
         candidates = list(prices.keys())
         random.shuffle(candidates)
         
@@ -144,75 +143,59 @@ class MyStrategy:
             try:
                 price = float(p_data['priceUsd'])
                 liq = float(p_data.get('liquidity', 0))
-            except (ValueError, TypeError): continue
+            except: continue
             
             if liq < self.min_liquidity: continue
             
-            # Update History
             if sym not in self.history:
                 self.history[sym] = deque(maxlen=self.vol_window + 5)
             self.history[sym].append(price)
             
             if len(self.history[sym]) < self.vol_window: continue
             
-            # --- ANALYSIS ---
-            prices_series = list(self.history[sym])
+            # --- SIGNAL ANALYSIS ---
+            series = list(self.history[sym])
             
-            # A. Z-Score (Mean Reversion)
-            # Use full window for statistical significance
-            mean = statistics.mean(prices_series)
-            stdev = statistics.stdev(prices_series)
-            
+            # A. Z-Score Check (Band Pass Filter)
+            mean = statistics.mean(series)
+            stdev = statistics.stdev(series)
             if stdev == 0: continue
-            z_score = (price - mean) / stdev
             
-            # PENALTY FIX: Strict Z-Score Band
-            # Avoids Z:-3.93 by flooring at self.z_floor
-            if not (self.z_floor <= z_score <= self.z_ceiling):
+            z = (price - mean) / stdev
+            
+            # Penalty Fix: Z:-3.93
+            # We reject extreme outliers (Crashes) and shallow dips
+            if not (self.z_entry_floor <= z <= self.z_entry_ceiling):
                 continue
                 
-            # B. Linear Regression Residuals (Trend Quality)
-            # Use short window (last 10 ticks) to judge immediate fit
-            reg_slice = prices_series[-self.reg_window:]
-            slope, residual_error = self._calc_regression_quality(reg_slice)
+            # B. Regression Quality Check
+            # Penalty Fix: LR_RESIDUAL
+            reg_slice = series[-self.reg_window:]
+            slope, nrmse = self._get_regression_metrics(reg_slice)
             
-            # PENALTY FIX: LR_RESIDUAL
-            # Reject if the price action is too noisy (high residual error)
-            if residual_error > self.max_residual_error:
-                continue
-            
-            # Filter: Falling Knife Protection
-            if slope < self.slope_cutoff:
+            if nrmse > self.max_nrmse: # Filter out noisy/chaotic price action
                 continue
                 
-            # C. RSI (Confirmation)
-            # Calculate standard 14-period RSI
-            rsi_period = 14
-            deltas = [prices_series[i] - prices_series[i-1] for i in range(1, len(prices_series))]
-            if len(deltas) < rsi_period: continue
+            if slope < self.slope_min: # Filter out falling knives
+                continue
+                
+            # C. RSI Confirmation
+            rsi = self._get_rsi(series)
+            if rsi > self.rsi_limit:
+                continue
+                
+            # EXECUTE
+            self.positions[sym] = {
+                'entry': price,
+                'tick': self.tick_count,
+                'amount': self.trade_amount
+            }
             
-            subset_deltas = deltas[-rsi_period:]
-            gains = sum(d for d in subset_deltas if d > 0)
-            losses = sum(abs(d) for d in subset_deltas if d < 0)
+            return {
+                'side': 'BUY',
+                'symbol': sym,
+                'amount': self.trade_amount,
+                'reason': ['SMOOTH_DIP', f'Z:{z:.2f}', f'RMSE:{nrmse:.4f}']
+            }
             
-            if losses == 0: rsi = 100.0
-            else:
-                rs = gains / losses
-                rsi = 100.0 - (100.0 / (1.0 + rs))
-                
-            if rsi < 30.0:
-                # ENTRY EXECUTION
-                self.positions[sym] = {
-                    'entry_price': price,
-                    'entry_tick': self.tick_count,
-                    'amount': self.trade_amount
-                }
-                
-                return {
-                    'side': 'BUY',
-                    'symbol': sym,
-                    'amount': self.trade_amount,
-                    'reason': ['QUALITY_DIP', f'Z:{z_score:.2f}', f'RES:{residual_error:.4f}']
-                }
-                
         return None
