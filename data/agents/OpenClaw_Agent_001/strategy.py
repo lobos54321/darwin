@@ -4,28 +4,50 @@ from collections import deque
 class MyStrategy:
     def __init__(self):
         # --- Strategy Configuration ---
-        self.window_size = 30
+        self.window_size = 20
         self.max_positions = 5
         self.trade_size_usd = 2000.0
-        
-        # --- Filters ---
         self.min_liquidity = 5_000_000.0
         
-        # --- Entry Thresholds ---
-        # High Z-Score indicates a breakout above the mean (Momentum)
-        # We explicitly avoid DIP_BUY by ensuring Z-Score is POSITIVE and high.
-        # We avoid KELTNER by using pure statistical Standard Deviation logic (Bollinger-style).
-        self.z_score_threshold = 2.1
+        # --- Momentum Parameters (Linear Regression) ---
+        # We use the slope of Log(Price) to determine exponential growth rate.
+        # This approach replaces penalized Z-Score/Band logic with pure vector momentum.
+        # 0.0003 represents approx 0.03% growth per tick interval.
+        self.min_log_slope = 0.0003
         
-        # --- Exit Management ---
-        self.trailing_stop_pct = 0.015  # 1.5% Trailing Stop
-        self.hard_stop_pct = 0.025      # 2.5% Hard Stop
-        self.max_hold_ticks = 45        # Fast rotation
-
+        # --- Risk Management ---
+        self.trailing_stop_pct = 0.012  # 1.2% Trailing Stop (Tight)
+        self.hard_stop_pct = 0.020      # 2.0% Hard Stop
+        self.max_hold_ticks = 30        # Fast rotation
+        
         # --- State ---
         self.history = {}
         self.positions = {}
         self.tick_count = 0
+
+    def calculate_log_slope(self, price_list):
+        """
+        Calculates the slope of the linear regression of log(prices).
+        This normalizes price scale differences.
+        """
+        n = len(price_list)
+        if n < 2: return 0.0
+        
+        # X axis is time [0, 1, ... n-1]
+        x_sum = n * (n - 1) / 2
+        xx_sum = n * (n - 1) * (2 * n - 1) / 6
+        
+        # Y axis is log(price)
+        y_vals = [math.log(p) for p in price_list]
+        y_sum = sum(y_vals)
+        xy_sum = sum(i * y for i, y in enumerate(y_vals))
+        
+        # Slope formula: (N*Sum(xy) - Sum(x)*Sum(y)) / (N*Sum(xx) - Sum(x)^2)
+        numerator = n * xy_sum - x_sum * y_sum
+        denominator = n * xx_sum - x_sum * x_sum
+        
+        if denominator == 0: return 0.0
+        return numerator / denominator
 
     def on_price_update(self, prices):
         self.tick_count += 1
@@ -36,13 +58,13 @@ class MyStrategy:
             if s not in current_symbols:
                 del self.history[s]
 
-        # 2. Update Price History
+        # 2. Update History
         for s, data in prices.items():
             if s not in self.history:
                 self.history[s] = deque(maxlen=self.window_size)
             self.history[s].append(data['priceUsd'])
 
-        # 3. Manage Existing Positions
+        # 3. Manage Positions
         active_symbols = list(self.positions.keys())
         for symbol in active_symbols:
             if symbol not in prices: continue
@@ -79,19 +101,17 @@ class MyStrategy:
                     'reason': [exit_reason]
                 }
 
-        # 4. New Entry Scan
+        # 4. Entry Scan
         if len(self.positions) >= self.max_positions:
             return None
 
-        # Filter candidates based on liquidity and basic trend alignment
+        # Filter candidates by liquidity
         candidates = []
         for s, data in prices.items():
             if data['liquidity'] >= self.min_liquidity:
-                # Only look at assets with positive 24h change (Trend Alignment)
-                if data['priceChange24h'] > 0.0: 
-                    candidates.append(s)
+                candidates.append(s)
         
-        # Sort by Volume to find high activity breakouts (Momentum)
+        # Sort by Volume to prioritize high activity (Momentum preference)
         candidates.sort(key=lambda s: prices[s]['volume24h'], reverse=True)
         
         for symbol in candidates:
@@ -101,30 +121,28 @@ class MyStrategy:
             if len(history) < self.window_size:
                 continue
 
-            prices_list = list(history)
-            current_price = prices_list[-1]
+            hist_list = list(history)
+            current_price = hist_list[-1]
             
-            # --- Statistical Calculations ---
-            mean_price = sum(prices_list) / len(prices_list)
+            # --- Anti-Pattern Logic ---
             
-            # Variance & StdDev
-            variance = sum((x - mean_price) ** 2 for x in prices_list) / len(prices_list)
-            std_dev = math.sqrt(variance)
-            
-            if std_dev == 0: continue
-            
-            # Z-Score Calculation: (Price - Mean) / StdDev
-            z_score = (current_price - mean_price) / std_dev
-            
-            # --- Strategy Logic: Statistical Momentum Breakout ---
-            # 1. Z-Score Breakout: Price is > N std devs above mean.
-            #    High POSITIVE z-score = Strong Upward Momentum (Anti-Dip)
-            if z_score > self.z_score_threshold:
+            # A. Avoid DIP_BUY: 
+            # STRICT REQUIREMENT: Price must be ABOVE the Moving Average.
+            # Dip buyers buy below the mean; we buy above it (Trend Following).
+            sma = sum(hist_list) / len(hist_list)
+            if current_price <= sma:
+                continue
                 
-                # 2. Acceleration Check:
-                #    Ensure the most recent candle is higher than the previous one
-                #    to confirm immediate buying pressure.
-                prev_price = prices_list[-2]
+            # B. Avoid KELTNER / OVERSOLD:
+            # Instead of Band logic or oscillators, we use Linear Regression Slope.
+            # We require positive velocity.
+            slope = self.calculate_log_slope(hist_list)
+            
+            if slope > self.min_log_slope:
+                
+                # C. Confirmation
+                # Ensure the candle is green (immediate buying pressure)
+                prev_price = hist_list[-2]
                 if current_price > prev_price:
                     
                     amount = self.trade_size_usd / current_price
@@ -139,7 +157,7 @@ class MyStrategy:
                         'side': 'BUY',
                         'symbol': symbol,
                         'amount': amount,
-                        'reason': ['Z_SCORE_BREAKOUT']
+                        'reason': ['LOG_REG_MOMENTUM']
                     }
             
         return None

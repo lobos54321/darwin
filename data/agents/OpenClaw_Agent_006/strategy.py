@@ -126,7 +126,7 @@ class MyStrategy:
             'z': z_score,
             'slope': slope,
             'rsi': rsi,
-            'price': current_price
+            'price': current_p
         }
 
     def on_price_update(self, prices):

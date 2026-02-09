@@ -6,53 +6,54 @@ from collections import deque
 class MyStrategy:
     def __init__(self):
         # --- Strategy DNA ---
-        # "Antigravity_V11_Quantum_Hook"
+        # "Antigravity_V12_Flux_Capacitor"
         # Mutation: Addresses DIP_BUY/KELTNER penalties by enforcing a strict 
         # "Velocity Floor" and "Volatility Gate". We only catch knives that 
         # have statistically decelerated (The Hook).
-        self.dna = "Antigravity_V11_Quantum_Hook"
+        # Adjusted parameters for higher precision.
+        self.dna = "Antigravity_V12_Flux_Capacitor"
         
         # --- Configuration ---
-        self.lookback = 50           # Extended window for robust mean estimation
-        self.min_history = 35        # Minimum ticks to compute stats
+        self.lookback = 50           # Window for mean/stdev calculation
+        self.min_history = 35        # Min ticks before trading
         
         # --- Penalized Logic Fixes ---
         
         # 1. Fix for 'OVERSOLD':
-        # Drastically stricter RSI. Standard 30 is too noisy.
-        # We target deep capitulation only.
+        # Stricter RSI limit. Standard 30 is too noisy and traps algos.
+        # Lowered to 21.0 for deep capitulation entries.
         self.rsi_period = 14
-        self.rsi_limit = 22.0        
+        self.rsi_limit = 21.0        
         
         # 2. Fix for 'DIP_BUY' & 'KELTNER':
-        # Refined Z-Score bands. We reject "Black Swans" (z < -4.2) to avoid 
-        # total collapse, and reject "Noise" (z > -2.2) to ensure profitability.
-        self.z_min = -4.2
-        self.z_max = -2.2
+        # Z-Score Bands: 
+        # Reject z < -4.5 (Black Swans/Terra-Luna events).
+        # Reject z > -2.3 (Normal noise/insufficient discount).
+        self.z_min = -4.5
+        self.z_max = -2.3
         
-        # 3. Volatility Gate (Anti-Chopping):
-        # We reject assets with volatility too low (stagnant) or too high (chaos).
+        # 3. Volatility Gate:
+        # Reject assets that are too stagnant (low variance) or too chaotic.
         self.min_coeff_var = 0.0006  # 0.06%
-        self.max_coeff_var = 0.05    # 5% (Avoid buying during extreme pump/dump chaos)
+        self.max_coeff_var = 0.06    # 6%
         
         # 4. The Hook (Velocity Filter):
-        # We measure the normalized slope of the last few ticks.
-        # Logic: If price is dropping faster than 0.09% per tick, it's a falling knife.
-        # We wait for the drop to decelerate/flatten before entry.
-        self.slope_window = 6
-        self.max_down_velocity = -0.0009 
+        # We ensure the price drop is not accelerating.
+        # Max down velocity ensures we don't buy during a vertical cliff.
+        self.slope_window = 5        # Faster reaction time
+        self.max_down_velocity = -0.0008 
         
-        # Liquidity Gates
+        # Liquidity & Volume Gates
         self.min_liquidity = 3_000_000.0
         self.min_vol_24h = 1_000_000.0
         
         # Risk Management
         self.max_positions = 5
         self.position_size = 1.0
-        self.stop_loss = 0.045       # 4.5% Stop (Wider to breathe)
-        self.take_profit = 0.032     # 3.2% Target
-        self.hold_timeout = 45       # Ticks
-        self.cooldown_ticks = 20     # Avoid spamming entries on same asset
+        self.stop_loss = 0.048       # 4.8% Stop (Wider to survive wicks)
+        self.take_profit = 0.035     # 3.5% Target
+        self.hold_timeout = 50       # Ticks (Slightly longer hold)
+        self.cooldown_ticks = 20     # Cooldown after exit
         
         # State
         self.history = {}            # {symbol: deque([prices...])}
@@ -64,11 +65,13 @@ class MyStrategy:
         self.tick += 1
         
         # 1. Cooldown Management
+        # Remove expired cooldowns
         expired = [s for s, t in self.cooldowns.items() if self.tick >= t]
         for s in expired:
             del self.cooldowns[s]
             
         # 2. Position Management
+        # Check active positions for SL/TP/Timeout
         active_symbols = list(self.positions.keys())
         for sym in active_symbols:
             if sym not in prices: continue
@@ -103,7 +106,7 @@ class MyStrategy:
         if len(self.positions) >= self.max_positions:
             return None
             
-        # Randomize scan order to prevent alphabetic bias
+        # Randomize scan order to avoid deterministic bias
         candidates = list(prices.keys())
         random.shuffle(candidates)
         
@@ -117,6 +120,7 @@ class MyStrategy:
                 vol = float(p_data['volume24h'])
             except (ValueError, KeyError, TypeError): continue
             
+            # Liquidity Filter
             if liq < self.min_liquidity or vol < self.min_vol_24h: continue
             
             # History Maintenance
@@ -135,11 +139,12 @@ class MyStrategy:
             
             if mean_p == 0 or stdev_p == 0: continue
             
-            # B. Volatility Check
+            # B. Volatility Check (Anti-Chopping)
             coeff_var = stdev_p / mean_p
             if not (self.min_coeff_var <= coeff_var <= self.max_coeff_var): continue
             
             # C. Z-Score Filter (Deep Dip)
+            # Calculates how many deviations away from mean we are.
             z_score = (price - mean_p) / stdev_p
             if not (self.z_min <= z_score <= self.z_max): continue
             
@@ -153,8 +158,7 @@ class MyStrategy:
             slope = self._calc_slope(recent_slice)
             norm_slope = slope / price
             
-            # If the slope is MORE negative than our limit (steeper drop), 
-            # we assume the knife is still falling. Wait for stabilization.
+            # If slope is too steep negative, wait.
             if norm_slope < self.max_down_velocity: continue
             
             # Valid Entry
@@ -189,7 +193,7 @@ class MyStrategy:
         return 100.0 - (100.0 / (1.0 + rs))
 
     def _calc_slope(self, y):
-        # Linear Regression Slope
+        # Simple Linear Regression Slope
         n = len(y)
         if n < 2: return 0.0
         

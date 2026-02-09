@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 """
-Darwin Arena - OpenClaw Trading Agent
-Enables OpenClaw to trade using LLM-powered decisions.
+Darwin Arena - OpenClaw Trading Interface
+Pure execution layer - only handles order submission and status queries.
 
-Architecture:
-- WebSocket: Only for sending orders and getting results
-- Price Data: Fetched from DexScreener API (agent's responsibility)
-- Analysis: Done by OpenClaw's LLM
-- Decisions: Made by OpenClaw's LLM
+OpenClaw is responsible for:
+- Price discovery (DexScreener, CoinGecko, etc.)
+- Market analysis (using its LLM)
+- Trading decisions (using its LLM)
+
+Darwin Arena is responsible for:
+- Order execution
+- Position management
+- PnL calculation
 """
 
 import asyncio
 import json
 import sys
-import os
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 import aiohttp
 
 # Global state
@@ -53,7 +56,7 @@ async def darwin_connect(agent_id: str, arena_url: str = "wss://www.darwinx.fun"
         if http_session and not http_session.closed:
             await http_session.close()
 
-        # Create new HTTP session for price fetching
+        # Create new HTTP session
         http_session = aiohttp.ClientSession()
 
         # Parse URL
@@ -108,155 +111,6 @@ async def darwin_connect(agent_id: str, arena_url: str = "wss://www.darwinx.fun"
             "status": "error",
             "message": f"❌ Connection failed: {str(e)}"
         }
-
-async def darwin_fetch_prices(tokens: Optional[List[str]] = None) -> Dict[str, Any]:
-    """
-    Fetch current prices from DexScreener API.
-
-    This is the agent's responsibility - server doesn't push prices!
-
-    Args:
-        tokens: Optional list of specific tokens to fetch (default: all assigned tokens)
-
-    Returns:
-        Current prices and market data
-    """
-    if not agent_state["connected"]:
-        return {"status": "error", "message": "❌ Not connected. Call darwin_connect() first."}
-
-    if not http_session or http_session.closed:
-        return {"status": "error", "message": "❌ HTTP session not initialized."}
-
-    # Use assigned tokens if not specified
-    if not tokens:
-        tokens = agent_state["tokens"]
-
-    if not tokens:
-        return {"status": "error", "message": "❌ No tokens available. Check connection."}
-
-    try:
-        # Fetch from DexScreener API
-        # Note: This is a simplified version - real implementation would batch requests
-        prices = {}
-
-        for token in tokens:
-            # DexScreener API endpoint (Base chain)
-            url = f"https://api.dexscreener.com/latest/dex/search?q={token}"
-
-            async with http_session.get(url) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    pairs = data.get("pairs", [])
-
-                    if pairs:
-                        # Get first Base chain pair
-                        base_pair = next((p for p in pairs if p.get("chainId") == "base"), pairs[0])
-
-                        prices[token] = {
-                            "price": float(base_pair.get("priceUsd", 0)),
-                            "change_24h": float(base_pair.get("priceChange", {}).get("h24", 0)),
-                            "volume_24h": float(base_pair.get("volume", {}).get("h24", 0)),
-                            "liquidity": float(base_pair.get("liquidity", {}).get("usd", 0)),
-                            "pair_address": base_pair.get("pairAddress", ""),
-                            "dex": base_pair.get("dexId", "")
-                        }
-
-                # Rate limiting
-                await asyncio.sleep(0.2)
-
-        return {
-            "status": "success",
-            "prices": prices,
-            "timestamp": asyncio.get_event_loop().time(),
-            "message": f"📊 Fetched prices for {len(prices)} tokens"
-        }
-
-    except Exception as e:
-        return {
-            "status": "error",
-            "message": f"❌ Failed to fetch prices: {str(e)}"
-        }
-
-async def darwin_analyze(prices: Optional[Dict] = None) -> Dict[str, Any]:
-    """
-    Analyze market conditions.
-
-    This returns raw data for OpenClaw's LLM to analyze.
-
-    Args:
-        prices: Optional price data (if not provided, will fetch fresh data)
-
-    Returns:
-        Market analysis data for LLM interpretation
-    """
-    if not agent_state["connected"]:
-        return {"status": "error", "message": "❌ Not connected. Call darwin_connect() first."}
-
-    # Fetch prices if not provided
-    if not prices:
-        price_result = await darwin_fetch_prices()
-        if price_result["status"] != "success":
-            return price_result
-        prices = price_result["prices"]
-
-    # Format data for LLM analysis
-    analysis = {
-        "status": "success",
-        "tokens": [],
-        "portfolio": {
-            "balance": agent_state["balance"],
-            "positions": agent_state["positions"],
-            "total_value": agent_state["balance"]
-        }
-    }
-
-    # Calculate portfolio value
-    for symbol, quantity in agent_state["positions"].items():
-        if quantity > 0 and symbol in prices:
-            value = quantity * prices[symbol]["price"]
-            analysis["portfolio"]["total_value"] += value
-
-    # Analyze each token
-    for symbol, data in prices.items():
-        token_info = {
-            "symbol": symbol,
-            "price": data["price"],
-            "change_24h": data["change_24h"],
-            "volume_24h": data["volume_24h"],
-            "liquidity": data["liquidity"]
-        }
-
-        # Add simple signals for LLM
-        change = token_info["change_24h"]
-        if change < -15:
-            token_info["signal"] = "OVERSOLD"
-            token_info["signal_strength"] = "STRONG"
-        elif change < -5:
-            token_info["signal"] = "OVERSOLD"
-            token_info["signal_strength"] = "WEAK"
-        elif change > 15:
-            token_info["signal"] = "OVERBOUGHT"
-            token_info["signal_strength"] = "STRONG"
-        elif change > 5:
-            token_info["signal"] = "OVERBOUGHT"
-            token_info["signal_strength"] = "WEAK"
-        else:
-            token_info["signal"] = "NEUTRAL"
-            token_info["signal_strength"] = "NONE"
-
-        # Check if we have a position
-        token_info["position"] = agent_state["positions"].get(symbol, 0)
-        if token_info["position"] > 0:
-            token_info["position_value"] = token_info["position"] * token_info["price"]
-            # Estimate PnL (simplified - would need entry price)
-            token_info["unrealized_pnl"] = "UNKNOWN"
-
-        analysis["tokens"].append(token_info)
-
-    # Sort by absolute change (most volatile first)
-    analysis["tokens"].sort(key=lambda x: abs(x["change_24h"]), reverse=True)
-
-    return analysis
 
 async def darwin_trade(action: str, symbol: str, amount: float, reason: str = None) -> Dict[str, Any]:
     """
@@ -350,56 +204,58 @@ async def darwin_status() -> Dict[str, Any]:
     Get current trading status.
 
     Returns:
-        Current balance, positions, and estimated PnL
+        Current balance, positions, and PnL
     """
     if not agent_state["connected"]:
         return {"status": "error", "message": "❌ Not connected. Call darwin_connect() first."}
 
-    # Fetch current prices to calculate position values
-    price_result = await darwin_fetch_prices()
-    if price_result["status"] != "success":
-        return {"status": "warning", "message": "⚠️ Could not fetch prices for PnL calculation", "balance": agent_state["balance"], "positions": agent_state["positions"]}
+    # Request state from server
+    try:
+        await ws_connection.send_json({"type": "get_state"})
 
-    prices = price_result["prices"]
+        # Wait for response
+        msg = await asyncio.wait_for(ws_connection.receive(), timeout=5.0)
 
-    # Calculate position values
-    positions = []
-    total_position_value = 0
+        if msg.type != aiohttp.WSMsgType.TEXT:
+            raise Exception("Unexpected message type")
 
-    for symbol, quantity in agent_state["positions"].items():
-        if quantity == 0:
-            continue
+        result = json.loads(msg.data)
 
-        token_data = prices.get(symbol, {})
-        current_price = token_data.get("price", 0)
-        value = quantity * current_price
+        if result.get("type") != "state":
+            raise Exception(f"Unexpected response type: {result.get('type')}")
 
-        positions.append({
-            "symbol": symbol,
-            "quantity": quantity,
-            "current_price": current_price,
-            "value": value,
-            "change_24h": token_data.get("change_24h", 0)
-        })
+        # Update local state
+        agent_state["balance"] = result.get("balance", agent_state["balance"])
+        agent_state["positions"] = result.get("positions", agent_state["positions"])
+        pnl = result.get("pnl", 0)
 
-        total_position_value += value
+        # Format positions
+        positions = []
+        for symbol, quantity in agent_state["positions"].items():
+            if quantity > 0:
+                positions.append({
+                    "symbol": symbol,
+                    "quantity": quantity
+                })
 
-    total_value = agent_state["balance"] + total_position_value
-    total_pnl = total_value - 1000  # Assuming $1000 starting balance
-    total_pnl_pct = (total_pnl / 1000 * 100)
+        total_value = agent_state["balance"]  # Server calculates total value
+        pnl_pct = (pnl / 1000 * 100) if pnl != 0 else 0  # Assuming $1000 starting balance
 
-    return {
-        "status": "success",
-        "agent_id": agent_state["agent_id"],
-        "group_id": agent_state["group_id"],
-        "balance": agent_state["balance"],
-        "positions": positions,
-        "total_position_value": total_position_value,
-        "total_value": total_value,
-        "total_pnl": total_pnl,
-        "total_pnl_pct": total_pnl_pct,
-        "message": f"💰 Balance: ${agent_state['balance']:.2f}\n📈 Positions: {len(positions)}\n💵 Total Value: ${total_value:.2f}\n{'📈' if total_pnl >= 0 else '📉'} PnL: ${total_pnl:.2f} ({total_pnl_pct:+.2f}%)"
-    }
+        return {
+            "status": "success",
+            "agent_id": agent_state["agent_id"],
+            "group_id": agent_state["group_id"],
+            "balance": agent_state["balance"],
+            "positions": positions,
+            "pnl": pnl,
+            "pnl_pct": pnl_pct,
+            "message": f"💰 Balance: ${agent_state['balance']:.2f}\n📈 Positions: {len(positions)}\n{'📈' if pnl >= 0 else '📉'} PnL: ${pnl:.2f} ({pnl_pct:+.2f}%)"
+        }
+
+    except asyncio.TimeoutError:
+        return {"status": "error", "message": "❌ Status request timeout"}
+    except Exception as e:
+        return {"status": "error", "message": f"❌ Failed to get status: {str(e)}"}
 
 async def darwin_disconnect() -> Dict[str, Any]:
     """
@@ -429,8 +285,6 @@ async def main():
         print("Usage: python darwin_trader.py <command> [args...]")
         print("\nCommands:")
         print("  connect <agent_id> [arena_url] [api_key]")
-        print("  fetch_prices")
-        print("  analyze")
         print("  trade <buy|sell> <symbol> <amount> [reason]")
         print("  status")
         print("  disconnect")
@@ -443,14 +297,6 @@ async def main():
         arena_url = sys.argv[3] if len(sys.argv) > 3 else "wss://www.darwinx.fun"
         api_key = sys.argv[4] if len(sys.argv) > 4 else None
         result = await darwin_connect(agent_id, arena_url, api_key)
-        print(json.dumps(result, indent=2))
-
-    elif command == "fetch_prices":
-        result = await darwin_fetch_prices()
-        print(json.dumps(result, indent=2))
-
-    elif command == "analyze":
-        result = await darwin_analyze()
         print(json.dumps(result, indent=2))
 
     elif command == "trade":

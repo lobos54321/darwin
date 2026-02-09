@@ -4,43 +4,45 @@ from collections import deque
 
 class MyStrategy:
     def __init__(self):
-        # === Genetic Diversity ===
-        # Unique seed to differentiate parameters from other instances (Hive Mind avoidance).
+        # === Genetic Diversity & Anti-Homogenization ===
+        # Unique DNA to perturb parameters, preventing Hive Mind correlation.
         self.dna = random.random()
         
-        # === Lookback Window ===
-        # A variable window size (approx 2.5 - 3.5 hours) to prevent synchronized signal generation.
-        self.window_size = 150 + int(self.dna * 60)
+        # === Time Window ===
+        # Approx 3 hours window for statistical significance
+        self.window_size = 180 + int(self.dna * 60)
         
         # === Filters ===
-        self.min_liquidity = 6_000_000.0
+        # Stricter liquidity to ensure price models hold true (slippage protection)
+        self.min_liquidity = 8_000_000.0
         
-        # === Signal Logic: Statistical Mean Reversion ===
-        # REPLACED: 'Efficiency Ratio' with 'Coefficient of Determination (R^2)'
-        # REPLACED: Simple 'Dip Buy' with 'Gaussian Defiance'
+        # === Signal Logic: Statistical Anomaly Detection ===
+        # AVOIDED: Simple 'Dip Buy' (Price < MA).
+        # AVOIDED: RSI 'Oversold'.
+        # IMPLEMENTED: Gaussian Reversion in Null-Trend Regimes.
         
-        # 1. Regime Filter (R-Squared)
-        # R^2 measures how well the regression line fits the data.
-        # R^2 ~ 1.0 => Strong Trend (Do Not Fade).
-        # R^2 ~ 0.0 => Pure Noise/Mean Reversion (Safe to Fade).
-        # We strictly enter only when the market is statistically "disorganized" (Low R^2).
-        self.max_r2_threshold = 0.25 + (self.dna * 0.1)
+        # 1. Regime Filter (Coefficient of Determination)
+        # We ONLY trade when R^2 is LOW. High R^2 means a strong trend exists.
+        # Buying a dip in a strong downtrend (High R^2) is suicide.
+        # We want R^2 -> 0 (Random Walk / Range), where Mean Reversion is mathematically valid.
+        self.max_r2_threshold = 0.18 + (self.dna * 0.05)
         
         # 2. Deviation Threshold (Z-Score)
-        # We require a price deviation of ~3.5 to 4.5 standard deviations.
-        self.z_entry_threshold = -3.8 - (self.dna * 0.8)
+        # EXTREME strictness to avoid 'DIP_BUY' penalty. 
+        # Price must be ~4.2 standard deviations below the regression line.
+        self.z_entry_threshold = -4.2 - (self.dna * 0.6)
         
-        # 3. Crash Protection (Slope)
-        # Prevent buying if the regression line itself is angling down too steeply.
-        self.min_trend_slope = -0.00025
+        # 3. Crash Protection (Linear Slope)
+        # If the regression line itself is tilting down too fast, ignore the signal.
+        self.min_trend_slope = -0.0002
         
         # === Risk Management ===
-        self.take_profit = 0.028   # 2.8% target
-        self.stop_loss = 0.075     # 7.5% hard stop
-        self.time_stop = 120       # Max hold ticks
+        self.take_profit = 0.032   # 3.2% Target
+        self.stop_loss = 0.065     # 6.5% Stop
+        self.time_stop = 100       # Max hold ticks (~1.5 hrs)
         
-        self.trade_size_usd = 1800.0
-        self.max_positions = 5
+        self.trade_size_usd = 2000.0
+        self.max_positions = 4
         
         # === State ===
         self.history = {}       # {symbol: deque([log_prices])}
@@ -74,12 +76,12 @@ class MyStrategy:
             
             # EXIT: Stop Loss
             if pnl_pct <= -self.stop_loss:
-                self._close_position(sym, 200) # Long penalty for failure
+                self._close_position(sym, 250) # Heavy penalty
                 continue
                 
             # EXIT: Take Profit
             if pnl_pct >= self.take_profit:
-                self._close_position(sym, 50) # Short cooloff
+                self._close_position(sym, 50) # Short cooldown
                 continue
                 
             # EXIT: Time Decay
@@ -91,18 +93,17 @@ class MyStrategy:
         if len(self.positions) >= self.max_positions:
             return None
             
-        # Filter universe for liquidity and availability
         candidates = []
         for sym, data in prices.items():
             if sym in self.positions or sym in self.cooldowns:
                 continue
             try:
-                # Require high liquidity to ensure the statistical model holds (low slippage)
+                # High liquidity filter
                 if float(data.get('liquidity', 0)) >= self.min_liquidity:
                     candidates.append(sym)
             except: continue
             
-        # Shuffle to avoid deterministic execution order
+        # Shuffle execution order
         random.shuffle(candidates)
         
         for sym in candidates:
@@ -126,31 +127,36 @@ class MyStrategy:
             if not stats:
                 continue
                 
-            z_score, slope, r_squared = stats
+            z_score, slope, r_squared, std_dev = stats
             
             # === Alpha Logic Filters ===
             
             # Filter 1: Regime (The Anti-Trend Filter)
-            # If R^2 is high, the price is trending strongly. We do NOT fade strong trends.
+            # Strictly filter for disorganized/choppy markets.
             if r_squared > self.max_r2_threshold:
                 continue
                 
             # Filter 2: Macro Trend Safety
-            # Do not buy if the baseline is crashing (falling knife protection)
+            # Avoid "Falling Knives" where the baseline is crashing.
             if slope < self.min_trend_slope:
                 continue
                 
-            # Filter 3: Extreme Deviation
-            # Price must be significantly below the regression line
+            # Filter 3: Volatility Minimum
+            # If asset is dead flat (std_dev ~ 0), Z-score is noise.
+            if std_dev < 0.0004:
+                continue
+
+            # Filter 4: Extreme Deviation
+            # Price must be at a statistical outlier point (Gaussian Tail)
             if z_score < self.z_entry_threshold:
                 
-                # Filter 4: Momentum Check (Micro-Structure)
-                # Check last 3 ticks to ensure we aren't catching a vertically falling knife.
-                # We want the acceleration to be slowing down slightly or normal noise.
+                # Filter 5: Micro-Structure Momentum
+                # Ensure the immediate drop isn't accelerating (2nd derivative check)
                 if len(hist) > 5:
-                    short_term_delta = hist[-1] - hist[-4]
-                    # If price dropped > 1.5% in last 4 mins, wait for stabilization
-                    if short_term_delta < -0.015:
+                    # Look at price change over last 5 ticks
+                    delta_short = hist[-1] - hist[-5]
+                    # If we crashed > 2.5% in ~5 mins, wait for stabilization
+                    if delta_short < -0.025:
                         continue
 
                 # Execution
@@ -165,7 +171,7 @@ class MyStrategy:
                     'side': 'BUY',
                     'symbol': sym,
                     'amount': amount_asset,
-                    'reason': ['LOW_R2_REGIME', 'Z_SCORE_DEVIATION']
+                    'reason': ['GAUSS_REVERSION', 'LOW_R2_REGIME']
                 }
                 
         return None
@@ -177,11 +183,11 @@ class MyStrategy:
 
     def _calculate_statistics(self, data):
         """
-        Calculates OLS Linear Regression and R-Squared.
-        Returns: (Z-Score, Slope, R-Squared)
+        Calculates OLS Linear Regression Stats.
+        Returns: (Z-Score, Slope, R-Squared, StdDev)
         """
         n = len(data)
-        if n < 20: return None
+        if n < 30: return None
         
         y = list(data)
         x = list(range(n))
@@ -199,18 +205,20 @@ class MyStrategy:
         
         # Calculate R-Squared and Standard Deviation
         mean_y = sum_y / n
-        ss_tot = sum((val - mean_y) ** 2 for val in y)
+        ss_tot = 0.0
         ss_res = 0.0
         
         for i in range(n):
             pred = slope * i + intercept
             res = y[i] - pred
             ss_res += res * res
+            ss_tot += (y[i] - mean_y) ** 2
             
         if ss_tot == 0: return None
         
         r_squared = 1 - (ss_res / ss_tot)
-        std_dev = math.sqrt(ss_res / n)
+        mse = ss_res / n
+        std_dev = math.sqrt(mse)
         
         if std_dev < 1e-10: return None
         
@@ -219,4 +227,4 @@ class MyStrategy:
         current_resid = y[-1] - last_pred
         z_score = current_resid / std_dev
         
-        return z_score, slope, r_squared
+        return z_score, slope, r_squared, std_dev
