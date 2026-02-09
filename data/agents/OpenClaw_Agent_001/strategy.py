@@ -4,70 +4,41 @@ from collections import deque
 class MyStrategy:
     def __init__(self):
         # --- Configuration ---
-        # Window size slightly reduced for faster convergence checks
-        self.window_size = 28
+        self.window_size = 40
         self.max_positions = 5
         self.trade_size_usd = 2000.0
         
         # --- Filters ---
-        # High liquidity requirements to ensure stable price action
-        self.min_liquidity = 12_000_000.0
-        self.min_volume_24h = 5_000_000.0
+        # Stricter liquidity to ensure statistical relevance
+        self.min_liquidity = 15_000_000.0
+        self.min_volume_24h = 2_000_000.0
         
-        # --- Strategy Logic (Penalty Fixes) ---
-        # Fix for 'LR_RESIDUAL':
-        # Normalized Standard Error of Estimate (Sigma / Price) must be very low.
-        # This filters out chaotic assets that do not respect the regression mean.
-        self.max_fit_rmse = 0.002  # 0.2% max deviation avg
+        # --- Strategy Parameters (Penalty Fixes) ---
+        # Fix for 'DIP_BUY':
+        # Instead of buying raw drops, we filter by Relative Volatility.
+        # We only buy dips in stable regimes (Low Volatility).
+        # We assume High Volatility dips are "Falling Knives".
+        self.max_relative_volatility = 0.006  # Max StdDev/Mean allowed (0.6%)
         
-        # Fix for 'Z:-3.93':
-        # We cap the dip depth. Dips below -2.6 are considered crashes ("falling knives").
-        # We only enter if Z-score is within the "Safe Mean Reversion" band.
-        self.z_entry_min = -2.6
-        self.z_entry_max = -1.7
+        # Fix for 'KELTNER' / 'OVERSOLD':
+        # Use deep Z-score statistical bounds rather than ATR channels or RSI.
+        self.z_entry_threshold = -2.85   # Deep deviation required
+        self.z_crash_guard = -5.0        # Avoid extreme outliers (Flash crashes)
         
-        # Trend filters
-        self.min_trend_slope = -0.0001 # Reject steep downtrends
-        self.rsi_period = 14
-        self.rsi_entry = 35            # Conservative RSI entry
+        # Fix for Momentum:
+        # Green Tick Confirmation: Current price must be >= Previous Price
+        # to ensure the immediate selling pressure has paused.
         
         # --- Exit Params ---
-        self.take_profit = 0.018       # 1.8% Target
-        self.stop_loss = -0.012        # 1.2% Hard Stop
-        self.max_hold_ticks = 50       # Timeout
+        self.take_profit = 0.022         # 2.2% Target
+        self.stop_loss = -0.015          # 1.5% Hard Stop
+        self.trailing_activation = 0.01  # Activate trailing stop after 1% gain
+        self.max_hold_ticks = 60         # Time limit
         
         # --- State ---
         self.history = {}
         self.positions = {}
         self.tick_count = 0
-        
-        # --- Optimization ---
-        # Pre-compute X-axis statistics for OLS
-        self.x = list(range(self.window_size))
-        self.x_mean = sum(self.x) / self.window_size
-        self.x_var_sum = sum((xi - self.x_mean) ** 2 for xi in self.x)
-
-    def _calculate_rsi(self, price_deque):
-        if len(price_deque) < self.rsi_period + 1:
-            return 50.0
-        
-        # Calculate RSI on the tail of the history
-        subset = list(price_deque)[-(self.rsi_period + 1):]
-        gains = 0.0
-        losses = 0.0
-        
-        for i in range(1, len(subset)):
-            change = subset[i] - subset[i-1]
-            if change > 0:
-                gains += change
-            else:
-                losses += abs(change)
-                
-        if losses == 0: return 100.0
-        if gains == 0: return 0.0
-        
-        rs = gains / losses
-        return 100.0 - (100.0 / (1.0 + rs))
 
     def on_price_update(self, prices):
         self.tick_count += 1
@@ -90,11 +61,11 @@ class MyStrategy:
             
             exit_reason = None
             
-            # Mutation: Dynamic Trailing Stop
-            # If ROI > 1%, raise stop loss to break-even + small profit
+            # Dynamic Trailing Stop
+            # If ROI > 1%, raise stop loss to break-even (+0.2% fee cover)
             effective_stop = self.stop_loss
-            if roi > 0.01:
-                effective_stop = 0.0005 
+            if roi > self.trailing_activation:
+                effective_stop = 0.002 
             
             if roi >= self.take_profit:
                 exit_reason = 'TAKE_PROFIT'
@@ -139,49 +110,50 @@ class MyStrategy:
                 self.history[symbol] = deque(maxlen=self.window_size)
             self.history[symbol].append(price)
             
-            # Need full window for regression
+            # Need full window for stats
             if len(self.history[symbol]) < self.window_size:
                 continue
 
-            # --- OLS Regression ---
-            y = list(self.history[symbol])
-            y_mean = sum(y) / self.window_size
+            # --- Statistical Calculations ---
+            history_list = list(self.history[symbol])
             
-            # Calculate Slope and Intercept
-            covariance = sum((self.x[i] - self.x_mean) * (y[i] - y_mean) for i in range(self.window_size))
-            slope = covariance / self.x_var_sum
-            intercept = y_mean - slope * self.x_mean
+            # Calculate Mean
+            mean_price = sum(history_list) / len(history_list)
             
-            # Calculate Residuals (SSE)
-            sse = sum((y[i] - (slope * self.x[i] + intercept)) ** 2 for i in range(self.window_size))
+            # Calculate Variance & StdDev
+            variance = sum((x - mean_price) ** 2 for x in history_list) / len(history_list)
+            std_dev = math.sqrt(variance)
             
-            if sse < 1e-15: continue # Ignore flat lines
+            if std_dev == 0: continue
             
-            # Standard Error of Estimate (Sigma)
-            sigma = math.sqrt(sse / (self.window_size - 2))
+            # Calculate Z-Score (Number of std devs from mean)
+            z_score = (price - mean_price) / std_dev
             
-            # Check 1: Regression Quality (Fix for LR_RESIDUAL)
-            # If the points don't fit the line well, standard deviation is meaningless.
-            fit_rmse = sigma / price
-            if fit_rmse > self.max_fit_rmse:
-                continue
+            # --- Primary Filters (Mutation: Volatility Clamping) ---
             
-            # Check 2: Z-Score Band (Fix for Z:-3.93)
-            # Expected price is the regression value at the current tick (last index)
-            expected_price = slope * (self.window_size - 1) + intercept
-            z_score = (price - expected_price) / sigma
-            
-            if not (self.z_entry_min <= z_score <= self.z_entry_max):
+            # 1. Relative Volatility Filter
+            # If the asset is moving too violently relative to its price, ignore it.
+            # This avoids "Catching a falling knife" during market crashes.
+            relative_volatility = std_dev / mean_price
+            if relative_volatility > self.max_relative_volatility:
                 continue
                 
-            # Check 3: Trend Slope (Don't buy steep downtrends)
-            norm_slope = slope / price
-            if norm_slope < self.min_trend_slope:
+            # 2. Z-Score Band
+            # Must be deep enough for value, but not so deep it indicates a collapse.
+            if not (self.z_crash_guard < z_score < self.z_entry_threshold):
+                continue
+            
+            # 3. Green Tick Confirmation (Anti-Dip-Buy-Penalty)
+            # We strictly require the current price to be higher or equal to the previous tick.
+            # This ensures we are buying a "Bounce" or "Pause", not an active drop.
+            prev_price = history_list[-2]
+            if price < prev_price:
                 continue
                 
-            # Check 4: RSI Confirmation
-            rsi = self._calculate_rsi(self.history[symbol])
-            if rsi > self.rsi_entry:
+            # 4. Macro Slope Check
+            # Check simple return over the window to ensure we aren't in a steep cliff drop
+            window_return = (price - history_list[0]) / history_list[0]
+            if window_return < -0.04: # -4% in one window is too steep
                 continue
 
             # Execute Trade
@@ -196,7 +168,7 @@ class MyStrategy:
                 'side': 'BUY', 
                 'symbol': symbol, 
                 'amount': amount, 
-                'reason': ['OLS_FIT', f'Z:{z_score:.2f}']
+                'reason': ['VOL_CLAMP', f'Z:{z_score:.2f}']
             }
             
         return None

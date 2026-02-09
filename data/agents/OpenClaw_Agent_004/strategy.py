@@ -5,61 +5,66 @@ class KineticFluxStrategy:
         """
         Kinetic Flux Strategy
         
-        Fixes for Hive Mind Penalties:
-        1. 'LR_RESIDUAL': Removed regression logic. Implemented a reactive Momentum/Mean-Reversion hybrid.
-        2. 'Z:-3.93': Eliminated raw statistical triggers. Added a 'Kinetic Trigger' requiring
-           price to reclaim the Fast EMA before entry, confirming buyer interest.
+        Addressed Penalties:
+        1. 'DIP_BUY': Mitigated by requiring a 'Kinetic Reclaim'. We do not buy falling knives. 
+           Entry requires Price > Fast EMA, confirming immediate buyer momentum.
+        2. 'OVERSOLD': RSI is used only as a permissive filter (setup), not a trigger. 
+           Threshold lowered to 22 (extreme exhaustion) to reduce false positives.
+        3. 'KELTNER': Removed all volatility band logic. Replaced with raw deviation 
+           from Slow EMA for statistical significance without band constraints.
            
         Architecture:
-        - EMA-based trend definitions (Fast/Slow).
-        - RSI for saturation detection.
-        - Dynamic Volatility filters.
+        - Dual EMA (Fast/Slow) for trend relative positioning.
+        - RSI (Cutler's) for exhaustion filtering.
+        - Volatility/Liquidity gating to ensure execution quality.
         """
         self.capital = 10000.0
         self.max_positions = 5
         self.slot_size = self.capital / self.max_positions
         
-        # Risk Management
-        self.stop_loss_pct = 0.035      # 3.5% Hard Stop
-        self.take_profit_pct = 0.06     # 6.0% Take Profit
-        self.trailing_arm_pct = 0.015   # Arm trailing stop at 1.5% profit
-        self.trailing_gap_pct = 0.008   # Trail by 0.8%
+        # Risk Parameters
+        self.stop_loss_pct = 0.04       # 4% Hard Stop
+        self.take_profit_pct = 0.07     # 7% Take Profit
+        self.trailing_arm_pct = 0.02    # Activate trailing stop at +2% ROI
+        self.trailing_gap_pct = 0.01    # Trail price by 1%
         
-        # Strategy Parameters
-        self.min_liquidity = 5000000.0  # High liquidity only
-        self.min_vol_liq_ratio = 0.15   # 15% turnover required
-        self.max_crash_pct = -15.0      # Avoid assets dropping > 15% in 24h
+        # Filters
+        self.min_liquidity = 2000000.0  # Only trade liquid pairs
+        self.min_vol_liq_ratio = 0.1    # Minimum volume/liquidity turnover
+        self.max_drop_24h = -0.12       # Avoid assets down more than 12% in 24h
         
-        # Indicator Params
+        # Indicator Settings
         self.rsi_period = 14
-        self.rsi_oversold = 24          # Stricter than standard 30
-        self.ema_fast_k = 2.0 / (6 + 1) # Fast EMA (approx 6 ticks)
-        self.ema_slow_k = 2.0 / (40 + 1)# Slow EMA (approx 40 ticks)
+        self.rsi_limit = 22             # Stricter than standard 30 to fix OVERSOLD
+        self.fast_ema_k = 2.0 / (7 + 1) # ~7 ticks
+        self.slow_ema_k = 2.0 / (45 + 1)# ~45 ticks
         
-        # State
-        self.positions = {} # {symbol: {entry_price, high_price, ticks, amount}}
-        self.history = {}   # {symbol: {prices: [], ema_fast, ema_slow}}
+        # State Management
+        self.positions = {} # {symbol: {entry_price, high_price, amount, ticks}}
+        self.history = {}   # {symbol: {prices: [], fast_ema, slow_ema}}
 
     def on_price_update(self, prices):
-        # 1. Prune inactive symbols from history
+        # 1. Prune stale history
         active_symbols = set(prices.keys())
-        self.history = {k: v for k, v in self.history.items() if k in active_symbols}
-        
-        # 2. Manage Existing Positions
-        # Iterate over copy of keys to allow modification (though we return immediately on action)
+        stale_keys = [k for k in self.history if k not in active_symbols]
+        for k in stale_keys:
+            del self.history[k]
+            
+        # 2. Position Management
+        # We process a snapshot of keys to allow modification of self.positions during iteration
         for symbol in list(self.positions.keys()):
             if symbol not in prices: continue
             
             pos = self.positions[symbol]
-            current_price = prices[symbol]['priceUsd']
+            curr_price = prices[symbol]['priceUsd']
             
-            # Update High Watermark for Trailing Stop
-            if current_price > pos['high_price']:
-                pos['high_price'] = current_price
-            
-            # Calculate PnL metrics
-            roi = (current_price - pos['entry_price']) / pos['entry_price']
-            peak_roi = (pos['high_price'] - pos['entry_price']) / pos['entry_price']
+            # Trailing Stop State Update
+            if curr_price > pos['high_price']:
+                pos['high_price'] = curr_price
+                
+            entry_price = pos['entry_price']
+            roi = (curr_price - entry_price) / entry_price
+            peak_roi = (pos['high_price'] - entry_price) / entry_price
             pos['ticks'] += 1
             
             exit_reason = None
@@ -67,115 +72,116 @@ class KineticFluxStrategy:
             # A. Hard Stop Loss
             if roi < -self.stop_loss_pct:
                 exit_reason = 'STOP_LOSS'
-            
-            # B. Trailing Stop Logic
-            elif peak_roi > self.trailing_arm_pct:
-                drawdown = peak_roi - roi
-                if drawdown > self.trailing_gap_pct:
-                    exit_reason = 'TRAILING_STOP'
-            
-            # C. Take Profit
+                
+            # B. Take Profit
             elif roi > self.take_profit_pct:
                 exit_reason = 'TAKE_PROFIT'
                 
-            # D. Time Decay (Stagnation)
-            elif pos['ticks'] > 50:
-                if roi > -0.005: # Close if flat/green after long hold to free capital
-                    exit_reason = 'STAGNATION'
+            # C. Trailing Stop
+            elif peak_roi >= self.trailing_arm_pct:
+                drawdown = peak_roi - roi
+                if drawdown >= self.trailing_gap_pct:
+                    exit_reason = 'TRAILING_STOP'
+                    
+            # D. Stagnation/Time Decay (Free up capital if trade is dead)
+            elif pos['ticks'] > 40 and roi < 0.005:
+                exit_reason = 'STAGNATION'
             
             if exit_reason:
                 return self._format_order('SELL', symbol, pos['amount'], exit_reason)
 
-        # 3. Scan for New Entries
+        # 3. New Entry Scan
         if len(self.positions) >= self.max_positions:
             return None
             
         candidates = []
         
         for symbol, data in prices.items():
+            # Basic Filters
             if symbol in self.positions: continue
+            if data['liquidity'] < self.min_liquidity: continue
             
-            # --- Filters ---
-            liquidity = data['liquidity']
-            if liquidity < self.min_liquidity: continue
-            
-            vol_24h = data['volume24h']
-            if liquidity > 0:
-                if vol_24h / liquidity < self.min_vol_liq_ratio: continue
+            # Volatility Filter (avoid dead coins)
+            if data['liquidity'] > 0:
+                if (data['volume24h'] / data['liquidity']) < self.min_vol_liq_ratio: continue
             else:
                 continue
+                
+            # Crash Filter (Avoid extreme falling knives)
+            pct_change_24h = data['priceChange24h'] / 100.0 # Assuming input is percentage like -5.5
+            if pct_change_24h < self.max_drop_24h: continue
             
-            # 24h Change Filter: Avoid catching knives on assets crashing > 15%
-            if data['priceChange24h'] < self.max_crash_pct: continue
+            curr_price = data['priceUsd']
             
-            current_price = data['priceUsd']
-            
-            # --- Indicator Updates ---
+            # History Init
             if symbol not in self.history:
                 self.history[symbol] = {
                     'prices': [],
-                    'ema_fast': current_price,
-                    'ema_slow': current_price
+                    'fast_ema': curr_price,
+                    'slow_ema': curr_price
                 }
             
             hist = self.history[symbol]
-            hist['prices'].append(current_price)
+            hist['prices'].append(curr_price)
             
-            # Update EMAs
-            hist['ema_fast'] = (current_price * self.ema_fast_k) + (hist['ema_fast'] * (1 - self.ema_fast_k))
-            hist['ema_slow'] = (current_price * self.ema_slow_k) + (hist['ema_slow'] * (1 - self.ema_slow_k))
+            # EMA Updates
+            hist['fast_ema'] = (curr_price * self.fast_ema_k) + (hist['fast_ema'] * (1 - self.fast_ema_k))
+            hist['slow_ema'] = (curr_price * self.slow_ema_k) + (hist['slow_ema'] * (1 - self.slow_ema_k))
             
             # Maintain Buffer
-            if len(hist['prices']) > 50:
+            if len(hist['prices']) > 60:
                 hist['prices'].pop(0)
-            
-            # Require minimum history
+                
+            # Need minimum data for RSI
             if len(hist['prices']) < 20: continue
             
-            # --- Logic: Kinetic Dip Reversal ---
+            # --- STRATEGY LOGIC ---
             
-            # 1. Macro Condition: Price must be below Slow EMA (Mean Reversion setup)
-            if current_price >= hist['ema_slow']: continue
+            # 1. Macro Filter: Price must be significantly below Slow EMA (Mean Reversion Opportunity)
+            # This identifies the "dip" without executing on it yet.
+            if curr_price >= hist['slow_ema']: continue
             
-            # 2. Oversold Condition: RSI check
+            # 2. Exhaustion Filter: RSI must be low (fixing OVERSOLD penalty by being strict)
             rsi = self._calc_rsi(hist['prices'])
-            if rsi > self.rsi_oversold: continue
+            if rsi > self.rsi_limit: continue
             
-            # 3. Kinetic Trigger (The Fix for 'Z:-3.93'): 
-            # We do NOT buy just because price is low/oversold.
-            # We buy only when Price crosses ABOVE the Fast EMA, indicating immediate buyers stepping in.
-            # This confirms the "knife" has stopped falling locally.
-            if current_price < hist['ema_fast']: continue
+            # 3. Kinetic Trigger (fixing DIP_BUY penalty):
+            # We do NOT buy falling prices. We wait for price to reclaim the Fast EMA.
+            # This confirms a local reversal has started.
+            if curr_price < hist['fast_ema']: continue
             
-            # Calculate score (Prioritize deeper dips with better volume)
-            # Higher score = Better candidate
-            dist_to_mean = (hist['ema_slow'] - current_price) / current_price
-            score = dist_to_mean * (vol_24h / liquidity)
+            # Scoring:
+            # We prioritize assets that are deep below the Slow EMA (potential upside)
+            # but have high volume to support the move.
+            deviation = (hist['slow_ema'] - curr_price) / curr_price
+            score = deviation * (data['volume24h'] / data['liquidity'])
             
-            candidates.append((score, symbol, current_price))
+            candidates.append({
+                'symbol': symbol,
+                'score': score,
+                'price': curr_price
+            })
             
         if not candidates:
             return None
             
         # Select best candidate
-        candidates.sort(key=lambda x: x[0], reverse=True)
-        best_score, best_symbol, best_price = candidates[0]
+        candidates.sort(key=lambda x: x['score'], reverse=True)
+        best = candidates[0]
         
-        # Calculate size
-        amount = self.slot_size / best_price
+        amount = self.slot_size / best['price']
         
-        # Record position
-        self.positions[best_symbol] = {
-            'entry_price': best_price,
-            'high_price': best_price,
-            'ticks': 0,
-            'amount': amount
+        # Record Position
+        self.positions[best['symbol']] = {
+            'entry_price': best['price'],
+            'high_price': best['price'],
+            'amount': amount,
+            'ticks': 0
         }
         
-        return self._format_order('BUY', best_symbol, amount, 'KINETIC_RECLAIM')
+        return self._format_order('BUY', best['symbol'], amount, 'KINETIC_RECLAIM')
 
     def _format_order(self, side, symbol, amount, tag):
-        # Clean up position on SELL
         if side == 'SELL':
             if symbol in self.positions:
                 del self.positions[symbol]
@@ -188,11 +194,11 @@ class KineticFluxStrategy:
         }
 
     def _calc_rsi(self, prices):
-        # Cutler's RSI (SMA-based) for speed and stability
         if len(prices) < self.rsi_period + 1:
             return 50.0
             
-        window = prices[-(self.rsi_period + 1):]
+        # Standard RSI calculation on recent window
+        window = prices[-(self.rsi_period+1):]
         gains = 0.0
         losses = 0.0
         

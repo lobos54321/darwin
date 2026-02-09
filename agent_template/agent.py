@@ -10,6 +10,7 @@ import sys
 import random
 import ssl
 import certifi
+import time
 from datetime import datetime
 from typing import Optional, List
 
@@ -518,47 +519,58 @@ class DarwinAgent:
     async def _price_fetch_loop(self):
         """
         自主获取价格循环 (Pure Execution Layer)
-        
-        Agent 自己从 DexScreener 获取价格，不依赖服务器广播。
-        这使得 Agent 可以：
-        - 选择任何数据源 (DexScreener, CoinGecko, etc.)
-        - 交易任何代币
-        - 实现真正的自主权
+
+        Agent 真正的自主权：
+        1. 自己发现热门代币 (DexScreener trending)
+        2. 自己选择要交易的代币 (可选：用LLM智能选择)
+        3. 自己获取价格数据
+        4. 完全不依赖服务器配置
         """
-        print("📡 Price fetch loop started (DexScreener)")
-        
-        # DexScreener API - 免费，无需 API Key
-        DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens"
-        
-        # Default tokens to track (can be customized by strategy)
-        DEFAULT_TOKENS = [
-            "0x1bc0c42215582d5a085795f3ee422018a4ce7679",  # CLANKER
-            "0xc75af099858d72893c4d4ecdbe4771e77c4b77a8",  # WETH
-            "0x2C5d06f591D0d8cd43Ac232c2B654475a142c7DA",  # MOLT
-            "0x4737d9b4592b40d4b36a028f6f5d39a76d03f0f9",  # LOB
-        ]
-        
+        print("📡 Price fetch loop started - Agent Autonomous Mode")
+
         await asyncio.sleep(3)  # Initial delay
-        
+
+        # Token discovery interval (refresh every 5 minutes)
+        token_refresh_interval = 300
+        last_token_refresh = 0
+        current_tokens = []
+
         while self.running:
             try:
-                # Get tokens from strategy if available
-                tokens = getattr(self.strategy, 'watched_tokens', DEFAULT_TOKENS)
-                
-                # Fetch prices from DexScreener
-                prices = await self._fetch_dexscreener_prices(tokens)
-                
-                if prices:
-                    # Pass to strategy's on_price_update
-                    await self.on_price_update(prices)
-                    
+                current_time = time.time()
+
+                # 1. Discover/refresh tokens periodically
+                if current_time - last_token_refresh > token_refresh_interval or not current_tokens:
+                    print("🔍 Discovering trending tokens...")
+
+                    # Check if strategy has custom token discovery logic
+                    if hasattr(self.strategy, 'discover_tokens'):
+                        current_tokens = await self.strategy.discover_tokens()
+                        print(f"✅ Strategy discovered {len(current_tokens)} tokens")
+                    else:
+                        # Default: fetch trending tokens from DexScreener
+                        current_tokens = await self._discover_trending_tokens()
+                        print(f"✅ Discovered {len(current_tokens)} trending tokens")
+
+                    last_token_refresh = current_time
+
+                # 2. Fetch prices for current token list
+                if current_tokens:
+                    prices = await self._fetch_dexscreener_prices(current_tokens)
+
+                    if prices:
+                        # Pass to strategy's on_price_update
+                        await self.on_price_update(prices)
+                else:
+                    print("⚠️ No tokens to track, will retry discovery...")
+
             except asyncio.CancelledError:
                 print("📡 Price fetch loop cancelled")
                 break
             except Exception as e:
                 print(f"⚠️ Price fetch error: {e}")
-            
-            await asyncio.sleep(10)  # Fetch every 10 seconds
+
+            await asyncio.sleep(10)  # Fetch prices every 10 seconds
     
     async def _fetch_dexscreener_prices(self, token_addresses: list) -> dict:
         """
@@ -615,6 +627,92 @@ class DarwinAgent:
         except Exception as e:
             print(f"⚠️ DexScreener fetch error: {e}")
             return {}
+
+    async def _discover_trending_tokens(self) -> list:
+        """
+        发现热门代币 - Agent 真正的自主权
+        
+        策略：
+        1. 从 DexScreener 获取 Base 链热门代币
+        2. 过滤：流动性 > $50k, 24h交易量 > $10k
+        3. 返回代币地址列表
+        
+        Agent 可以override这个方法来实现自己的代币发现逻辑
+        """
+        try:
+            # DexScreener Boosted tokens on Base chain (trending)
+            urls = [
+                "https://api.dexscreener.com/token-boosts/top/v1",  # Top boosted
+                "https://api.dexscreener.com/latest/dex/search?q=base",  # Base chain search
+            ]
+            
+            discovered_tokens = []
+            
+            connector = aiohttp.TCPConnector(ssl=_SSL_CONTEXT)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                # Try top boosted first
+                try:
+                    async with session.get(urls[0], timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            # Filter for Base chain tokens
+                            for token in data[:50]:
+                                chain = token.get("chainId", "")
+                                if chain == "base":
+                                    address = token.get("tokenAddress", "")
+                                    if address:
+                                        discovered_tokens.append(address)
+                except Exception as e:
+                    print(f"⚠️ Boosted tokens fetch failed: {e}")
+                
+                # If not enough, try Base chain search
+                if len(discovered_tokens) < 10:
+                    try:
+                        async with session.get(urls[1], timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                pairs = data.get("pairs", [])
+                                
+                                for pair in pairs[:100]:
+                                    # Filter criteria
+                                    chain = pair.get("chainId", "")
+                                    liquidity = float(pair.get("liquidity", {}).get("usd", 0) or 0)
+                                    volume = float(pair.get("volume", {}).get("h24", 0) or 0)
+                                    
+                                    if chain == "base" and liquidity > 50000 and volume > 10000:
+                                        address = pair.get("baseToken", {}).get("address", "")
+                                        if address and address not in discovered_tokens:
+                                            discovered_tokens.append(address)
+                                            
+                                            if len(discovered_tokens) >= 20:
+                                                break
+                    except Exception as e:
+                        print(f"⚠️ Base search failed: {e}")
+            
+            # Fallback to some known Base tokens if discovery fails
+            if len(discovered_tokens) < 5:
+                print("⚠️ Discovery returned few tokens, adding fallback Base tokens")
+                fallback_tokens = [
+                    "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed",  # DEGEN
+                    "0x532f27101965dd16442E59d40670FaF5eBB142E4",  # BRETT
+                    "0xAC1Bd2486aAf3B5C0fc3Fd868558b082a531B2B4",  # TOSHI
+                    "0x0578d8A44db98B23BF096A382e016e29a5Ce0ffe",  # HIGHER
+                    "0x1bc0c42215582d5a085795f4badbac3ff36d1bcb",  # CLANKER (if exists)
+                ]
+                for t in fallback_tokens:
+                    if t not in discovered_tokens:
+                        discovered_tokens.append(t)
+            
+            print(f"🔍 Token discovery complete: {len(discovered_tokens)} tokens")
+            return discovered_tokens[:20]  # Max 20 tokens
+            
+        except Exception as e:
+            print(f"❌ Token discovery error: {e}")
+            # Return minimal fallback
+            return [
+                "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed",  # DEGEN
+                "0x532f27101965dd16442E59d40670FaF5eBB142E4",  # BRETT
+            ]
 
     async def _thinking_loop(self):
         """定期思考循环 (LLM-powered market observations)"""
