@@ -229,6 +229,8 @@ class HiveMind:
         penalize_tags = []
 
         for tag, data in report.items():
+            if tag.startswith("_"):  # Skip meta keys like "_meta"
+                continue
             if tag in PROTECTED_TAGS:
                 continue  # Never boost or penalize risk management / exploration tags
             if data["impact"] == "POSITIVE" and data["win_rate"] > 55 and data["trades"] >= 3:

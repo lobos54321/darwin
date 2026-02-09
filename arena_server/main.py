@@ -1193,6 +1193,32 @@ async def get_council_session(epoch: int):
     }
 
 
+@app.get("/council-logs")
+async def get_council_logs():
+    """获取所有 Council 消息（用于前端显示）"""
+    try:
+        all_messages = []
+
+        # 收集所有 epoch 的消息
+        for epoch, session in sorted(council.sessions.items(), reverse=True):
+            for m in session.messages:
+                all_messages.append({
+                    "id": m.id,
+                    "epoch": epoch,
+                    "agent_id": m.agent_id,
+                    "role": m.role.value,
+                    "content": m.content,
+                    "score": m.score,
+                    "timestamp": m.timestamp.isoformat()
+                })
+
+        # 返回最近 50 条消息
+        return all_messages[:50]
+    except Exception as e:
+        logger.error(f"Council logs error: {e}")
+        return []
+
+
 @app.get("/ascension/{agent_id}")
 async def get_ascension_progress(agent_id: str):
     """获取 Agent 的升天进度"""
