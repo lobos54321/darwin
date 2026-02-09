@@ -109,16 +109,19 @@ class DarwinAgent:
         self.agent_id = agent_id
         self.arena_url = arena_url
         self.api_key = api_key
-        
+
         # === 动态加载策略 (Dynamic Strategy Loading) ===
         # 优先加载该 Agent 专属的进化版策略
         self.strategy = self._load_strategy()
-        
+
         self.ws: Optional[aiohttp.ClientWebSocketResponse] = None
         self.running = False
         self.current_epoch = 0
         self.my_rank = 0
         self.total_agents = 0
+
+        # 🧬 Baseline 数据（集体进化核心）
+        self.baseline: Optional[dict] = None
 
         # Council discussion state
         self.council_messages: List[dict] = []  # Messages from other agents in current council
@@ -318,7 +321,26 @@ class DarwinAgent:
             print(f"👋 Welcome! Epoch: {data['epoch']}, Balance: ${data['balance']:.2f}")
             self.current_epoch = data["epoch"]
             self.strategy.balance = data["balance"]
-            
+
+            # 🧬 接收最新 baseline（集体进化核心）
+            if "baseline" in data:
+                baseline = data["baseline"]
+                print(f"\n🧬 Received Baseline v{baseline['version']}")
+                print(f"   Timestamp: {baseline['timestamp']}")
+                print(f"   Performance: {baseline.get('performance', {})}")
+                print(f"   Hive Mind Boost: {baseline['hive_data'].get('boost', [])}")
+                print(f"   Hive Mind Penalize: {baseline['hive_data'].get('penalize', [])}")
+                print(f"   Message: {baseline.get('message', '')}")
+
+                # 保存 baseline 信息（供 self_coder 使用）
+                self.baseline = baseline
+
+                # TODO: Agent 可以基于 baseline 做变异
+                # 例如：
+                # - 如果 Hive Mind 说 DIP_BUY 好用，加强 DIP_BUY
+                # - 如果 Hive Mind 说 BREAKOUT 不好用，弱化 BREAKOUT
+                # - 但也可以尝试"反共识"策略（探索）
+
             # Sync positions if the strategy supports it
             if "positions" in data and hasattr(self.strategy, "current_positions"):
                 print(f"🔄 Syncing {len(data['positions'])} positions from server...")
@@ -329,8 +351,8 @@ class DarwinAgent:
                     qty = amount if isinstance(amount, (int, float)) else amount.get('amount', 0)
                     if qty > 0:
                         self.strategy.current_positions[symbol] = qty
-                        # We don't know the entry price, so we assume current market price 
-                        # will be updated on next tick, or we leave entry_prices empty 
+                        # We don't know the entry price, so we assume current market price
+                        # will be updated on next tick, or we leave entry_prices empty
                         # (strategy handles missing entry price)
                         if hasattr(self.strategy, "entry_prices") and symbol not in self.strategy.entry_prices:
                              # Use 0 as sentinel; strategy will backfill with current market

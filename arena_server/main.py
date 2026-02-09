@@ -36,6 +36,7 @@ from group_manager import GroupManager
 from tournament import TournamentManager
 from redis_state import redis_state
 from bot_agents import BotManager
+from baseline_manager import BaselineManager
 
 # 配置日志
 logging.basicConfig(
@@ -61,6 +62,7 @@ chain = ChainIntegration(testnet=True)
 ascension_tracker = AscensionTracker()
 state_manager = StateManager(group_manager, council, ascension_tracker)
 tournament_manager = TournamentManager()  # 🏆 锦标赛管理器
+baseline_manager = BaselineManager()  # 🧬 Baseline 管理器（集体进化核心）
 
 # 🤖 Bot Agents: in-process demo bots that keep the dashboard alive
 def _on_bot_trade(amount):
@@ -393,6 +395,10 @@ async def end_epoch():
     all_losers = []
     all_winners = []
 
+    # 🧬 收集所有组的 Hive Mind 数据用于 baseline 更新
+    all_hive_data = []
+    winner_strategies = []
+
     for group_id, group in group_manager.groups.items():
         rankings = group.engine.get_leaderboard()
         if not rankings:
@@ -407,6 +413,25 @@ async def end_epoch():
         all_losers.extend(losers)
 
         logger.info(f"  Group {group_id}: 🏆 {winner_id} | 💀 {losers}")
+
+        # 收集 Hive Mind 数据
+        hive_patch = group.hive_mind.generate_patch()
+        all_hive_data.append(hive_patch)
+
+        # 收集赢家策略
+        try:
+            winner_strategy_path = os.path.join(
+                os.path.dirname(__file__), "..", "data", "agents", winner_id, "strategy.py"
+            )
+            if os.path.exists(winner_strategy_path):
+                with open(winner_strategy_path, 'r') as f:
+                    winner_strategies.append({
+                        "agent_id": winner_id,
+                        "group_id": group_id,
+                        "code": f.read()
+                    })
+        except Exception as e:
+            logger.warning(f"Could not read winner strategy: {e}")
 
         # 组内广播 epoch_end
         await broadcast_to_group(group_id, {
@@ -552,6 +577,74 @@ async def end_epoch():
         "epoch": current_epoch
     })
 
+    # 🧬 更新 Baseline（集体进化核心）
+    try:
+        # 合并所有组的 Hive Mind 数据
+        merged_hive_data = {
+            "boost": [],
+            "penalize": [],
+            "alpha_factors": {}
+        }
+
+        # 收集所有 boost/penalize 标签
+        boost_counts = {}
+        penalize_counts = {}
+
+        for hive_patch in all_hive_data:
+            for tag in hive_patch.get("signals", {}).get("boost", []):
+                boost_counts[tag] = boost_counts.get(tag, 0) + 1
+            for tag in hive_patch.get("signals", {}).get("penalize", []):
+                penalize_counts[tag] = penalize_counts.get(tag, 0) + 1
+
+        # 只保留出现在多个组的标签（更可靠）
+        min_groups = max(1, len(all_hive_data) // 2)
+        merged_hive_data["boost"] = [tag for tag, count in boost_counts.items() if count >= min_groups]
+        merged_hive_data["penalize"] = [tag for tag, count in penalize_counts.items() if count >= min_groups]
+
+        # 合并 alpha_factors
+        for hive_patch in all_hive_data:
+            for tag, stats in hive_patch.get("alpha_factors", {}).items():
+                if tag not in merged_hive_data["alpha_factors"]:
+                    merged_hive_data["alpha_factors"][tag] = stats
+
+        # 计算当前 baseline 的性能
+        all_pnls = [r[1] for r in global_rankings]
+        avg_pnl = sum(all_pnls) / len(all_pnls) if all_pnls else 0.0
+        positive_count = sum(1 for pnl in all_pnls if pnl > 0)
+        win_rate = (positive_count / len(all_pnls) * 100) if all_pnls else 0.0
+
+        performance = {
+            "avg_pnl": round(avg_pnl, 2),
+            "win_rate": round(win_rate, 1),
+            "sharpe_ratio": 0.0  # TODO: 计算夏普比率
+        }
+
+        # 获取全局赢家的策略
+        winner_strategy_code = None
+        if winner_strategies:
+            # 使用全局赢家的策略
+            global_winner_strategy = next(
+                (s for s in winner_strategies if s["agent_id"] == global_winner_id),
+                winner_strategies[0]
+            )
+            winner_strategy_code = global_winner_strategy["code"]
+
+        # 更新 baseline
+        new_baseline = baseline_manager.update_baseline(
+            epoch=current_epoch,
+            hive_data=merged_hive_data,
+            winner_strategy=winner_strategy_code,
+            performance=performance
+        )
+
+        logger.info(f"🧬 Baseline updated to v{new_baseline['version']}")
+        logger.info(f"   Performance: PnL={performance['avg_pnl']}%, WinRate={performance['win_rate']}%")
+
+    except Exception as e:
+        logger.error(f"Failed to update baseline: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
     # 保存状态
     state_manager.save_state(current_epoch)
     save_all_state_to_redis()
@@ -676,7 +769,10 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
 
     logger.info(f"🤖 Agent connected: {agent_id} → Group {group.group_id} ({group.token_symbols}) (Total: {len(connected_agents)})")
 
-    # 发送欢迎消息 (带组信息)
+    # 获取最新 baseline（集体进化核心）
+    baseline = baseline_manager.get_baseline_for_agent(agent_id)
+
+    # 发送欢迎消息 (带组信息 + baseline)
     await websocket.send_json({
         "type": "welcome",
         "agent_id": agent_id,
@@ -685,7 +781,8 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
         "tokens": group.token_symbols,
         "balance": engine.get_balance(agent_id),
         "positions": engine.get_positions(agent_id),
-        "prices": group.feeder.prices
+        "prices": group.feeder.prices,
+        "baseline": baseline  # 🧬 最新最优策略
     })
 
     # Price updates are handled by group-level broadcast (see startup)
