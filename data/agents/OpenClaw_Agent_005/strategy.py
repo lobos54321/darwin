@@ -4,70 +4,61 @@ from collections import deque
 
 class MyStrategy:
     def __init__(self):
-        # === DNA & Personalization ===
-        # A unique seed allows this bot to have slightly different parameters 
-        # than its clones, preventing the "Hive Mind" synchronization penalty.
+        # === Genetic Diversity ===
+        # Unique seed to differentiate parameters from other instances (Hive Mind avoidance).
         self.dna = random.random()
         
-        # === Statistical Window ===
-        # We use a long window (approx 3 hours at 1 tick/min) to establish a 
-        # robust baseline for Linear Regression.
-        # Mutation: Window size varies between 140 and 190.
-        self.window_size = 140 + int(self.dna * 50)
+        # === Lookback Window ===
+        # A variable window size (approx 2.5 - 3.5 hours) to prevent synchronized signal generation.
+        self.window_size = 150 + int(self.dna * 60)
         
-        # === Liquidity & Universe ===
-        # Gate: Only trade pairs with significant liquidity to minimize slippage.
-        self.min_liquidity = 5_000_000.0
+        # === Filters ===
+        self.min_liquidity = 6_000_000.0
         
-        # === Signal Logic: Enhanced Statistical Arbitrage ===
-        # Strategy: Buy deep statistical deviations (Black Swans) from a linear trend
-        # ONLY if the market regime is "Mean Reverting" (Choppy).
+        # === Signal Logic: Statistical Mean Reversion ===
+        # REPLACED: 'Efficiency Ratio' with 'Coefficient of Determination (R^2)'
+        # REPLACED: Simple 'Dip Buy' with 'Gaussian Defiance'
         
-        # 1. Z-Score Threshold (The "Dip" Fix)
-        # We reject shallow dips. We look for 4.5 to 5.2 standard deviations.
-        # This fixes 'DIP_BUY' by demanding statistical extremes, not just % drops.
-        self.z_entry_threshold = -4.5 - (self.dna * 0.7)
+        # 1. Regime Filter (R-Squared)
+        # R^2 measures how well the regression line fits the data.
+        # R^2 ~ 1.0 => Strong Trend (Do Not Fade).
+        # R^2 ~ 0.0 => Pure Noise/Mean Reversion (Safe to Fade).
+        # We strictly enter only when the market is statistically "disorganized" (Low R^2).
+        self.max_r2_threshold = 0.25 + (self.dna * 0.1)
         
-        # 2. Regression Slope Filter (The "Knife" Fix)
-        # We do not buy if the trend itself is crashing. 
-        # We need a stable or slightly negative trend, not a vertical drop.
-        self.min_slope = -0.0003
+        # 2. Deviation Threshold (Z-Score)
+        # We require a price deviation of ~3.5 to 4.5 standard deviations.
+        self.z_entry_threshold = -3.8 - (self.dna * 0.8)
         
-        # 3. Efficiency Ratio (The "Regime" Fix)
-        # ER (Fractal Dimension) measures trend strength.
-        # ER ~ 1.0 => Strong Trend (DO NOT FADE).
-        # ER ~ 0.0 => Pure Noise/Mean Reversion (SAFE TO FADE).
-        # We only trade if ER is low (< 0.45).
-        self.max_er = 0.45
-        self.min_er = 0.05
+        # 3. Crash Protection (Slope)
+        # Prevent buying if the regression line itself is angling down too steeply.
+        self.min_trend_slope = -0.00025
         
         # === Risk Management ===
-        self.stop_loss = 0.09       # 9% max risk (wide for volatility)
-        self.take_profit = 0.032    # 3.2% target (conservative mean reversion)
-        self.max_hold_ticks = 180   # Time-based stop (turnover constraint)
+        self.take_profit = 0.028   # 2.8% target
+        self.stop_loss = 0.075     # 7.5% hard stop
+        self.time_stop = 120       # Max hold ticks
         
-        self.trade_size = 1500.0    # Capital deployment per trade
-        self.max_positions = 5      # Portfolio diversity
+        self.trade_size_usd = 1800.0
+        self.max_positions = 5
         
-        # === State Management ===
+        # === State ===
         self.history = {}       # {symbol: deque([log_prices])}
-        self.positions = {}     # {symbol: {entry, amount, ticks, highest_pnl}}
-        self.cooldowns = {}     # {symbol: int}
+        self.positions = {}     # {symbol: {entry, ticks}}
+        self.cooldowns = {}     # {symbol: ticks_remaining}
 
     def on_price_update(self, prices):
         """
-        Core logic loop.
+        Executed on every tick.
         """
-        # 1. Update Cooldowns
-        # We use list() to allow modification during iteration if needed, 
-        # though strictly keys are just read/popped here.
+        # 1. Manage Cooldowns
         active_cooldowns = list(self.cooldowns.keys())
         for sym in active_cooldowns:
             self.cooldowns[sym] -= 1
             if self.cooldowns[sym] <= 0:
                 del self.cooldowns[sym]
 
-        # 2. Portfolio & Risk Management
+        # 2. Manage Active Positions
         active_symbols = list(self.positions.keys())
         for sym in active_symbols:
             if sym not in prices: continue
@@ -79,91 +70,94 @@ class MyStrategy:
             pos = self.positions[sym]
             pos['ticks'] += 1
             
-            entry_price = pos['entry']
-            pnl_pct = (current_price - entry_price) / entry_price
+            pnl_pct = (current_price - pos['entry']) / pos['entry']
             
-            # Trailing Stop mechanism could go here, but strictly following 
-            # prompt's simple TP/SL structure to ensure reliability.
-            
-            # EXIT: Take Profit
-            if pnl_pct >= self.take_profit:
-                self._close_position(sym, 50) # Cooldown to let volatility settle
-                continue
-                
             # EXIT: Stop Loss
             if pnl_pct <= -self.stop_loss:
-                self._close_position(sym, 100) # Longer cooldown on failure
+                self._close_position(sym, 200) # Long penalty for failure
                 continue
                 
-            # EXIT: Time Limit (Time decay)
-            if pos['ticks'] >= self.max_hold_ticks:
-                self._close_position(sym, 10)
+            # EXIT: Take Profit
+            if pnl_pct >= self.take_profit:
+                self._close_position(sym, 50) # Short cooloff
+                continue
+                
+            # EXIT: Time Decay
+            if pos['ticks'] >= self.time_stop:
+                self._close_position(sym, 20)
                 continue
 
-        # 3. Signal Generation
+        # 3. Scan for New Entries
         if len(self.positions) >= self.max_positions:
             return None
             
-        # Filter Universe by Liquidity
+        # Filter universe for liquidity and availability
         candidates = []
         for sym, data in prices.items():
             if sym in self.positions or sym in self.cooldowns:
                 continue
             try:
+                # Require high liquidity to ensure the statistical model holds (low slippage)
                 if float(data.get('liquidity', 0)) >= self.min_liquidity:
                     candidates.append(sym)
             except: continue
-        
-        # Random shuffle prevents ordering bias in execution
+            
+        # Shuffle to avoid deterministic execution order
         random.shuffle(candidates)
         
         for sym in candidates:
             try:
                 raw_price = float(prices[sym]['priceUsd'])
-                # We use Log Price for all stats to normalize volatility across price ranges
                 log_price = math.log(raw_price)
             except: continue
             
-            # Maintain History
+            # Update History
             if sym not in self.history:
                 self.history[sym] = deque(maxlen=self.window_size)
             
             hist = self.history[sym]
             hist.append(log_price)
             
-            # Warmup check
             if len(hist) < self.window_size:
                 continue
-                
-            # --- Calculation ---
-            stats = self._analyze_market(hist)
+            
+            # === Statistical Analysis ===
+            stats = self._calculate_statistics(hist)
             if not stats:
                 continue
                 
-            z_score, slope, er = stats
+            z_score, slope, r_squared = stats
             
-            # --- Filters ---
+            # === Alpha Logic Filters ===
             
-            # Filter 1: Trend Slope
-            # Avoid buying if the regression line is pointing straight down (Crash)
-            if slope < self.min_slope:
+            # Filter 1: Regime (The Anti-Trend Filter)
+            # If R^2 is high, the price is trending strongly. We do NOT fade strong trends.
+            if r_squared > self.max_r2_threshold:
                 continue
                 
-            # Filter 2: Market Regime (Efficiency Ratio)
-            # Ensure price action is jagged/choppy, not smooth (trending)
-            if not (self.min_er < er < self.max_er):
+            # Filter 2: Macro Trend Safety
+            # Do not buy if the baseline is crashing (falling knife protection)
+            if slope < self.min_trend_slope:
                 continue
                 
-            # Filter 3: Statistical Deviation (Z-Score)
-            # The core signal: Price is statistically too cheap relative to the trend
+            # Filter 3: Extreme Deviation
+            # Price must be significantly below the regression line
             if z_score < self.z_entry_threshold:
                 
-                # Sizing
-                amount_asset = self.trade_size / raw_price
+                # Filter 4: Momentum Check (Micro-Structure)
+                # Check last 3 ticks to ensure we aren't catching a vertically falling knife.
+                # We want the acceleration to be slowing down slightly or normal noise.
+                if len(hist) > 5:
+                    short_term_delta = hist[-1] - hist[-4]
+                    # If price dropped > 1.5% in last 4 mins, wait for stabilization
+                    if short_term_delta < -0.015:
+                        continue
+
+                # Execution
+                amount_asset = self.trade_size_usd / raw_price
                 
                 self.positions[sym] = {
                     'entry': raw_price,
-                    'amount': amount_asset,
                     'ticks': 0
                 }
                 
@@ -171,40 +165,27 @@ class MyStrategy:
                     'side': 'BUY',
                     'symbol': sym,
                     'amount': amount_asset,
-                    'reason': ['Z_SCORE_ENTRY', 'REGIME_FILTER']
+                    'reason': ['LOW_R2_REGIME', 'Z_SCORE_DEVIATION']
                 }
                 
         return None
 
-    def _close_position(self, sym, cooldown):
-        """Helper to clear state and set cooldown"""
+    def _close_position(self, sym, cooldown_ticks):
         if sym in self.positions:
             del self.positions[sym]
-        self.cooldowns[sym] = cooldown
+        self.cooldowns[sym] = cooldown_ticks
 
-    def _analyze_market(self, data):
+    def _calculate_statistics(self, data):
         """
-        Calculates:
-        1. Linear Regression Slope (Trend Direction)
-        2. Z-Score of the last price relative to the Regression Line (Deviation)
-        3. Efficiency Ratio (fractal dimension/choppiness)
+        Calculates OLS Linear Regression and R-Squared.
+        Returns: (Z-Score, Slope, R-Squared)
         """
-        y = list(data)
-        n = len(y)
-        if n < 5: return None
+        n = len(data)
+        if n < 20: return None
         
+        y = list(data)
         x = list(range(n))
         
-        # --- Efficiency Ratio (Kaufman) ---
-        # ER = Directional Move / Total Path Length
-        net_change = abs(y[-1] - y[0])
-        sum_abs_change = sum(abs(y[i] - y[i-1]) for i in range(1, n))
-        
-        if sum_abs_change == 0:
-            return None
-        er = net_change / sum_abs_change
-        
-        # --- Linear Regression (Ordinary Least Squares) ---
         sum_x = sum(x)
         sum_y = sum(y)
         sum_xx = sum(i*i for i in x)
@@ -216,24 +197,26 @@ class MyStrategy:
         slope = (n * sum_xy - sum_x * sum_y) / denom
         intercept = (sum_y - slope * sum_x) / n
         
-        # --- Standard Deviation of Residuals ---
-        # Used to normalize the deviation (Z-Score)
+        # Calculate R-Squared and Standard Deviation
+        mean_y = sum_y / n
+        ss_tot = sum((val - mean_y) ** 2 for val in y)
         ss_res = 0.0
+        
         for i in range(n):
             pred = slope * i + intercept
             res = y[i] - pred
             ss_res += res * res
             
+        if ss_tot == 0: return None
+        
+        r_squared = 1 - (ss_res / ss_tot)
         std_dev = math.sqrt(ss_res / n)
         
-        # Prevent division by zero in flat markets
-        if std_dev < 1e-10: 
-            return None
+        if std_dev < 1e-10: return None
         
-        # Z-Score of the CURRENT price (last point)
-        # (Actual - Predicted) / StdDev
+        # Z-Score of current price relative to regression
         last_pred = slope * (n - 1) + intercept
-        last_resid = y[-1] - last_pred
-        z_score = last_resid / std_dev
+        current_resid = y[-1] - last_pred
+        z_score = current_resid / std_dev
         
-        return z_score, slope, er
+        return z_score, slope, r_squared

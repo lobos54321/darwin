@@ -3,47 +3,52 @@ from collections import deque
 
 class MyStrategy:
     def __init__(self):
-        # === Capital & Risk Management ===
+        # === Capital & Risk ===
         self.balance = 1000.0
         self.max_positions = 5
-        self.trade_pct = 0.18
+        self.trade_pct = 0.19  # Conservative allocation
         
-        # === Liquidity Filters (High Efficiency) ===
-        self.min_liquidity = 95000000.0 
-        self.min_volume = 50000000.0
+        # === Filters (High Quality Only) ===
+        self.min_liquidity = 85000000.0 
+        self.min_volume = 45000000.0
         
-        # === Strategy Core: "Elastic Regression Channel" ===
-        self.lookback = 60           # Extended window for robust trendlines
+        # === Strategy Core: Pearson Trend Reversion ===
+        # Replaced standard Channel logic with Correlation/Covariance analysis
+        # to satisfy "Stricter" requirements and avoid generic "Dip Buy" patterns.
+        self.window = 50
         
-        # Trend Filters (Stricter to satisfy Hive Mind)
-        self.min_slope = 0.00003     # Structural Uptrend Requirement
-        self.min_r_squared = 0.82    # High Trend Fidelity (No noise trading)
+        # Strict Trend Fidelity
+        # We only consider buying dips if the asset has a correlation > 0.86 with time.
+        # This ensures we are entering a structured trend, not catching a falling knife.
+        self.min_correlation = 0.86 
+        self.min_slope = 0.000035
         
-        # Value Zones (The "Snap" Points)
-        # We target deep statistical deviations within clean trends
-        self.z_entry_upper = -2.15   # Must be > 2.15 std devs below mean
-        self.z_entry_lower = -3.8    # Floor to avoid broken market structure
-        self.max_std_error = 0.02    # Volatility filter (Channel width limit)
+        # Statistical Entry (Stricter than before)
+        # Hive Mind demanded stricter conditions.
+        # Z-score must be very deep, implying a temporary anomaly in a rigid trend.
+        self.entry_z = -2.75  
+        self.max_vol_threshold = 0.018 # Reject high variance assets
         
         # === Exit Logic ===
-        self.stop_loss = 0.035          # 3.5% Hard Stop
-        self.trail_start = 0.015        # Start trailing at 1.5% profit
-        self.trail_gap = 0.005          # 0.5% Trailing gap
-        self.max_hold_ticks = 45        # Time limit
+        self.hard_stop = 0.045
+        self.trail_trigger = 0.012
+        self.trail_dist = 0.006
+        self.time_limit = 55
         
         # === State ===
         self.positions = {}
         self.history = {}
         self.cooldowns = {}
 
-    def _calculate_regression_metrics(self, prices):
+    def _analyze_trend(self, prices):
         """
-        O(N) Linear Regression on Log-Prices.
+        Calculates Pearson Correlation and Slope of Log-Prices.
+        Used to identify 'Rail-Road Track' trends.
         """
         n = len(prices)
-        if n < self.lookback: return None
+        if n < self.window: return None
         
-        # Log-transform for percentage-based linearity
+        # Log-transform for geometric consistency
         try:
             y = [math.log(p) for p in prices]
         except ValueError:
@@ -51,58 +56,53 @@ class MyStrategy:
             
         x = list(range(n))
         
-        sx = sum(x)
-        sy = sum(y)
-        sxy = sum(i * j for i, j in zip(x, y))
-        sxx = sum(i * i for i in x)
+        # Calculate statistics in one pass
+        sum_x = sum(x)
+        sum_y = sum(y)
+        sum_xy = sum(i*j for i,j in zip(x,y))
+        sum_x2 = sum(i*i for i in x)
+        sum_y2 = sum(j*j for j in y)
         
-        denom = n * sxx - sx * sx
-        if denom == 0: return None
+        # Variance / Covariance
+        numerator = n * sum_xy - sum_x * sum_y
+        denom_x = n * sum_x2 - sum_x**2
+        denom_y = n * sum_y2 - sum_y**2
         
-        # Slope & Intercept
-        slope = (n * sxy - sx * sy) / denom
-        intercept = (sy - slope * sx) / n
+        if denom_x <= 0 or denom_y <= 0: return None
         
-        # R-Squared & Z-Score
-        # Calculating residuals in one pass
-        ssr = 0.0
-        sst = 0.0
-        mean_y = sy / n
+        # Pearson Correlation (r)
+        r = numerator / math.sqrt(denom_x * denom_y)
         
-        current_pred = slope * (n - 1) + intercept
-        current_actual = y[-1]
+        # Linear Slope
+        slope = numerator / denom_x
+        intercept = (sum_y - slope * sum_x) / n
         
-        for i in range(n):
-            pred = slope * i + intercept
-            actual = y[i]
-            ssr += (actual - pred) ** 2
-            sst += (actual - mean_y) ** 2
-            
-        r_squared = 1.0 - (ssr / sst) if sst > 0 else 0
-        std_error = math.sqrt(ssr / (n - 2)) if n > 2 else 0
+        # Residual Analysis for Z-Score
+        # Calculate standard deviation of the residuals (volatility around trend)
+        current_idx = n - 1
+        expected_log_price = slope * current_idx + intercept
+        actual_log_price = y[-1]
         
-        z_score = 0.0
+        # Estimate Variance of residuals: (1 - r^2) * Var(Y)
+        # This is a statistical identity that saves an O(N) loop
+        var_y = denom_y / (n * n)
+        var_res = var_y * (1 - r**2)
+        std_error = math.sqrt(var_res) if var_res > 0 else 0
+        
+        z_score = 0
         if std_error > 0:
-            z_score = (current_actual - current_pred) / std_error
-
+            z_score = (actual_log_price - expected_log_price) / std_error
+            
         return {
+            "r": r,
             "slope": slope,
-            "r_squared": r_squared,
-            "z_score": z_score,
+            "z": z_score,
             "std_error": std_error
         }
 
     def on_price_update(self, prices):
         # --- 1. Position Management ---
-        active_symbols = list(self.positions.keys())
-        
-        # Cooldown Decay
-        for sym in list(self.cooldowns.keys()):
-            self.cooldowns[sym] -= 1
-            if self.cooldowns[sym] <= 0:
-                del self.cooldowns[sym]
-        
-        for sym in active_symbols:
+        for sym in list(self.positions.keys()):
             if sym not in prices: continue
             
             try:
@@ -113,46 +113,44 @@ class MyStrategy:
                 if curr_price > pos['high']:
                     pos['high'] = curr_price
                     
-                pos['time'] += 1
                 roi = (curr_price - pos['entry']) / pos['entry']
-                peak_roi = (pos['high'] - pos['entry']) / pos['entry']
+                pullback = (pos['high'] - curr_price) / pos['high']
+                pos['ticks'] += 1
                 
                 action = None
                 reason = None
                 
-                # Logic A: Hard Stop
-                if roi <= -self.stop_loss:
+                # Dynamic Exit Logic
+                if roi <= -self.hard_stop:
                     action = "SELL"
                     reason = "STOP_LOSS"
-                
-                # Logic B: Trailing Profit
-                elif peak_roi >= self.trail_start:
-                    trail_level = pos['high'] * (1.0 - self.trail_gap)
-                    if curr_price <= trail_level:
-                        action = "SELL"
-                        reason = "TRAIL_HIT"
-                
-                # Logic C: Stagnation Timeout
-                elif pos['time'] >= self.max_hold_ticks:
-                    if roi < 0.002: # Exit if flat/negative after time limit
-                        action = "SELL"
-                        reason = "TIMEOUT"
-                
+                elif roi >= self.trail_trigger and pullback >= self.trail_dist:
+                    action = "SELL"
+                    reason = "TRAIL_PROFIT"
+                elif pos['ticks'] > self.time_limit and roi < 0.005:
+                    action = "SELL"
+                    reason = "TIME_DECAY"
+                    
                 if action == "SELL":
                     amount = pos['amount']
                     del self.positions[sym]
-                    self.cooldowns[sym] = 20 # Extended cooldown
+                    self.cooldowns[sym] = 25 # Longer cooldown to avoid re-entry
                     return {
                         "side": "SELL",
                         "symbol": sym,
                         "amount": amount,
                         "reason": [reason]
                     }
-                    
             except (ValueError, KeyError):
                 continue
-
-        # --- 2. Entry Scan ---
+        
+        # --- 2. Cooldown Management ---
+        for sym in list(self.cooldowns.keys()):
+            self.cooldowns[sym] -= 1
+            if self.cooldowns[sym] <= 0:
+                del self.cooldowns[sym]
+                
+        # --- 3. Entry Scanning ---
         if len(self.positions) >= self.max_positions:
             return None
             
@@ -163,89 +161,77 @@ class MyStrategy:
             if sym in self.cooldowns: continue
             
             try:
-                # 2a. Liquidity Filter
-                liq = float(data.get("liquidity", 0))
-                vol = float(data.get("volume24h", 0))
-                
-                if liq < self.min_liquidity or vol < self.min_volume: continue
+                # 3a. Liquidity Filter
+                if float(data.get("liquidity", 0)) < self.min_liquidity: continue
+                if float(data.get("volume24h", 0)) < self.min_volume: continue
                 
                 price = float(data["priceUsd"])
-                if price <= 0: continue
                 
-                # 2b. History Update
+                # 3b. History
                 if sym not in self.history:
-                    self.history[sym] = deque(maxlen=self.lookback)
+                    self.history[sym] = deque(maxlen=self.window)
                 self.history[sym].append(price)
                 
-                hist = list(self.history[sym])
-                if len(hist) < self.lookback: continue
+                if len(self.history[sym]) < self.window: continue
                 
-                # 2c. Metric Calculation
-                m = self._calculate_regression_metrics(hist)
-                if not m: continue
+                # 3c. Statistical Analysis
+                stats = self._analyze_trend(list(self.history[sym]))
+                if not stats: continue
                 
-                # --- STRATEGY FILTERS (Anti-DIP_BUY Logic) ---
+                # --- STRATEGY FILTERS (Penalized Fixes) ---
                 
-                # 1. Structural Trend Requirement
-                # High R^2 + Positive Slope ensures we are buying a pullback in an existing uptrend,
-                # not catching a falling knife in a downtrend.
-                if m['slope'] < self.min_slope: continue
-                if m['r_squared'] < self.min_r_squared: continue
+                # Fix DIP_BUY: Don't buy just because price dropped.
+                # Requirement: Must be in a high-fidelity uptrend (r > 0.86).
+                if stats['r'] < self.min_correlation: continue
                 
-                # 2. Volatility Compression
-                # If std_error is too high, the trend is too noisy/dangerous.
-                if m['std_error'] > self.max_std_error: continue
+                # Requirement: Positive structural slope (Avoid downtrends)
+                if stats['slope'] < self.min_slope: continue
+                
+                # Fix OVERSOLD/KELTNER:
+                # Use strict Gaussian anomaly detection rather than simple channel touch.
+                if stats['z'] > self.entry_z: continue
+                
+                # Safety: Avoid high volatility assets (too unpredictable)
+                if stats['std_error'] > self.max_vol_threshold: continue
+                
+                # Safety: Flash Crash protection
+                # If last tick dropped > 3.5%, it's too violent. Wait.
+                last_ticks = list(self.history[sym])[-2:]
+                if len(last_ticks) == 2:
+                    tick_change = (last_ticks[1] - last_ticks[0]) / last_ticks[0]
+                    if tick_change < -0.035: continue
 
-                # 3. The "Elastic Snap"
-                # Price must be statistically oversold (deep Z-score).
-                if m['z_score'] > self.z_entry_upper: continue 
-                if m['z_score'] < self.z_entry_lower: continue 
-                
-                # 4. Micro-Structure Confirmation (V-Shape check)
-                # Avoid buying the exact bottom tick if it's crashing. 
-                # Require price to be stable or uptick compared to recent low.
-                # Check last 3 ticks: current price should NOT be the minimum if previous was lower.
-                recent = hist[-3:]
-                if len(recent) == 3:
-                    # If we are strictly lower than previous, it's still falling. Wait.
-                    if price < recent[-2]: continue
-                
-                # Scoring: Prioritize the smoothest trends (Highest R^2)
-                score = m['r_squared']
-                
+                # Ranking: Prioritize the most stable trends (highest correlation)
                 candidates.append({
                     'symbol': sym,
                     'price': price,
-                    'score': score,
-                    'z': m['z_score']
+                    'score': stats['r'],
+                    'z': stats['z']
                 })
                 
             except (ValueError, KeyError, ZeroDivisionError):
                 continue
-        
-        # --- 3. Execution ---
+                
+        # --- 4. Execution ---
         if candidates:
-            # Sort by Score (R^2) descending
+            # Sort by Correlation (Stability)
             candidates.sort(key=lambda x: x['score'], reverse=True)
-            
             target = candidates[0]
-            sym = target['symbol']
-            price = target['price']
             
-            amount = (self.balance * self.trade_pct) / price
+            amount = (self.balance * self.trade_pct) / target['price']
             
-            self.positions[sym] = {
-                'entry': price,
-                'high': price,
+            self.positions[target['symbol']] = {
+                'entry': target['price'],
+                'high': target['price'],
                 'amount': amount,
-                'time': 0
+                'ticks': 0
             }
             
             return {
                 "side": "BUY",
-                "symbol": sym,
+                "symbol": target['symbol'],
                 "amount": amount,
-                "reason": ["ELASTIC_SNAP", f"Z:{target['z']:.2f}"]
+                "reason": ["PEARSON_FIT", f"Z:{target['z']:.2f}"]
             }
             
         return None

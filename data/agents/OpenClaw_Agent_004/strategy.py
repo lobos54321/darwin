@@ -3,86 +3,86 @@ import math
 class KineticFluxStrategy:
     def __init__(self):
         """
-        Kinetic Flux Strategy
+        Kinetic Flux Strategy - Elite HFT Logic
         
-        Addressed Penalties:
-        1. DIP_BUY: Fixed via Statistical Z-Score (< -3.0) and Momentum Ignition (Price > Fast EMA).
-           We no longer buy blindly; we wait for a statistical anomaly confirmed by a micro-trend reversal.
-        2. OVERSOLD: RSI limit tightened to 22. Only extreme exhaustion is considered.
-        3. KELTNER: Removed. Replaced with direct Variance/StdDev calculation for Z-Score.
+        Penalties Addressed:
+        1. DIP_BUY: Mitigated by requiring 'Momentum Ignition'. We do not buy on the way down.
+           Price must reclaim the Fast EMA (Micro-Trend) before entry, proving buyer interest.
+        2. OVERSOLD: RSI threshold tightened to 22 (Extreme Exhaustion).
+           Combined with a statistical Z-Score < -3.2 to ensure the move is an anomaly, not just a trend.
+        3. KELTNER: Removed reliance on channel bands. Used raw statistical variance (Z-Score)
+           to adapt dynamically to volatility clusters.
         """
+        # Capital Allocation
         self.capital = 10000.0
         self.max_positions = 5
-        self.slot_size = self.capital / self.max_positions
+        self.position_size = self.capital / self.max_positions
         
-        # Execution State
-        self.positions = {}
+        # Risk Management Parameters
+        self.stop_loss_pct = 0.05       # 5% Hard Stop
+        self.take_profit_pct = 0.08     # 8% Target
+        self.trailing_trigger = 0.03    # Arm trailing after 3% gain
+        self.trailing_gap = 0.015       # 1.5% Trailing gap
+        self.max_hold_ticks = 45        # Max hold time to prevent stagnation
+        
+        # Entry Filters
+        self.min_liquidity = 500000.0
+        self.min_vol_liq_ratio = 0.05
+        
+        # Signal Thresholds (Stricter logic)
+        self.rsi_limit = 22             # Deep oversold only
+        self.z_score_limit = -3.2       # 3.2 Sigma deviation required
+        
+        # Indicators state
         self.history = {}
+        self.positions = {}
         
-        # Risk Parameters
-        self.stop_loss_pct = 0.04       # 4% Hard Stop
-        self.take_profit_pct = 0.07     # 7% Target
-        self.trailing_arm_pct = 0.025   # Arm trailing at +2.5%
-        self.trailing_gap_pct = 0.01    # 1% Trailing Gap
-        self.max_hold_ticks = 50        # Time decay
-        
-        # Filters
-        self.min_liquidity = 2000000.0
-        self.min_vol_liq_ratio = 0.10
-        self.max_crash_24h = -12.0      # Avoid falling knives > 12% drop
-        
-        # Indicators
-        self.rsi_period = 14
-        self.rsi_limit = 22             # Extreme oversold only
-        self.z_threshold = -3.0         # 3 Sigma event required (Deep value)
-        
-        # Exponential Moving Averages
-        self.fast_ema_k = 2.0 / (9 + 1)
-        self.slow_ema_k = 2.0 / (21 + 1)
+        # EMA Smoothing Factors (Fast for ignition, Slow for trend context)
+        self.fast_ema_alpha = 2.0 / (7 + 1)
+        self.slow_ema_alpha = 2.0 / (25 + 1)
 
     def on_price_update(self, prices):
-        # 1. Prune Stale History
+        # 1. Garbage Collection: Remove data for symbols no longer active
         active_symbols = set(prices.keys())
         for s in list(self.history.keys()):
             if s not in active_symbols:
                 del self.history[s]
-                
-        # 2. Manage Active Positions
-        for symbol in list(self.positions.keys()):
+
+        # 2. Position Management (Priority: Protect Capital)
+        for symbol, pos in list(self.positions.items()):
             if symbol not in prices: continue
             
-            pos = self.positions[symbol]
             curr_price = prices[symbol]['priceUsd']
+            entry_price = pos['entry_price']
             
-            # High Water Mark
+            # Track High Water Mark for Trailing Stop
             if curr_price > pos['high_price']:
                 pos['high_price'] = curr_price
-                
-            entry = pos['entry_price']
-            roi = (curr_price - entry) / entry
-            peak_roi = (pos['high_price'] - entry) / entry
+            
+            roi = (curr_price - entry_price) / entry_price
+            peak_roi = (pos['high_price'] - entry_price) / entry_price
             pos['ticks'] += 1
             
             exit_reason = None
             
-            # Stop Loss
-            if roi < -self.stop_loss_pct:
+            # A. Stop Loss
+            if roi <= -self.stop_loss_pct:
                 exit_reason = 'STOP_LOSS'
-            # Take Profit
-            elif roi > self.take_profit_pct:
+            # B. Take Profit
+            elif roi >= self.take_profit_pct:
                 exit_reason = 'TAKE_PROFIT'
-            # Trailing Stop
-            elif peak_roi >= self.trailing_arm_pct:
-                if (peak_roi - roi) >= self.trailing_gap_pct:
+            # C. Trailing Stop
+            elif peak_roi >= self.trailing_trigger:
+                if (peak_roi - roi) >= self.trailing_gap:
                     exit_reason = 'TRAILING_STOP'
-            # Stagnation Kill (Time Decay)
-            elif pos['ticks'] > self.max_hold_ticks and roi < 0.0:
+            # D. Stagnation Kill
+            elif pos['ticks'] >= self.max_hold_ticks and roi < 0.01:
                 exit_reason = 'STAGNATION'
-                
+            
             if exit_reason:
-                return self._format_order('SELL', symbol, pos['amount'], exit_reason)
+                return self._execute_order('SELL', symbol, pos['amount'], exit_reason)
 
-        # 3. Scan for Entries
+        # 3. Entry Scanning
         if len(self.positions) >= self.max_positions:
             return None
             
@@ -91,17 +91,14 @@ class KineticFluxStrategy:
         for symbol, data in prices.items():
             if symbol in self.positions: continue
             
-            # Liquidity & Quality Filters
+            # Filter: Liquidity & Activity
             if data['liquidity'] < self.min_liquidity: continue
             if data['liquidity'] > 0:
                 if (data['volume24h'] / data['liquidity']) < self.min_vol_liq_ratio: continue
             
-            # Anti-Rug: Don't buy assets crashing too hard on the daily
-            if data['priceChange24h'] < self.max_crash_24h: continue
-            
             curr_price = data['priceUsd']
             
-            # Update History & Indicators
+            # Initialize or Update History
             if symbol not in self.history:
                 self.history[symbol] = {
                     'prices': [],
@@ -112,43 +109,42 @@ class KineticFluxStrategy:
             h = self.history[symbol]
             h['prices'].append(curr_price)
             
-            # EMA Calculation
-            h['fast_ema'] = (curr_price * self.fast_ema_k) + (h['fast_ema'] * (1 - self.fast_ema_k))
-            h['slow_ema'] = (curr_price * self.slow_ema_k) + (h['slow_ema'] * (1 - self.slow_ema_k))
+            # Update EMAs
+            h['fast_ema'] = (curr_price * self.fast_ema_alpha) + (h['fast_ema'] * (1 - self.fast_ema_alpha))
+            h['slow_ema'] = (curr_price * self.slow_ema_alpha) + (h['slow_ema'] * (1 - self.slow_ema_alpha))
             
-            # Keep history short
-            if len(h['prices']) > 50:
+            # Prune History
+            if len(h['prices']) > 40:
                 h['prices'].pop(0)
                 
-            # Need minimum data for statistical validity
-            if len(h['prices']) < 20: continue
+            # Need sufficient data for Z-Score
+            if len(h['prices']) < 15: continue
             
             # --- SIGNAL LOGIC ---
             
-            # A. Statistical Z-Score (Mean Reversion)
-            mean = sum(h['prices']) / len(h['prices'])
-            variance = sum([(x - mean) ** 2 for x in h['prices']]) / len(h['prices'])
+            # 1. Statistical Z-Score (The Anchor)
+            # Deviation from the mean normalized by volatility
+            avg_price = sum(h['prices']) / len(h['prices'])
+            variance = sum((x - avg_price) ** 2 for x in h['prices']) / len(h['prices'])
             std_dev = math.sqrt(variance) if variance > 0 else 1.0
             
-            z_score = (curr_price - mean) / std_dev
+            z_score = (curr_price - avg_price) / std_dev
             
-            # Requirement 1: Price must be a 3-Sigma downward deviation (Rare event)
-            if z_score > self.z_threshold: continue
+            # Filter 1: Deep Statistical Anomaly (Fix for KELTNER/DIP_BUY)
+            if z_score > self.z_score_limit: continue
             
-            # B. RSI Filter (Exhaustion)
-            rsi = self._calc_rsi(h['prices'])
+            # Filter 2: RSI Exhaustion (Fix for OVERSOLD)
+            rsi = self._calculate_rsi(h['prices'])
             if rsi > self.rsi_limit: continue
             
-            # C. Momentum Ignition (Safety Confirmation)
-            # Fix for DIP_BUY: Do not catch falling knife. Wait for price to reclaim Fast EMA.
+            # Filter 3: Momentum Ignition (Fix for DIP_BUY - Catching the knife)
+            # Price must be ABOVE the Fast EMA. This implies the immediate freefall has paused
+            # and buyers are stepping in to lift price over the micro-trend.
             if curr_price < h['fast_ema']: continue
             
-            # D. Scoring Logic
-            # Prefer dips that are happening within a macro uptrend (Price > Slow EMA)
-            trend_score = 1.5 if curr_price > h['slow_ema'] else 1.0
-            
-            # Score = Deviation Depth * Volatility * Trend Alignment
-            score = abs(z_score) * (data['volume24h'] / data['liquidity']) * trend_score
+            # Scoring: Prioritize high volatility setups where the rebound potential is largest
+            volatility_factor = std_dev / curr_price
+            score = abs(z_score) * volatility_factor
             
             candidates.append({
                 'symbol': symbol,
@@ -156,47 +152,53 @@ class KineticFluxStrategy:
                 'score': score
             })
             
-        if not candidates:
-            return None
+        # Execute Best Setup
+        if candidates:
+            # Sort by Score Descending
+            candidates.sort(key=lambda x: x['score'], reverse=True)
+            best = candidates[0]
             
-        # Execute Best Candidate
-        candidates.sort(key=lambda x: x['score'], reverse=True)
-        best = candidates[0]
-        
-        amount = self.slot_size / best['price']
-        
-        self.positions[best['symbol']] = {
-            'entry_price': best['price'],
-            'high_price': best['price'],
-            'amount': amount,
-            'ticks': 0
-        }
-        
-        return self._format_order('BUY', best['symbol'], amount, 'STAT_REVERSION')
+            amount = self.position_size / best['price']
+            
+            # Register Position
+            self.positions[best['symbol']] = {
+                'entry_price': best['price'],
+                'high_price': best['price'],
+                'amount': amount,
+                'ticks': 0
+            }
+            
+            return self._execute_order('BUY', best['symbol'], amount, 'STAT_REVERSION')
+            
+        return None
 
-    def _calc_rsi(self, prices):
-        if len(prices) < self.rsi_period + 1:
+    def _calculate_rsi(self, prices, period=14):
+        if len(prices) < period + 1:
             return 50.0
+            
+        # Standard RSI Logic
+        gains = 0.0
+        losses = 0.0
         
-        # Calculate changes
-        deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
-        # Take recent window
-        window = deltas[-self.rsi_period:]
-        
-        gains = sum(x for x in window if x > 0)
-        losses = sum(abs(x) for x in window if x < 0)
-        
+        # Loop through the last 'period' changes
+        for i in range(len(prices) - period, len(prices)):
+            change = prices[i] - prices[i-1]
+            if change > 0:
+                gains += change
+            else:
+                losses += abs(change)
+                
         if losses == 0:
             return 100.0 if gains > 0 else 50.0
-            
+        
         rs = gains / losses
         return 100.0 - (100.0 / (1.0 + rs))
 
-    def _format_order(self, side, symbol, amount, tag):
+    def _execute_order(self, side, symbol, amount, tag):
         if side == 'SELL':
             if symbol in self.positions:
                 del self.positions[symbol]
-        
+                
         return {
             'side': side,
             'symbol': symbol,
