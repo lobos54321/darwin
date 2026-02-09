@@ -263,9 +263,16 @@ class DarwinAgent:
                 if self.moltbook:
                     asyncio.create_task(self._check_moltbook())
 
-                # Cancel old thinking loop before starting new one
+                # Cancel old tasks before starting new ones
                 if self._thinking_task and not self._thinking_task.done():
                     self._thinking_task.cancel()
+                if hasattr(self, '_price_fetch_task') and self._price_fetch_task and not self._price_fetch_task.done():
+                    self._price_fetch_task.cancel()
+                
+                # 🚀 Start price fetching loop (Pure Execution Layer - agents fetch own data)
+                print("📡 Starting price fetch loop...")
+                self._price_fetch_task = asyncio.create_task(self._price_fetch_loop())
+                
                 print("🚀 Starting thinking loop task...")
                 self._thinking_task = asyncio.create_task(self._thinking_loop())
 
@@ -278,6 +285,8 @@ class DarwinAgent:
                 self.running = False  # Stop thinking loop
                 if self._thinking_task and not self._thinking_task.done():
                     self._thinking_task.cancel()
+                if hasattr(self, '_price_fetch_task') and self._price_fetch_task and not self._price_fetch_task.done():
+                    self._price_fetch_task.cancel()
                 if session:
                     await session.close()
             
@@ -506,6 +515,107 @@ class DarwinAgent:
                     print(f"   🔒 Limited banned tags to: {limited_params['penalize']}")
                 self.strategy.on_hive_signal(limited_params)
     
+    async def _price_fetch_loop(self):
+        """
+        自主获取价格循环 (Pure Execution Layer)
+        
+        Agent 自己从 DexScreener 获取价格，不依赖服务器广播。
+        这使得 Agent 可以：
+        - 选择任何数据源 (DexScreener, CoinGecko, etc.)
+        - 交易任何代币
+        - 实现真正的自主权
+        """
+        print("📡 Price fetch loop started (DexScreener)")
+        
+        # DexScreener API - 免费，无需 API Key
+        DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens"
+        
+        # Default tokens to track (can be customized by strategy)
+        DEFAULT_TOKENS = [
+            "0x1bc0c42215582d5a085795f3ee422018a4ce7679",  # CLANKER
+            "0xc75af099858d72893c4d4ecdbe4771e77c4b77a8",  # WETH
+            "0x2C5d06f591D0d8cd43Ac232c2B654475a142c7DA",  # MOLT
+            "0x4737d9b4592b40d4b36a028f6f5d39a76d03f0f9",  # LOB
+        ]
+        
+        await asyncio.sleep(3)  # Initial delay
+        
+        while self.running:
+            try:
+                # Get tokens from strategy if available
+                tokens = getattr(self.strategy, 'watched_tokens', DEFAULT_TOKENS)
+                
+                # Fetch prices from DexScreener
+                prices = await self._fetch_dexscreener_prices(tokens)
+                
+                if prices:
+                    # Pass to strategy's on_price_update
+                    await self.on_price_update(prices)
+                    
+            except asyncio.CancelledError:
+                print("📡 Price fetch loop cancelled")
+                break
+            except Exception as e:
+                print(f"⚠️ Price fetch error: {e}")
+            
+            await asyncio.sleep(10)  # Fetch every 10 seconds
+    
+    async def _fetch_dexscreener_prices(self, token_addresses: list) -> dict:
+        """
+        从 DexScreener API 获取价格
+        
+        Returns:
+            {
+                "TOKEN_SYMBOL": {
+                    "priceUsd": 0.001234,
+                    "liquidity": 1234567.89,
+                    "volume24h": 123456.78,
+                    "priceChange24h": 5.67
+                },
+                ...
+            }
+        """
+        try:
+            # DexScreener accepts comma-separated addresses
+            addresses_str = ",".join(token_addresses[:30])  # Max 30 tokens
+            url = f"https://api.dexscreener.com/latest/dex/tokens/{addresses_str}"
+            
+            connector = aiohttp.TCPConnector(ssl=_SSL_CONTEXT)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    if resp.status != 200:
+                        print(f"⚠️ DexScreener API error: {resp.status}")
+                        return {}
+                    
+                    data = await resp.json()
+                    pairs = data.get("pairs", [])
+                    
+                    # Convert to our format
+                    prices = {}
+                    for pair in pairs:
+                        symbol = pair.get("baseToken", {}).get("symbol", "UNKNOWN")
+                        if symbol in prices:
+                            continue  # Skip duplicates (keep first/best liquidity)
+                        
+                        price_usd = float(pair.get("priceUsd", 0) or 0)
+                        liquidity = float(pair.get("liquidity", {}).get("usd", 0) or 0)
+                        volume_24h = float(pair.get("volume", {}).get("h24", 0) or 0)
+                        price_change = float(pair.get("priceChange", {}).get("h24", 0) or 0)
+                        
+                        if price_usd > 0:
+                            prices[symbol] = {
+                                "priceUsd": price_usd,
+                                "liquidity": liquidity,
+                                "volume24h": volume_24h,
+                                "priceChange24h": price_change
+                            }
+                    
+                    return prices
+                    
+        except Exception as e:
+            print(f"⚠️ DexScreener fetch error: {e}")
+            return {}
+
     async def _thinking_loop(self):
         """定期思考循环 (LLM-powered market observations)"""
         print("🧠 Thinking loop started...")

@@ -4,177 +4,170 @@ from collections import deque
 
 class MyStrategy:
     def __init__(self):
-        # === Genetic Mutation ===
-        # DNA modifies lookback and sensitivity to avoid Hive Mind synchronization.
-        self.dna = random.uniform(0.95, 1.05)
+        # === DNA & Strategy Identity ===
+        # Slight randomization to avoid homogenization penalties
+        self.dna = random.uniform(0.96, 1.04)
         
-        # === Core Parameters ===
-        self.lookback = int(50 * self.dna)  # Shorter lookback for faster adaptation
-        self.rsi_period = 14
-        self.max_history = self.lookback + self.rsi_period + 5
+        # === Configuration ===
+        self.lookback = 90               # Length of regression window
+        self.cleanup_window = 150        # Max history to store
+        self.min_liquidity = 40_000_000.0 # High liquidity requirement (Safe assets)
         
         # === Risk Management ===
         self.balance = 10000.0
         self.max_positions = 5
-        self.pos_size_pct = 0.19  # Slightly aggressive size, relying on alpha quality
+        self.pos_size_pct = 0.18         # 18% per trade
         
-        # === Filters (Fixing ER:0.004) ===
-        # Increased liquidity requirement to ensure fills.
-        # Volatility floor ensures we only trade assets capable of mean reversion.
-        self.min_liquidity = 10_000_000.0
-        self.min_volatility = 0.0006  
+        # === Entry Thresholds (Fixing Penalties) ===
+        # Previous penalty 'Z:-3.93' indicates entry was too early/shallow.
+        # We push the boundary to > 4.6 sigma.
+        self.entry_z_threshold = -4.65 * self.dna
         
-        # === Entry Thresholds (Fixing EFFICIENT_BREAKOUT) ===
-        # We target Idiosyncratic Reversion (Alpha) rather than Beta moves.
-        self.entry_z_trigger = -2.8 * self.dna      # Absolute deviation
-        self.entry_rsi_trigger = 32.0               # Momentum confirmation
-        self.alpha_threshold = -1.8                 # Asset Z must be lower than Market Z by this amount
-        self.market_panic_z = -1.5                  # Circuit breaker: Don't buy if market is crashing
+        # Previous penalty 'LR_RESIDUAL' implies relying solely on regression residuals 
+        # caught falling knives. We add RSI and Slope constraints.
+        self.entry_rsi_threshold = 12.0
         
-        # === Exit Logic (Fixing FIXED_TP) ===
-        # Time-decaying dynamic target.
-        self.max_hold_ticks = 75
-        self.stop_loss_z = -7.0
+        # Trend Filter: If the regression slope is too steep negative, 
+        # the "mean" is falling too fast to be a reliable anchor.
+        # Threshold: -0.05% price drop per tick allowed in the trend line.
+        self.max_down_slope_pct = -0.0005
+        
+        # === Exit Logic ===
+        self.take_profit_z = 0.0         # Revert to Mean
+        self.stop_loss_z = -11.0         # Deep stop loss
+        self.max_hold_ticks = 60         # Time-based stop
         
         # === State ===
         self.history = {}       # symbol -> deque
-        self.positions = {}     # symbol -> dict {'amount': float, 'entry_tick': int, 'entry_z': float}
+        self.positions = {}     # symbol -> dict
         self.tick = 0
 
-    def _calc_stats(self, data):
-        """
-        Calculates Log-Normal Z-Score, Volatility, and RSI.
-        """
-        if len(data) < self.lookback:
+    def _calc_stats(self, prices_deque):
+        # O(n) Linear Regression and Statistics
+        n = len(prices_deque)
+        if n < self.lookback:
             return None
             
-        try:
-            # Use most recent window for Z-score stats
-            window = list(data)[-self.lookback:]
+        data = list(prices_deque)[-self.lookback:]
+        
+        # Linear Regression Calculation
+        # x = 0..n-1
+        sum_x = n * (n - 1) // 2
+        sum_y = sum(data)
+        sum_xx = n * (n - 1) * (2 * n - 1) // 6
+        sum_xy = sum(i * p for i, p in enumerate(data))
+        
+        denominator = (n * sum_xx - sum_x * sum_x)
+        if denominator == 0: return None
+        
+        slope = (n * sum_xy - sum_x * sum_y) / denominator
+        intercept = (sum_y - slope * sum_x) / n
+        
+        # Residual Analysis
+        last_price = data[-1]
+        model_price = slope * (n - 1) + intercept
+        residual = last_price - model_price
+        
+        # Variance calculation
+        # Sum of squared residuals
+        ssr = sum((y - (slope * x + intercept))**2 for x, y in enumerate(data))
+        std_dev = math.sqrt(ssr / n)
+        
+        if std_dev < 1e-10: return None
+        
+        z_score = residual / std_dev
+        
+        return {
+            'z': z_score,
+            'slope': slope,
+            'price': last_price,
+            'std_dev': std_dev
+        }
+
+    def _calc_rsi(self, prices_deque):
+        # Simplified Wilder's RSI on recent window
+        period = 14
+        if len(prices_deque) < period + 1:
+            return 50.0
             
-            # 1. Log-Returns for Z-Score (Normalization)
-            log_prices = [math.log(p) for p in window]
-            mean_log = sum(log_prices) / len(log_prices)
-            variance = sum((x - mean_log) ** 2 for x in log_prices) / len(log_prices)
-            
-            if variance < 1e-12: 
-                return None
-            
-            std_dev = math.sqrt(variance)
-            current_log_price = log_prices[-1]
-            z_score = (current_log_price - mean_log) / std_dev
-            
-            # 2. RSI Calculation (Standard 14-period)
-            rsi_window = list(data)[-(self.rsi_period + 1):]
-            if len(rsi_window) < self.rsi_period + 1:
-                rsi = 50.0
+        window = list(prices_deque)[-(period+1):]
+        gains = 0.0
+        losses = 0.0
+        
+        for i in range(1, len(window)):
+            change = window[i] - window[i-1]
+            if change > 0:
+                gains += change
             else:
-                gains = 0.0
-                losses = 0.0
-                for i in range(1, len(rsi_window)):
-                    change = rsi_window[i] - rsi_window[i-1]
-                    if change > 0:
-                        gains += change
-                    else:
-                        losses -= change
+                losses -= change
                 
-                if losses == 0:
-                    rsi = 100.0
-                elif gains == 0:
-                    rsi = 0.0
-                else:
-                    rs = gains / losses
-                    rsi = 100.0 - (100.0 / (1.0 + rs))
-            
-            return {
-                'z': z_score,
-                'vol': std_dev,
-                'rsi': rsi,
-                'price': window[-1]
-            }
-            
-        except Exception:
-            return None
+        if losses == 0: return 100.0
+        if gains == 0: return 0.0
+        
+        rs = gains / losses
+        return 100.0 - (100.0 / (1.0 + rs))
 
     def on_price_update(self, prices):
-        """
-        Main execution loop.
-        """
         self.tick += 1
+        candidates = []
+        market_zs = []
         
-        # 1. Ingest Data & Calculate Metrics
-        market_stats = []
-        valid_candidates = []
-        
-        for sym, p_data in prices.items():
+        # 1. Update Phase
+        for sym, data in prices.items():
             try:
-                price = float(p_data['priceUsd'])
-                liq = float(p_data['liquidity'])
-                
-                if sym not in self.history:
-                    self.history[sym] = deque(maxlen=self.max_history)
-                self.history[sym].append(price)
-                
-                # Filters
-                if liq < self.min_liquidity: continue
-                if len(self.history[sym]) < self.lookback: continue
-                
-                stats = self._calc_stats(self.history[sym])
-                if not stats: continue
-                
-                # Volatility Filter (ER:0.004 defense)
-                if stats['vol'] < self.min_volatility: continue
-                
-                stats['symbol'] = sym
-                market_stats.append(stats)
-                
-                # Only consider for entry if not already held
-                if sym not in self.positions:
-                    valid_candidates.append(stats)
-                    
+                p = float(data['priceUsd'])
+                liq = float(data['liquidity'])
             except (KeyError, ValueError, TypeError):
                 continue
+                
+            if liq < self.min_liquidity:
+                continue
 
-        # 2. Calculate Market Regime (Beta)
-        # We need the median Z-score to determine if the whole market is moving.
-        market_z_values = [s['z'] for s in market_stats]
+            if sym not in self.history:
+                self.history[sym] = deque(maxlen=self.cleanup_window)
+            self.history[sym].append(p)
+            
+            stats = self._calc_stats(self.history[sym])
+            if stats:
+                stats['symbol'] = sym
+                stats['liquidity'] = liq
+                market_zs.append(stats['z'])
+                if sym not in self.positions:
+                    candidates.append(stats)
+
+        # 2. Market Regime Check
+        # Calculate median Z-score to determine if the whole market is crashing (Systemic Risk)
         market_median_z = 0.0
-        if market_z_values:
-            market_z_values.sort()
-            mid = len(market_z_values) // 2
-            market_median_z = market_z_values[mid]
+        if market_zs:
+            market_zs.sort()
+            market_median_z = market_zs[len(market_zs)//2]
 
-        # 3. Manage Positions (Dynamic Exit)
+        # 3. Position Management
         for sym in list(self.positions.keys()):
             pos = self.positions[sym]
-            
-            # Retrieve latest stats
-            hist = self.history.get(sym)
-            if not hist: continue
-            stats = self._calc_stats(hist)
+            stats = self._calc_stats(self.history[sym])
             if not stats: continue
             
             current_z = stats['z']
             ticks_held = self.tick - pos['entry_tick']
             
-            # Dynamic Target Logic (Fixing FIXED_TP)
-            # As time increases, our target Z-score drops (we become more eager to sell).
-            # Start Target: 0.0 (Mean). End Target: -2.0 (Cut losses/small bounce).
-            decay_ratio = min(1.0, ticks_held / self.max_hold_ticks)
-            target_z = 0.0 - (2.5 * decay_ratio)
+            # Dynamic Exit
+            # If held longer, accept a lower Z to exit (time decay)
+            target_z = self.take_profit_z - (ticks_held * 0.02)
             
             action = None
-            reason = []
+            reason = ""
             
-            # Exit Conditions
             if current_z > target_z:
-                action = 'TP_DYNAMIC'
-                reason = [f"Z:{current_z:.2f}", f"Tgt:{target_z:.2f}"]
+                action = 'SELL'
+                reason = "TP_MEAN_REV"
             elif current_z < self.stop_loss_z:
-                action = 'STOP_LOSS'
-            elif ticks_held >= self.max_hold_ticks:
-                action = 'TIME_LIMIT'
-            
+                action = 'SELL'
+                reason = "STOP_LOSS"
+            elif ticks_held > self.max_hold_ticks:
+                action = 'SELL'
+                reason = "TIMEOUT"
+                
             if action:
                 amt = pos['amount']
                 del self.positions[sym]
@@ -182,63 +175,75 @@ class MyStrategy:
                     'side': 'SELL',
                     'symbol': sym,
                     'amount': amt,
-                    'reason': [action] + reason
+                    'reason': [reason, f"Z:{current_z:.2f}"]
                 }
 
-        # 4. Alpha Entry Logic (Fixing EFFICIENT_BREAKOUT)
-        # We only buy if we have space and market isn't crashing.
+        # 4. Entry Logic
         if len(self.positions) >= self.max_positions:
             return None
             
-        # Global Crash Filter
-        if market_median_z < self.market_panic_z:
-            return None
-            
-        best_signal = None
-        best_alpha = 0.0
+        best_cand = None
+        best_score = -float('inf')
         
-        for cand in valid_candidates:
+        for cand in candidates:
             z = cand['z']
-            rsi = cand['rsi']
+            price = cand['price']
+            sym = cand['symbol']
             
-            # Absolute Floor Checks
-            if z > self.entry_z_trigger: continue
-            if rsi > self.entry_rsi_trigger: continue
+            # --- STRICT FILTERS ---
             
-            # Alpha Calculation
-            # Alpha = Asset_Z - Market_Median_Z
-            # We want negative alpha (asset crashing significantly harder than market)
-            alpha_z = z - market_median_z
+            # 1. Deep Z-Score check
+            # If market is crashing (median < -2), we require an even deeper discount
+            # to distinguish this asset from general beta.
+            effective_threshold = self.entry_z_threshold
+            if market_median_z < -2.0:
+                effective_threshold -= 1.0 # Require -5.65 roughly
+                
+            if z > effective_threshold:
+                continue
+                
+            # 2. RSI Confirmation (Double confirmation)
+            rsi = self._calc_rsi(self.history[sym])
+            if rsi > self.entry_rsi_threshold:
+                continue
+                
+            # 3. Slope Safety
+            # Reject if the linear regression line is angling down too steeply.
+            # This indicates the asset is "trending" down, not just deviating.
+            norm_slope = cand['slope'] / price
+            if norm_slope < self.max_down_slope_pct:
+                continue
             
-            if alpha_z > self.alpha_threshold: continue
+            # 4. Relative Strength vs Market
+            # Ensure the asset is an outlier compared to the market median
+            if z > (market_median_z - 2.0):
+                continue
+                
+            # --- SCORING ---
+            # Prioritize: Deepest Z * log(Liquidity)
+            # We want high liquidity assets that are statistically broken
+            score = abs(z) * math.log(cand['liquidity'])
             
-            # Score Signal: Magnitude of Alpha * Volatility
-            # High Vol assets get boosted because they revert harder.
-            signal_score = abs(alpha_z) * (1.0 + cand['vol'] * 20)
-            
-            if signal_score > best_alpha:
-                best_alpha = signal_score
-                best_signal = cand
-        
-        if best_signal:
-            sym = best_signal['symbol']
-            price = best_signal['price']
-            
-            # Sizing
-            usd_alloc = self.balance * self.pos_size_pct
-            amount = usd_alloc / price
+            if score > best_score:
+                best_score = score
+                best_cand = cand
+                
+        if best_cand:
+            sym = best_cand['symbol']
+            price = best_cand['price']
+            amount = (self.balance * self.pos_size_pct) / price
             
             self.positions[sym] = {
                 'entry_tick': self.tick,
                 'amount': amount,
-                'entry_z': best_signal['z']
+                'entry_z': best_cand['z']
             }
             
             return {
                 'side': 'BUY',
                 'symbol': sym,
                 'amount': amount,
-                'reason': ['ALPHA_DIP', f"Z:{best_signal['z']:.2f}", f"AlphaZ:{best_signal['z'] - market_median_z:.2f}"]
+                'reason': ['LR_DEEP_VALUE', f"Z:{best_cand['z']:.2f}"]
             }
             
         return None

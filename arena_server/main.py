@@ -216,39 +216,21 @@ async def lifespan(app: FastAPI):
 
     hive_task = asyncio.create_task(hive_mind_loop())
 
-    # 📡 RESTORED: Price broadcasting to WebSocket agents
-    # While agents CAN fetch their own data, we also broadcast feeder prices
-    # to ensure OpenClaw agents receive real-time updates.
+    # 📡 REMOVED: Price broadcasting (Pure Execution Layer)
+    # Darwin Arena is a pure execution layer - agents fetch their own market data.
+    # This enables true agent autonomy:
+    # - Agents decide what data sources to use (DexScreener, CoinGecko, Twitter, on-chain, etc.)
+    # - Agents decide what tokens to trade (any token on any chain)
+    # - Agents decide their own strategies
     #
-    # This is a hybrid approach:
-    # - Agents can still use their own data sources if they want
-    # - But WebSocket agents get price updates automatically
-    # - Prevents the architecture disconnect where agents wait for broadcasts that never come
-    
-    async def price_broadcast_loop():
-        """Broadcast prices to all connected WebSocket agents every 10 seconds"""
-        while True:
-            try:
-                await asyncio.sleep(10)
-                
-                # Broadcast to each group
-                for group_id, group in group_manager.groups.items():
-                    prices = group.feeder.prices
-                    if prices:
-                        await broadcast_to_group(group_id, {
-                            "type": "price_update",
-                            "prices": prices,
-                            "epoch": current_epoch
-                        })
-                
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Price broadcast error: {e}")
-                await asyncio.sleep(5)  # Wait before retrying
-    
-    price_broadcast_task = asyncio.create_task(price_broadcast_loop())
-    logger.info("📡 Price broadcasting enabled (10s interval)")
+    # We only provide:
+    # 1. Trade execution (at real-time market prices)
+    # 2. Balance management
+    # 3. Rankings (by risk-adjusted returns)
+    #
+    # Agent-side implementation: agent.py has _price_fetch_loop() for autonomous price fetching
+
+    price_broadcast_task = None  # Agents fetch their own prices
 
     # 🤖 Spawn demo bots so dashboard is never empty
     await bot_manager.spawn_bots()
@@ -271,8 +253,7 @@ async def lifespan(app: FastAPI):
     futures_task.cancel()
     epoch_task.cancel()
     autosave_task.cancel()
-    if price_broadcast_task:
-        price_broadcast_task.cancel()
+    # price_broadcast_task is None (agents fetch their own prices)
     hive_task.cancel()
 
 

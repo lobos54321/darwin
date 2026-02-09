@@ -1,201 +1,241 @@
 import math
 
-class QuantumElasticityStrategy:
+class KineticRecoilStrategy:
     def __init__(self):
         """
-        Strategy: Adaptive Z-Score Reversion with Volatility Filters.
+        Kinetic Recoil Strategy
         
-        Fixes & Mutations:
-        1. EFFICIENT_BREAKOUT: 
-           - Implements 'Flash-Crash Reject': Ignores ticks with drops > 3% in one update.
-           - Requires 'Stabilization': Price must uptick from the low before entry.
-        2. ER:0.004 (Low Edge):
-           - Stricter Entry: Increases Z-Score threshold to 2.8 Sigma (was 2.6).
-           - RSI Filter: Lowers RSI threshold to 22 (was 24).
-           - Volatility Gating: Ignores assets with extremely low volatility (no room for profit).
-        3. FIXED_TP:
-           - Dynamic Trailing Stop: Activates after 1% profit, trails by 0.5%.
+        Addressed Penalties:
+        1. LR_RESIDUAL: Implemented a Normalized Momentum Slope filter. 
+           We calculate the linear regression slope of the last 8 ticks relative to price.
+           If the slope is steeper than -0.0006 (vertical drop), we classify it as a crash/falling knife
+           rather than a mean-reverting dip, and inhibit entry.
+        2. Z:-3.93: Raised Z-Score entry threshold to 4.2 (from ~3.8).
+           Added 'Micro-Pivot' confirmation: Entry is only permitted if the current price 
+           is higher than the previous tick (Green Candle validation).
+           
+        Architecture:
+        - Deep Mean Reversion with Statistical Outlier detection.
+        - Dynamic Trailing Stop for profit maximization.
+        - Strict Volatility & Liquidity filtering.
         """
         self.positions = {}
-        self.market_history = {}
+        self.history = {}
         
-        # Configuration
-        self.base_capital = 10000.0
-        self.max_positions = 4
-        self.min_liquidity = 5000000.0
+        # Capital Configuration
+        self.capital = 10000.0
+        self.max_positions = 3 # Highly concentrated conviction
+        self.slot_size = self.capital / self.max_positions
         
-        # Risk Parameters
-        self.stop_loss_pct = 0.06      # Hard stop at -6%
-        self.trail_arm_pct = 0.012     # Arm trail at +1.2%
-        self.trail_dist_pct = 0.006    # Trail distance 0.6%
+        # Filters
+        self.min_liquidity = 12000000.0 # High liquidity to ensure price truth
+        self.min_volatility = 0.002
+        self.max_volatility = 0.15
         
         # Signal Parameters
-        self.window_size = 35          # Lookback window
-        self.rsi_period = 10           # Fast RSI
-        self.entry_sigma = 2.8         # Stricter deviation requirement
-        self.min_volatility = 0.002    # Minimum volatility to trade
-        self.max_volatility = 0.06     # Maximum volatility to avoid chaos
-        self.max_tick_drop = -0.03     # Reject instantaneous drops > 3%
+        self.window_size = 50
+        self.z_trigger = 4.2       # Stricter deep dip requirement
+        self.rsi_limit = 19        # Deep oversold
+        self.slope_floor = -0.0006 # Max steepness allowed for entry
+        
+        # Risk Management
+        self.stop_loss = 0.07          # 7% hard stop
+        self.trail_arm_roi = 0.012     # Arm trailing stop at 1.2% profit
+        self.trail_offset = 0.006      # 0.6% pullback triggers exit
+        self.max_hold_ticks = 80       # Max holding period
 
     def on_price_update(self, prices):
-        # 1. Prune History for removed symbols
+        # 1. Prune History for dead symbols
         active_symbols = set(prices.keys())
-        self.market_history = {k: v for k, v in self.market_history.items() if k in active_symbols}
+        self.history = {k: v for k, v in self.history.items() if k in active_symbols}
         
-        # 2. Manage Existing Positions (Exits)
+        # 2. Position Management
+        # Prioritize Exits to free up capital/slots
         for symbol, pos in list(self.positions.items()):
             if symbol not in prices:
                 continue
                 
             current_price = prices[symbol]['priceUsd']
             entry_price = pos['entry_price']
+            
+            # Update Metrics
+            if current_price > pos['highest_price']:
+                pos['highest_price'] = current_price
+            
             roi = (current_price - entry_price) / entry_price
+            peak_roi = (pos['highest_price'] - entry_price) / entry_price
+            drawdown = (pos['highest_price'] - current_price) / pos['highest_price']
+            pos['ticks'] += 1
             
-            # Update High Water Mark
-            if roi > pos['highest_roi']:
-                pos['highest_roi'] = roi
+            # Logic A: Hard Stop Loss
+            if roi < -self.stop_loss:
+                return self._execute('SELL', symbol, pos['amount'], 'STOP_LOSS')
             
-            # A. Dynamic Trailing Stop (Fixes FIXED_TP)
-            if pos['highest_roi'] >= self.trail_arm_pct:
-                if (pos['highest_roi'] - roi) >= self.trail_dist_pct:
-                    return self._execute_trade('SELL', symbol, pos['amount'], 'TRAIL_STOP')
+            # Logic B: Trailing Stop
+            if peak_roi >= self.trail_arm_roi:
+                # If we have armed the trail, check for pullback
+                if drawdown >= self.trail_offset:
+                    return self._execute('SELL', symbol, pos['amount'], 'TRAIL_PROFIT')
             
-            # B. Hard Stop Loss (Catastrophe Protection)
-            if roi <= -self.stop_loss_pct:
-                return self._execute_trade('SELL', symbol, pos['amount'], 'STOP_LOSS')
-            
-            # C. Mean Reversion Target
-            # Exit if price returns to the mean (edge exhausted)
-            hist = self.market_history.get(symbol, {}).get('prices', [])
-            if len(hist) > 10:
-                avg_price = sum(hist) / len(hist)
-                # Only exit on mean reversion if we aren't taking a heavy loss (allow noise)
-                if current_price >= avg_price and roi > -0.015:
-                    return self._execute_trade('SELL', symbol, pos['amount'], 'MEAN_REV')
-            
-            # D. Stale Trade Timeout
-            pos['ticks_held'] += 1
-            if pos['ticks_held'] > 80 and roi < 0:
-                return self._execute_trade('SELL', symbol, pos['amount'], 'STALE_EXIT')
+            # Logic C: Stagnation Timeout
+            # If holding too long and barely profitable or small loss, cut it
+            if pos['ticks'] > self.max_hold_ticks:
+                if roi > -0.01: # Don't realize deep losses on timeout, only stagnation
+                    return self._execute('SELL', symbol, pos['amount'], 'TIMEOUT')
 
-        # 3. Scan for New Entries
+        # 3. New Entry Scan
+        # Filter 0: Market Conditions
+        if len(self.positions) >= self.max_positions:
+            return None
+            
         candidates = []
         
         for symbol, data in prices.items():
+            # Skip existing positions
             if symbol in self.positions:
                 continue
             
-            price = data['priceUsd']
-            
-            # Update History
-            if symbol not in self.market_history:
-                self.market_history[symbol] = {'prices': []}
-            
-            mh = self.market_history[symbol]
-            mh['prices'].append(price)
-            if len(mh['prices']) > self.window_size:
-                mh['prices'].pop(0)
-            
-            # Basic Filters
-            if len(mh['prices']) < self.window_size:
-                continue
+            # Filter 1: Liquidity
             if data['liquidity'] < self.min_liquidity:
                 continue
                 
-            # --- PENALTY FIX: EFFICIENT_BREAKOUT ---
-            # Flash Crash Filter: Reject single-tick drops > 3%
-            if len(mh['prices']) >= 2:
-                prev_price = mh['prices'][-2]
-                tick_change = (price - prev_price) / prev_price
-                if tick_change < self.max_tick_drop:
-                    continue # Likely a hack or fatal news, do not buy
+            price = data['priceUsd']
             
-            # Calculate Statistics
-            prices_arr = mh['prices']
-            mean = sum(prices_arr) / len(prices_arr)
-            variance = sum((x - mean) ** 2 for x in prices_arr) / len(prices_arr)
+            # History Maintenance
+            if symbol not in self.history:
+                self.history[symbol] = []
+            self.history[symbol].append(price)
+            
+            if len(self.history[symbol]) > self.window_size:
+                self.history[symbol].pop(0)
+            
+            series = self.history[symbol]
+            if len(series) < self.window_size:
+                continue
+                
+            # Filter 2: Volatility Check
+            # We need standard deviation for Z-score anyway
+            mean = sum(series) / len(series)
+            variance = sum((x - mean) ** 2 for x in series) / len(series)
             std_dev = math.sqrt(variance)
             
-            if mean == 0: continue
-            vol_ratio = std_dev / mean
+            if mean == 0 or std_dev == 0: continue
             
-            # Volatility Logic
-            if vol_ratio < self.min_volatility: continue # Dead asset
-            if vol_ratio > self.max_volatility: continue # Too dangerous
-            
-            # Bollinger Band (Lower)
-            lower_band = mean - (std_dev * self.entry_sigma)
-            
-            # --- COMPOSITE ENTRY SIGNAL ---
-            # 1. Price is Deeply Oversold (Below Z-Score band)
-            if price < lower_band:
+            cv = std_dev / mean
+            if cv < self.min_volatility or cv > self.max_volatility:
+                continue
                 
-                # 2. RSI Calculation (Momentum Check)
-                rsi = self._calculate_rsi(prices_arr)
+            # Filter 3: Deep Z-Score (Primary Signal)
+            z_score = (price - mean) / std_dev
+            
+            if z_score < -self.z_trigger:
                 
-                # --- PENALTY FIX: ER:0.004 ---
-                # Stricter Logic: RSI < 22 AND Price > Previous (Snapback)
-                if rsi < 22:
-                    # Stabilization Check: Ensure we aren't catching a falling knife.
-                    # Price must have ticked UP or stayed flat relative to the very last tick
-                    # This avoids buying the exact moment of the crash.
-                    if len(prices_arr) >= 2 and price >= prices_arr[-2]:
-                        
-                        deviation_depth = (lower_band - price) / price
-                        candidates.append({
-                            'symbol': symbol,
-                            'price': price,
-                            'depth': deviation_depth
-                        })
+                # Filter 4: RSI (Momentum)
+                rsi = self._calculate_rsi(series)
+                if rsi > self.rsi_limit:
+                    continue
+                    
+                # Filter 5: Slope Check (Fix for LR_RESIDUAL)
+                # Ensure we aren't catching a falling knife with high momentum
+                slope = self._calculate_slope(series[-8:]) # Look at immediate trend
+                if slope < self.slope_floor:
+                    # Too steep descent
+                    continue
+                    
+                # Filter 6: Green Candle Confirmation (Fix for Z:-3.93)
+                # Must be ticking up (micro-reversal)
+                if series[-1] <= series[-2]:
+                    continue
+                
+                candidates.append({
+                    'symbol': symbol,
+                    'z': z_score,
+                    'slope': slope,
+                    'price': price
+                })
 
-        # 4. Execution
-        if candidates and len(self.positions) < self.max_positions:
-            # Pick the most oversold candidate relative to the band
-            candidates.sort(key=lambda x: x['depth'], reverse=True)
+        # 4. Execution Selection
+        if candidates:
+            # Sort by Z-score depth (prefer deepest deviation)
+            candidates.sort(key=lambda x: x['z'])
             best = candidates[0]
             
-            amount = self.base_capital / best['price']
+            # Position Sizing
+            amount = self.slot_size / best['price']
+            
             self.positions[best['symbol']] = {
                 'entry_price': best['price'],
                 'amount': amount,
-                'highest_roi': -1.0,
-                'ticks_held': 0
+                'highest_price': best['price'],
+                'ticks': 0
             }
             
-            return self._execute_trade('BUY', best['symbol'], amount, 'Z_REV_ENTRY')
+            tag = f"Z:{best['z']:.2f}_Slp:{best['slope']:.5f}"
+            return self._execute('BUY', best['symbol'], amount, tag)
 
         return None
 
-    def _calculate_rsi(self, prices):
-        if len(prices) < self.rsi_period + 1:
+    def _calculate_rsi(self, prices, period=14):
+        if len(prices) < period + 1:
             return 50.0
-            
-        # Optimize for speed using simple slice
-        window = prices[-self.rsi_period:]
+        
         gains = 0.0
         losses = 0.0
         
-        for i in range(1, len(window)):
-            diff = window[i] - window[i-1]
-            if diff > 0:
-                gains += diff
-            else:
-                losses -= diff
+        # Calculate initial avg
+        for i in range(1, period + 1):
+            delta = prices[i] - prices[i-1]
+            if delta > 0: gains += delta
+            else: losses += abs(delta)
+            
+        if losses == 0: return 100.0
         
-        if losses == 0:
-            return 100.0
+        # Simple Moving Average RSI (Standard)
+        avg_gain = gains / period
+        avg_loss = losses / period
         
+        # Calculate over the remaining tail (if any) to align with standard RSI behavior
+        # However, for speed in this context, the tail average of the last 'period' is sufficient approximation
+        # using the Wilder's smoothing would require full history loop.
+        # We stick to the SMA of the last chunk for robustness/speed.
+        
+        # Recalculate strictly on the *last* period ticks for most recent status
+        recent_deltas = [prices[i] - prices[i-1] for i in range(len(prices)-period, len(prices))]
+        gains = sum(d for d in recent_deltas if d > 0)
+        losses = sum(abs(d) for d in recent_deltas if d < 0)
+        
+        if losses == 0: return 100.0
         rs = gains / losses
         return 100.0 - (100.0 / (1.0 + rs))
 
-    def _execute_trade(self, side, symbol, amount, reason):
-        if side == 'SELL':
-            if symbol in self.positions:
-                del self.positions[symbol]
+    def _calculate_slope(self, series):
+        """Calculates normalized linear regression slope."""
+        n = len(series)
+        if n < 2: return 0.0
         
+        sum_x = sum(range(n))
+        sum_y = sum(series)
+        sum_xy = sum(i * y for i, y in enumerate(series))
+        sum_xx = sum(i * i for i in range(n))
+        
+        # Linear Regression Slope formula: (NΣxy - ΣxΣy) / (NΣx^2 - (Σx)^2)
+        numerator = (n * sum_xy) - (sum_x * sum_y)
+        denominator = (n * sum_xx) - (sum_x * sum_x)
+        
+        if denominator == 0: return 0.0
+        
+        slope = numerator / denominator
+        
+        # Normalize by price to get percentage change per tick
+        return slope / series[-1]
+
+    def _execute(self, side, symbol, amount, tag):
+        if side == 'SELL' and symbol in self.positions:
+            del self.positions[symbol]
+            
         return {
             'side': side,
             'symbol': symbol,
             'amount': amount,
-            'reason': [reason]
+            'reason': [tag]
         }

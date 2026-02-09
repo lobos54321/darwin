@@ -3,78 +3,46 @@ from collections import deque
 
 class MyStrategy:
     def __init__(self):
-        # === Capital & Risk ===
+        # === Capital & Risk Management ===
         self.balance = 1000.0
-        self.max_positions = 5            # Max concurrent positions
-        self.trade_pct = 0.18             # Allocation per trade
+        self.max_positions = 3          
+        self.trade_pct = 0.30           
         
-        # === Filters (Addressing ER:0.004) ===
-        # Stricter requirements to ensure asset quality
-        self.min_liquidity = 7000000.0    # 7M USD Liquidity
-        self.min_volume = 2500000.0       # 2.5M USD Volume
-        self.min_volatility = 0.004       # Min volatility to ensure profit potential
+        # === Asset Filters (Quality Control) ===
+        # Increased thresholds to prevent 'LR_RESIDUAL' (noise fitting)
+        self.min_liquidity = 20000000.0 
+        self.min_volume = 10000000.0    
         
-        # === Entry Logic (Addressing EFFICIENT_BREAKOUT) ===
-        # Deep Mean Reversion with Micro-Structure Confirmation
-        self.lookback = 50
-        self.entry_z = -2.8               # Moderate deviation for dip
-        self.entry_rsi = 28.0             # Oversold threshold
+        # === Strategy Parameters ===
+        self.lookback = 50              # Increased window for statistical stability
+        self.rsi_period = 14
+        self.rsi_limit = 30.0           
         
-        # === Exit Logic (Addressing FIXED_TP) ===
-        # Dynamic Trailing Stop
-        self.sl_pct = 0.06                # 6% Hard Stop
-        self.trail_trigger = 0.015        # Start trailing at 1.5% profit
-        self.trail_dist = 0.01            # 1% Trailing distance
-        self.time_limit = 70              # Max hold ticks
+        # === Z-Score Bounds (CRITICAL FIX) ===
+        # Fix for 'Z:-3.93': We reject "falling knives".
+        # We buy dips that are statistically significant (-1.8) 
+        # but NOT structural breaks (below -2.9).
+        self.z_entry_ceiling = -1.80     
+        self.z_crash_floor = -2.90       
+        
+        # === Volatility Filter ===
+        self.vol_ratio_limit = 2.0      # Reject if short-term vol is 2x long-term vol
+        
+        # === Exit Logic ===
+        self.stop_loss = 0.05           # 5% Hard Stop
+        self.roi_activation = 0.025     # Activate trail at 2.5% profit
+        self.trail_gap = 0.005          # 0.5% Trail
+        self.max_hold_ticks = 48        
         
         # === State ===
-        self.positions = {}               # symbol -> position_data
-        self.history = {}                 # symbol -> price_deque
-        self.cooldown = {}                # symbol -> ticks
-
-    def _get_stats(self, data_deque):
-        """Calculates Z-Score, RSI, and Coefficient of Variation."""
-        if len(data_deque) < self.lookback:
-            return None
-            
-        data = list(data_deque)
-        current_price = data[-1]
-        
-        mean = sum(data) / len(data)
-        variance = sum((x - mean) ** 2 for x in data) / len(data)
-        std_dev = math.sqrt(variance)
-        
-        if mean == 0 or std_dev == 0:
-            return None
-            
-        # Volatility Filter (CV)
-        cv = std_dev / mean
-        if cv < self.min_volatility:
-            return None
-            
-        z_score = (current_price - mean) / std_dev
-        
-        # RSI
-        period = 14
-        deltas = [data[i] - data[i-1] for i in range(1, len(data))]
-        if len(deltas) < period:
-            return None
-            
-        recent = deltas[-period:]
-        gains = sum(x for x in recent if x > 0)
-        losses = sum(abs(x) for x in recent if x < 0)
-        
-        if losses == 0:
-            rsi = 100.0
-        elif gains == 0:
-            rsi = 0.0
-        else:
-            rs = gains / losses
-            rsi = 100.0 - (100.0 / (1.0 + rs))
-            
-        return {'z': z_score, 'rsi': rsi}
+        self.positions = {}             
+        self.history = {}               
+        self.cooldown = {}              
 
     def on_price_update(self, prices):
+        """
+        Executes trading logic with strict statistical filters.
+        """
         # --- 1. Position Management ---
         active_symbols = list(self.positions.keys())
         
@@ -87,132 +55,165 @@ class MyStrategy:
                 pos = self.positions[sym]
                 
                 # Update High Water Mark
-                if curr_price > pos['highest']:
-                    pos['highest'] = curr_price
-                    
+                if curr_price > pos['high']:
+                    pos['high'] = curr_price
+                
                 pos['age'] += 1
                 entry_price = pos['entry']
-                
                 roi = (curr_price - entry_price) / entry_price
-                max_profit = (pos['highest'] - entry_price) / entry_price
+                peak_roi = (pos['high'] - entry_price) / entry_price
+                trail_price = pos['high'] * (1.0 - self.trail_gap)
                 
                 action = None
                 reason = None
                 
                 # A. Hard Stop Loss
-                if roi <= -self.sl_pct:
+                if roi <= -self.stop_loss:
                     action = "SELL"
                     reason = "STOP_LOSS"
                 
-                # B. Dynamic Trailing Stop
-                elif max_profit >= self.trail_trigger:
-                    # Tighten trail for massive runners (>5%)
-                    active_dist = self.trail_dist * (0.5 if max_profit > 0.05 else 1.0)
-                    stop_price = pos['highest'] * (1.0 - active_dist)
-                    
-                    if curr_price <= stop_price:
-                        action = "SELL"
-                        reason = "TRAILING_STOP"
-                
-                # C. Time Limit for Stagnation
-                elif pos['age'] >= self.time_limit and roi < 0.004:
+                # B. Trailing Profit
+                elif peak_roi >= self.roi_activation and curr_price <= trail_price:
                     action = "SELL"
-                    reason = "STAGNANT"
+                    reason = "TRAILING_PROFIT"
                 
+                # C. Timeout
+                elif pos['age'] >= self.max_hold_ticks:
+                    # Only exit if we are not deep red, otherwise hold for potential recovery 
+                    # unless it hits stop loss.
+                    if roi > -0.01: 
+                        action = "SELL"
+                        reason = "TIMEOUT"
+
                 if action == "SELL":
                     amount = pos['amount']
                     del self.positions[sym]
-                    self.cooldown[sym] = 30  # Cooldown period
+                    self.cooldown[sym] = 10  
                     return {
                         "side": "SELL",
                         "symbol": sym,
                         "amount": amount,
                         "reason": [reason]
                     }
+                    
             except (ValueError, KeyError):
                 continue
 
-        # --- 2. Entry Logic ---
+        # --- 2. Entry Signal Generation ---
         if len(self.positions) >= self.max_positions:
             return None
             
         candidates = []
         
         for sym, data in prices.items():
-            if sym in self.positions:
-                continue
+            if sym in self.positions: continue
             
+            # Cooldown
             if sym in self.cooldown:
                 self.cooldown[sym] -= 1
                 if self.cooldown[sym] <= 0:
                     del self.cooldown[sym]
                 continue
-                
+            
             try:
-                price = float(data["priceUsd"])
+                # 2a. Liquidity Filter
                 liq = float(data.get("liquidity", 0))
                 vol = float(data.get("volume24h", 0))
                 
-                # Liquidity & Volume Filters
                 if liq < self.min_liquidity or vol < self.min_volume:
                     continue
                 
-                # History Tracking
+                price = float(data["priceUsd"])
+                if price <= 0: continue
+                
+                # 2b. History Update
                 if sym not in self.history:
                     self.history[sym] = deque(maxlen=self.lookback)
                 self.history[sym].append(price)
                 
-                if len(self.history[sym]) < self.lookback:
-                    continue
-                    
-                # Calculate Stats
-                stats = self._get_stats(self.history[sym])
-                if not stats:
+                hist = list(self.history[sym])
+                if len(hist) < self.lookback:
                     continue
                 
-                z = stats['z']
-                rsi = stats['rsi']
+                # 2c. Statistical Calculation
+                mean = sum(hist) / len(hist)
+                variance = sum((x - mean) ** 2 for x in hist) / len(hist)
+                std = math.sqrt(variance)
                 
-                # Signal: Deep Dip
-                if z <= self.entry_z and rsi <= self.entry_rsi:
-                    
-                    # Mutation: "Hook" Confirmation
-                    # Prevents buying a falling knife. Requires a V-shape tick pattern.
-                    # P_now > P_prev AND P_prev < P_prev2
-                    hist = list(self.history[sym])
-                    p_now = hist[-1]
-                    p_prev = hist[-2]
-                    p_prev2 = hist[-3]
-                    
-                    if p_now > p_prev and p_prev < p_prev2:
-                        candidates.append({
-                            'symbol': sym,
-                            'price': price,
-                            'z': z,
-                            'rsi': rsi
-                        })
-                        
-            except (ValueError, KeyError):
+                if std == 0: continue
+                
+                z_score = (price - mean) / std
+                
+                # 2d. Z-Score Band Pass (Fix for Z:-3.93)
+                # Reject extreme crashes (< -2.9) and insignificant dips (> -1.8)
+                if not (self.z_crash_floor <= z_score <= self.z_entry_ceiling):
+                    continue
+                
+                # 2e. Volatility Stability (Fix for LR_RESIDUAL)
+                # Reject if short-term volatility is exploding (market is chaotic)
+                short_window = 10
+                short_hist = hist[-short_window:]
+                short_mean = sum(short_hist) / short_window
+                short_std = math.sqrt(sum((x - short_mean) ** 2 for x in short_hist) / short_window)
+                
+                if short_std > (std * self.vol_ratio_limit):
+                    continue
+                
+                # 2f. RSI Filter
+                deltas = [hist[i] - hist[i-1] for i in range(1, len(hist))]
+                if len(deltas) < self.rsi_period: continue
+                
+                recent = deltas[-self.rsi_period:]
+                gains = sum(x for x in recent if x > 0)
+                losses = sum(abs(x) for x in recent if x < 0)
+                
+                if losses == 0: rsi = 100.0
+                elif gains == 0: rsi = 0.0
+                else:
+                    rs = gains / losses
+                    rsi = 100.0 - (100.0 / (1.0 + rs))
+                
+                if rsi > self.rsi_limit:
+                    continue
+                
+                # 2g. Pivot Confirmation
+                # Ensure price is not the absolute lowest of the immediate timeframe
+                # This prevents catching the exact bottom of a red candle
+                if len(hist) >= 3:
+                    recent_low = min(hist[-3:-1]) # Low of previous 2 ticks
+                    if price < recent_low * 0.995: # If breaking support by > 0.5%
+                        continue
+
+                candidates.append({
+                    'symbol': sym,
+                    'price': price,
+                    'z': z_score,
+                    'rsi': rsi
+                })
+
+            except (ValueError, KeyError, ZeroDivisionError):
                 continue
         
-        # Execution: Buy the statistically 'best' dip
+        # --- 3. Execution ---
         if candidates:
-            best = min(candidates, key=lambda x: x['z'])
+            # Sort by Z-score descending (-1.9 is better/safer than -2.8)
+            candidates.sort(key=lambda x: x['z'], reverse=True)
             
-            amt = (self.balance * self.trade_pct) / best['price']
+            best = candidates[0]
+            amount = (self.balance * self.trade_pct) / best['price']
             
             self.positions[best['symbol']] = {
                 'entry': best['price'],
-                'amount': amt,
-                'highest': best['price'],
+                'amount': amount,
+                'high': best['price'],
                 'age': 0
             }
             
             return {
                 "side": "BUY",
                 "symbol": best['symbol'],
-                "amount": amt,
-                "reason": ["HOOK_DIP", f"Z:{best['z']:.2f}"]
+                "amount": amount,
+                "reason": ["Z_BAND", f"Z:{best['z']:.2f}", f"RSI:{best['rsi']:.1f}"]
             }
             
         return None
