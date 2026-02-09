@@ -444,7 +444,40 @@
                     <div class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse delay-150"></div>
                 </div>
                 <h3 class="text-xs text-purple-400 mb-2 tracking-widest border-b border-purple-900 pb-1">🧠 HIVE BRAIN (ALPHA)</h3>
-                
+
+                <!-- Baseline Info Card -->
+                <div id="baseline-card" class="mb-3 p-2 bg-gradient-to-r from-cyan-900/20 to-blue-900/20 border border-cyan-900/50 rounded hidden">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-[10px] text-cyan-400 font-bold tracking-wider">🧬 BASELINE v<span id="baseline-version">0</span></span>
+                        <span class="text-[9px] text-gray-500" id="baseline-timestamp">--</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-[10px] mb-1">
+                        <div>
+                            <span class="text-gray-500">PnL:</span>
+                            <span class="text-white font-bold ml-1" id="baseline-pnl">0%</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-500">Win Rate:</span>
+                            <span class="text-white font-bold ml-1" id="baseline-winrate">0%</span>
+                        </div>
+                    </div>
+                    <div class="text-[9px] space-y-1">
+                        <div>
+                            <span class="text-green-400">✓ Boost:</span>
+                            <span class="text-gray-300 ml-1" id="baseline-boost">--</span>
+                        </div>
+                        <div>
+                            <span class="text-red-400">✗ Penalize:</span>
+                            <span class="text-gray-300 ml-1" id="baseline-penalize">--</span>
+                        </div>
+                    </div>
+                    <div class="mt-2 pt-1 border-t border-cyan-900/30">
+                        <a href="/baseline-strategy" download class="text-[9px] text-cyan-400 hover:text-cyan-300 underline">
+                            📥 Download Strategy
+                        </a>
+                    </div>
+                </div>
+
                 <div class="flex-1 overflow-y-auto space-y-3 font-mono text-xs" id="hive-mind-container">
                     <div class="text-center text-gray-600 mt-10">AWAITING NEURAL SYNC...</div>
                 </div>
@@ -680,12 +713,39 @@
 
         async function fetchHiveMind() {
             try {
-                // Fetch both hive-mind data and leaderboard for agents list
-                const [hiveRes, lbRes] = await Promise.all([
+                // Fetch baseline, hive-mind data and leaderboard
+                const [baselineRes, hiveRes, lbRes] = await Promise.all([
+                    fetch('/baseline'),
                     fetch('/hive-mind'),
                     fetch('/leaderboard')
                 ]);
-                
+
+                // Update Baseline Card
+                if (baselineRes.ok) {
+                    const baseline = await baselineRes.json();
+                    const card = document.getElementById('baseline-card');
+
+                    if (baseline && baseline.version !== undefined) {
+                        document.getElementById('baseline-version').textContent = baseline.version;
+                        document.getElementById('baseline-timestamp').textContent =
+                            new Date(baseline.timestamp).toLocaleDateString();
+                        document.getElementById('baseline-pnl').textContent =
+                            `${baseline.performance.avg_pnl >= 0 ? '+' : ''}${baseline.performance.avg_pnl}%`;
+                        document.getElementById('baseline-winrate').textContent =
+                            `${baseline.performance.win_rate}%`;
+
+                        const boostTags = baseline.hive_data.boost || [];
+                        const penalizeTags = baseline.hive_data.penalize || [];
+
+                        document.getElementById('baseline-boost').textContent =
+                            boostTags.length > 0 ? boostTags.join(', ') : 'None';
+                        document.getElementById('baseline-penalize').textContent =
+                            penalizeTags.length > 0 ? penalizeTags.join(', ') : 'None';
+
+                        card.classList.remove('hidden');
+                    }
+                }
+
                 const container = document.getElementById('hive-mind-container');
                 let html = '';
                 
