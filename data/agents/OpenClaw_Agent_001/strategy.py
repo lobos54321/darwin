@@ -1,221 +1,202 @@
 import math
-import statistics
 from collections import deque
 
 class MyStrategy:
     def __init__(self):
-        # --- Strategy Configuration ---
-        self.window_size = 35           # Adjusted window for responsiveness
-        self.min_liquidity = 10000000.0 
+        # --- Configuration ---
+        # Window size slightly reduced for faster convergence checks
+        self.window_size = 28
         self.max_positions = 5
         self.trade_size_usd = 2000.0
         
-        # --- Filters (Stricter to fix penalties) ---
-        # Z-Score: "Goldilocks" Zone. 
-        # Entry: <-2.6 (Significant Dip)
-        # Floor: >-3.75 (Avoids the -3.93 penalty / Toxic Flow)
-        self.z_entry = -2.6
-        self.z_floor = -3.75 
+        # --- Filters ---
+        # High liquidity requirements to ensure stable price action
+        self.min_liquidity = 12_000_000.0
+        self.min_volume_24h = 5_000_000.0
         
-        # RSI: Deep oversold condition
-        self.rsi_limit = 24
+        # --- Strategy Logic (Penalty Fixes) ---
+        # Fix for 'LR_RESIDUAL':
+        # Normalized Standard Error of Estimate (Sigma / Price) must be very low.
+        # This filters out chaotic assets that do not respect the regression mean.
+        self.max_fit_rmse = 0.002  # 0.2% max deviation avg
         
-        # Trend Stability: Reject if Linear Regression slope is too steep
-        self.min_slope_pct = -0.0004
+        # Fix for 'Z:-3.93':
+        # We cap the dip depth. Dips below -2.6 are considered crashes ("falling knives").
+        # We only enter if Z-score is within the "Safe Mean Reversion" band.
+        self.z_entry_min = -2.6
+        self.z_entry_max = -1.7
         
-        # Mutation: 24h Change Filter
-        # Reject assets that have crashed >15% in 24h (Momentum often overrides Mean Rev)
-        self.max_24h_drop_pct = -0.15 
+        # Trend filters
+        self.min_trend_slope = -0.0001 # Reject steep downtrends
+        self.rsi_period = 14
+        self.rsi_entry = 35            # Conservative RSI entry
         
-        # --- Exit Logic ---
-        self.stop_loss = 0.045
-        self.take_profit_z = 0.1  # Revert to slightly above mean
-        self.max_hold_ticks = 48
+        # --- Exit Params ---
+        self.take_profit = 0.018       # 1.8% Target
+        self.stop_loss = -0.012        # 1.2% Hard Stop
+        self.max_hold_ticks = 50       # Timeout
         
         # --- State ---
         self.history = {}
         self.positions = {}
         self.tick_count = 0
-
+        
         # --- Optimization ---
-        self.x_vals = list(range(self.window_size))
-        self.x_mean = statistics.mean(self.x_vals)
-        self.sum_sq_diff_x = sum((x - self.x_mean) ** 2 for x in self.x_vals)
+        # Pre-compute X-axis statistics for OLS
+        self.x = list(range(self.window_size))
+        self.x_mean = sum(self.x) / self.window_size
+        self.x_var_sum = sum((xi - self.x_mean) ** 2 for xi in self.x)
 
-    def get_stats(self, prices_deque):
-        y_vals = list(prices_deque)
-        n = len(y_vals)
+    def _calculate_rsi(self, price_deque):
+        if len(price_deque) < self.rsi_period + 1:
+            return 50.0
         
-        if n != self.window_size:
-            return None
-            
-        y_mean = statistics.mean(y_vals)
+        # Calculate RSI on the tail of the history
+        subset = list(price_deque)[-(self.rsi_period + 1):]
+        gains = 0.0
+        losses = 0.0
         
-        # 1. Linear Regression
-        numerator = sum((self.x_vals[i] - self.x_mean) * (y_vals[i] - y_mean) for i in range(n))
-        slope = numerator / self.sum_sq_diff_x
-        intercept = y_mean - slope * self.x_mean
+        for i in range(1, len(subset)):
+            change = subset[i] - subset[i-1]
+            if change > 0:
+                gains += change
+            else:
+                losses += abs(change)
+                
+        if losses == 0: return 100.0
+        if gains == 0: return 0.0
         
-        # 2. Residuals & Z-Score
-        residuals = []
-        for i in range(n):
-            predicted = slope * i + intercept
-            residuals.append(y_vals[i] - predicted)
-            
-        stdev_res = statistics.stdev(residuals) if n > 1 else 0
-        
-        if stdev_res == 0:
-            return None
-
-        current_price = y_vals[-1]
-        expected_price = slope * (n - 1) + intercept
-        z_score = (current_price - expected_price) / stdev_res
-        
-        # 3. RSI
-        deltas = [y_vals[i] - y_vals[i-1] for i in range(1, n)]
-        gains = [d for d in deltas if d > 0]
-        losses = [-d for d in deltas if d < 0]
-        
-        if not losses:
-            rsi = 100
-        elif not gains:
-            rsi = 0
-        else:
-            avg_gain = sum(gains) / len(deltas)
-            avg_loss = sum(losses) / len(deltas)
-            rs = avg_gain / avg_loss
-            rsi = 100 - (100 / (1 + rs))
-
-        return {
-            'z': z_score,
-            'slope_pct': slope / y_mean,
-            'rsi': rsi,
-            'price': current_price
-        }
+        rs = gains / losses
+        return 100.0 - (100.0 / (1.0 + rs))
 
     def on_price_update(self, prices):
         self.tick_count += 1
         
-        # --- 1. Data Ingestion ---
-        candidates = []
-        for symbol, data in prices.items():
-            if data['liquidity'] < self.min_liquidity:
-                continue
-                
-            if symbol not in self.history:
-                self.history[symbol] = deque(maxlen=self.window_size)
-            
-            self.history[symbol].append(data['priceUsd'])
-            
-            if len(self.history[symbol]) == self.window_size:
-                candidates.append(symbol)
+        # 1. Clean up history for removed symbols
+        active_symbols = set(prices.keys())
+        for s in list(self.history.keys()):
+            if s not in active_symbols:
+                del self.history[s]
 
-        # --- 2. Exit Management ---
+        # 2. Manage Existing Positions
         for symbol in list(self.positions.keys()):
-            if symbol not in prices:
-                continue
-                
+            if symbol not in prices: continue
+            
             pos = self.positions[symbol]
             current_price = prices[symbol]['priceUsd']
+            entry_price = pos['entry_price']
             
-            # ROI
-            roi = (current_price - pos['entry_price']) / pos['entry_price']
+            roi = (current_price - entry_price) / entry_price
             
-            # Stats for Dynamic Exit
-            stats = self.get_stats(self.history[symbol])
+            exit_reason = None
             
-            action = None
-            reason = None
+            # Mutation: Dynamic Trailing Stop
+            # If ROI > 1%, raise stop loss to break-even + small profit
+            effective_stop = self.stop_loss
+            if roi > 0.01:
+                effective_stop = 0.0005 
             
-            # A. Stop Loss
-            if roi < -self.stop_loss:
-                action = 'SELL'
-                reason = 'STOP_LOSS'
-            
-            # B. Timeout
-            elif (self.tick_count - pos['entry_tick']) > self.max_hold_ticks:
-                action = 'SELL'
-                reason = 'TIMEOUT'
+            if roi >= self.take_profit:
+                exit_reason = 'TAKE_PROFIT'
+            elif roi <= effective_stop:
+                exit_reason = 'STOP_LOSS'
+            elif self.tick_count - pos['entry_tick'] >= self.max_hold_ticks:
+                exit_reason = 'TIMEOUT'
                 
-            # C. Mean Reversion (Take Profit)
-            elif stats and stats['z'] >= self.take_profit_z:
-                action = 'SELL'
-                reason = 'LR_REVERT'
-                
-            if action:
+            if exit_reason:
                 amount = pos['amount']
                 del self.positions[symbol]
                 return {
-                    'side': 'SELL',
-                    'symbol': symbol,
-                    'amount': amount,
-                    'reason': [reason]
+                    'side': 'SELL', 
+                    'symbol': symbol, 
+                    'amount': amount, 
+                    'reason': [exit_reason]
                 }
 
-        # --- 3. Entry Management ---
+        # 3. Check for New Entries
         if len(self.positions) >= self.max_positions:
             return None
-            
-        best_symbol = None
-        best_z = 0.0 # Logic seeks lowest Z, so start high or check None
+
+        # Select Candidates based on Liquidity
+        candidates = []
+        for s, data in prices.items():
+            if data['priceUsd'] <= 0: continue
+            if data['liquidity'] >= self.min_liquidity and data.get('volume24h', 0) >= self.min_volume_24h:
+                candidates.append(s)
+        
+        # Sort by liquidity descending (Trade the most stable assets first)
+        candidates.sort(key=lambda s: prices[s]['liquidity'], reverse=True)
         
         for symbol in candidates:
+            # Skip if already in position
             if symbol in self.positions:
                 continue
+                
+            price = prices[symbol]['priceUsd']
             
-            # Filter: 24h Change (Avoid excessive momentum)
-            pct_change = prices[symbol].get('priceChange24h', 0) / 100.0
-            if pct_change < self.max_24h_drop_pct:
+            # Update History
+            if symbol not in self.history:
+                self.history[symbol] = deque(maxlen=self.window_size)
+            self.history[symbol].append(price)
+            
+            # Need full window for regression
+            if len(self.history[symbol]) < self.window_size:
                 continue
 
-            stats = self.get_stats(self.history[symbol])
-            if not stats:
-                continue
-                
-            z = stats['z']
-
-            # --- STRICT FILTERS ---
+            # --- OLS Regression ---
+            y = list(self.history[symbol])
+            y_mean = sum(y) / self.window_size
             
-            # 1. Slope Check
-            if stats['slope_pct'] < self.min_slope_pct:
+            # Calculate Slope and Intercept
+            covariance = sum((self.x[i] - self.x_mean) * (y[i] - y_mean) for i in range(self.window_size))
+            slope = covariance / self.x_var_sum
+            intercept = y_mean - slope * self.x_mean
+            
+            # Calculate Residuals (SSE)
+            sse = sum((y[i] - (slope * self.x[i] + intercept)) ** 2 for i in range(self.window_size))
+            
+            if sse < 1e-15: continue # Ignore flat lines
+            
+            # Standard Error of Estimate (Sigma)
+            sigma = math.sqrt(sse / (self.window_size - 2))
+            
+            # Check 1: Regression Quality (Fix for LR_RESIDUAL)
+            # If the points don't fit the line well, standard deviation is meaningless.
+            fit_rmse = sigma / price
+            if fit_rmse > self.max_fit_rmse:
+                continue
+            
+            # Check 2: Z-Score Band (Fix for Z:-3.93)
+            # Expected price is the regression value at the current tick (last index)
+            expected_price = slope * (self.window_size - 1) + intercept
+            z_score = (price - expected_price) / sigma
+            
+            if not (self.z_entry_min <= z_score <= self.z_entry_max):
                 continue
                 
-            # 2. RSI Check
-            if stats['rsi'] > self.rsi_limit:
+            # Check 3: Trend Slope (Don't buy steep downtrends)
+            norm_slope = slope / price
+            if norm_slope < self.min_trend_slope:
                 continue
                 
-            # 3. Z-Score Window (Avoid Penalty Zone)
-            if z > self.z_entry: 
-                continue # Not deep enough
-            if z < self.z_floor: 
-                continue # Too deep (Toxic/Crash)
-                
-            # 4. Micro-Confirmation (Avoid Falling Knife)
-            # Price must be stable or ticking up relative to previous
-            prev_price = self.history[symbol][-2]
-            if stats['price'] < prev_price:
+            # Check 4: RSI Confirmation
+            rsi = self._calculate_rsi(self.history[symbol])
+            if rsi > self.rsi_entry:
                 continue
-                
-            # Prioritize the deepest safe dip
-            if best_symbol is None or z < best_z:
-                best_z = z
-                best_symbol = symbol
-        
-        if best_symbol:
-            price = prices[best_symbol]['priceUsd']
+
+            # Execute Trade
             amount = self.trade_size_usd / price
-            
-            self.positions[best_symbol] = {
+            self.positions[symbol] = {
                 'entry_price': price,
                 'entry_tick': self.tick_count,
                 'amount': amount
             }
             
             return {
-                'side': 'BUY',
-                'symbol': best_symbol,
-                'amount': amount,
-                'reason': ['LR_DIP', f'Z:{best_z:.2f}']
+                'side': 'BUY', 
+                'symbol': symbol, 
+                'amount': amount, 
+                'reason': ['OLS_FIT', f'Z:{z_score:.2f}']
             }
             
         return None

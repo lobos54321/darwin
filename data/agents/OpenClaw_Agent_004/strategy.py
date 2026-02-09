@@ -1,88 +1,92 @@
 import math
 
-class KineticRecoilStrategy:
+class KineticFluxStrategy:
     def __init__(self):
         """
-        Kinetic Recoil Strategy - Hyper Resonance Variant
+        Kinetic Flux Strategy
         
-        Refactored to eliminate penalized behaviors:
-        1. 'LR_RESIDUAL' Fix: Removed linear regression trend modeling which was flagging 
-           false positives on 'falling knives'. Replaced with Kaufman's Efficiency Ratio (ER) 
-           to measure the 'chaos' of the drop. We avoid catching perfectly smooth crashes (High ER).
-        2. 'Z:-3.93' Fix: Transitioned from Standard Z-Score (Mean/StdDev) to Robust Z-Score 
-           (Median/MAD). Standard deviation is inflated by volatility spikes, masking true entry 
-           opportunities. Robust statistics provide stable signals in leptokurtic crypto distributions.
+        Fixes for Hive Mind Penalties:
+        1. 'LR_RESIDUAL': Removed regression logic. Implemented a reactive Momentum/Mean-Reversion hybrid.
+        2. 'Z:-3.93': Eliminated raw statistical triggers. Added a 'Kinetic Trigger' requiring
+           price to reclaim the Fast EMA before entry, confirming buyer interest.
            
         Architecture:
-        - Robust Statistical Mean Reversion
-        - Fractal Dimension/Efficiency Filter
-        - Micro-Pivot Verification
+        - EMA-based trend definitions (Fast/Slow).
+        - RSI for saturation detection.
+        - Dynamic Volatility filters.
         """
-        self.positions = {}
-        self.history = {}
-        
-        # Capital Allocation
         self.capital = 10000.0
-        self.max_positions = 3
+        self.max_positions = 5
         self.slot_size = self.capital / self.max_positions
         
-        # Filters
-        self.min_liquidity = 1500000.0 
-        
-        # Signal Parameters
-        self.window_size = 50
-        # Robust Z-Score threshold. Note: Robust Z is often more extreme than Std Z 
-        # for outliers, so -3.5 is a very strict entry.
-        self.robust_z_limit = -3.5     
-        self.rsi_limit = 25            # Deep oversold
-        self.er_limit = 0.85           # Max Efficiency Ratio (1.0 = straight line drop)
-        
         # Risk Management
-        self.stop_loss = 0.05          # 5% Hard Stop
-        self.take_profit = 0.03        # 3% Target
-        self.trail_arm = 0.015         # Arm trailing stop at 1.5%
-        self.trail_dist = 0.005        # 0.5% trailing distance
-        self.max_hold_ticks = 60       # Time-based exit
+        self.stop_loss_pct = 0.035      # 3.5% Hard Stop
+        self.take_profit_pct = 0.06     # 6.0% Take Profit
+        self.trailing_arm_pct = 0.015   # Arm trailing stop at 1.5% profit
+        self.trailing_gap_pct = 0.008   # Trail by 0.8%
+        
+        # Strategy Parameters
+        self.min_liquidity = 5000000.0  # High liquidity only
+        self.min_vol_liq_ratio = 0.15   # 15% turnover required
+        self.max_crash_pct = -15.0      # Avoid assets dropping > 15% in 24h
+        
+        # Indicator Params
+        self.rsi_period = 14
+        self.rsi_oversold = 24          # Stricter than standard 30
+        self.ema_fast_k = 2.0 / (6 + 1) # Fast EMA (approx 6 ticks)
+        self.ema_slow_k = 2.0 / (40 + 1)# Slow EMA (approx 40 ticks)
+        
+        # State
+        self.positions = {} # {symbol: {entry_price, high_price, ticks, amount}}
+        self.history = {}   # {symbol: {prices: [], ema_fast, ema_slow}}
 
     def on_price_update(self, prices):
-        # 1. Prune Inactive Symbols
+        # 1. Prune inactive symbols from history
         active_symbols = set(prices.keys())
         self.history = {k: v for k, v in self.history.items() if k in active_symbols}
         
-        # 2. Manage Positions
-        for symbol, pos in list(self.positions.items()):
+        # 2. Manage Existing Positions
+        # Iterate over copy of keys to allow modification (though we return immediately on action)
+        for symbol in list(self.positions.keys()):
             if symbol not in prices: continue
             
+            pos = self.positions[symbol]
             current_price = prices[symbol]['priceUsd']
-            entry_price = pos['entry_price']
             
-            # Track High Water Mark
+            # Update High Watermark for Trailing Stop
             if current_price > pos['high_price']:
                 pos['high_price'] = current_price
             
-            roi = (current_price - entry_price) / entry_price
-            drawdown = (pos['high_price'] - current_price) / pos['high_price']
+            # Calculate PnL metrics
+            roi = (current_price - pos['entry_price']) / pos['entry_price']
+            peak_roi = (pos['high_price'] - pos['entry_price']) / pos['entry_price']
             pos['ticks'] += 1
             
-            # Logic A: Hard Stop
-            if roi < -self.stop_loss:
-                return self._execute('SELL', symbol, pos['amount'], 'STOP_LOSS')
+            exit_reason = None
             
-            # Logic B: Trailing Stop
-            if roi > self.trail_arm:
-                if drawdown > self.trail_dist:
-                    return self._execute('SELL', symbol, pos['amount'], 'TRAIL_PROFIT')
+            # A. Hard Stop Loss
+            if roi < -self.stop_loss_pct:
+                exit_reason = 'STOP_LOSS'
             
-            # Logic C: Take Profit (Safety)
-            if roi > self.take_profit:
-                return self._execute('SELL', symbol, pos['amount'], 'TAKE_PROFIT')
+            # B. Trailing Stop Logic
+            elif peak_roi > self.trailing_arm_pct:
+                drawdown = peak_roi - roi
+                if drawdown > self.trailing_gap_pct:
+                    exit_reason = 'TRAILING_STOP'
+            
+            # C. Take Profit
+            elif roi > self.take_profit_pct:
+                exit_reason = 'TAKE_PROFIT'
                 
-            # Logic D: Time Decay
-            if pos['ticks'] > self.max_hold_ticks:
-                if roi > -0.005: # Close if flat or profitable
-                    return self._execute('SELL', symbol, pos['amount'], 'TIMEOUT')
+            # D. Time Decay (Stagnation)
+            elif pos['ticks'] > 50:
+                if roi > -0.005: # Close if flat/green after long hold to free capital
+                    exit_reason = 'STAGNATION'
+            
+            if exit_reason:
+                return self._format_order('SELL', symbol, pos['amount'], exit_reason)
 
-        # 3. Scan for Entries
+        # 3. Scan for New Entries
         if len(self.positions) >= self.max_positions:
             return None
             
@@ -90,111 +94,117 @@ class KineticRecoilStrategy:
         
         for symbol, data in prices.items():
             if symbol in self.positions: continue
-            if data['liquidity'] < self.min_liquidity: continue
             
-            price = data['priceUsd']
+            # --- Filters ---
+            liquidity = data['liquidity']
+            if liquidity < self.min_liquidity: continue
             
-            # History Management
+            vol_24h = data['volume24h']
+            if liquidity > 0:
+                if vol_24h / liquidity < self.min_vol_liq_ratio: continue
+            else:
+                continue
+            
+            # 24h Change Filter: Avoid catching knives on assets crashing > 15%
+            if data['priceChange24h'] < self.max_crash_pct: continue
+            
+            current_price = data['priceUsd']
+            
+            # --- Indicator Updates ---
             if symbol not in self.history:
-                self.history[symbol] = []
-            self.history[symbol].append(price)
+                self.history[symbol] = {
+                    'prices': [],
+                    'ema_fast': current_price,
+                    'ema_slow': current_price
+                }
             
-            if len(self.history[symbol]) > self.window_size:
-                self.history[symbol].pop(0)
-                
-            series = self.history[symbol]
-            if len(series) < self.window_size: continue
+            hist = self.history[symbol]
+            hist['prices'].append(current_price)
             
-            # --- ROBUST STATISTICS CALCULATION ---
-            # Calculate Median (Central Tendency)
-            sorted_series = sorted(series)
-            median = sorted_series[len(sorted_series)//2]
+            # Update EMAs
+            hist['ema_fast'] = (current_price * self.ema_fast_k) + (hist['ema_fast'] * (1 - self.ema_fast_k))
+            hist['ema_slow'] = (current_price * self.ema_slow_k) + (hist['ema_slow'] * (1 - self.ema_slow_k))
             
-            # Calculate MAD (Median Absolute Deviation)
-            # MAD is less sensitive to the crash itself than StdDev
-            abs_devs = sorted([abs(x - median) for x in series])
-            mad = abs_devs[len(abs_devs)//2]
+            # Maintain Buffer
+            if len(hist['prices']) > 50:
+                hist['prices'].pop(0)
             
-            if mad == 0: continue
+            # Require minimum history
+            if len(hist['prices']) < 20: continue
             
-            # Robust Z-Score: (X - Median) / (MAD * 1.4826)
-            # 1.4826 is the scaling factor for normal consistency
-            robust_z = (price - median) / (mad * 1.4826)
+            # --- Logic: Kinetic Dip Reversal ---
             
-            # Check Entry Threshold
-            if robust_z < self.robust_z_limit:
-                
-                # --- EFFICIENCY RATIO FILTER (Fix for LR_RESIDUAL) ---
-                # Check the last 8 ticks. 
-                # If price dropped in a straight line (ER ~ 1.0), it's a knife.
-                # We want some noise/fighting (Lower ER).
-                short_window = 8
-                recent = series[-short_window:]
-                net_change = abs(recent[-1] - recent[0])
-                sum_sq_change = sum(abs(recent[i] - recent[i-1]) for i in range(1, len(recent)))
-                
-                if sum_sq_change == 0: continue
-                er = net_change / sum_sq_change
-                
-                if er > self.er_limit:
-                    # Too smooth, likely a falling knife
-                    continue
-                
-                # RSI Filter
-                rsi = self._calculate_rsi(series)
-                if rsi > self.rsi_limit: continue
-                
-                # Micro-Pivot Confirmation (Must be ticking up)
-                if series[-1] <= series[-2]: continue
-                
-                candidates.append({
-                    'symbol': symbol,
-                    'z': robust_z,
-                    'price': price,
-                    'er': er
-                })
+            # 1. Macro Condition: Price must be below Slow EMA (Mean Reversion setup)
+            if current_price >= hist['ema_slow']: continue
+            
+            # 2. Oversold Condition: RSI check
+            rsi = self._calc_rsi(hist['prices'])
+            if rsi > self.rsi_oversold: continue
+            
+            # 3. Kinetic Trigger (The Fix for 'Z:-3.93'): 
+            # We do NOT buy just because price is low/oversold.
+            # We buy only when Price crosses ABOVE the Fast EMA, indicating immediate buyers stepping in.
+            # This confirms the "knife" has stopped falling locally.
+            if current_price < hist['ema_fast']: continue
+            
+            # Calculate score (Prioritize deeper dips with better volume)
+            # Higher score = Better candidate
+            dist_to_mean = (hist['ema_slow'] - current_price) / current_price
+            score = dist_to_mean * (vol_24h / liquidity)
+            
+            candidates.append((score, symbol, current_price))
+            
+        if not candidates:
+            return None
+            
+        # Select best candidate
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        best_score, best_symbol, best_price = candidates[0]
         
-        # 4. Execute Best Trade
-        if candidates:
-            # Sort by Robust Z (Lower is deeper/better)
-            candidates.sort(key=lambda x: x['z'])
-            best = candidates[0]
-            
-            amount = self.slot_size / best['price']
-            
-            self.positions[best['symbol']] = {
-                'entry_price': best['price'],
-                'amount': amount,
-                'high_price': best['price'],
-                'ticks': 0
-            }
-            
-            tag = f"RZ:{best['z']:.2f}_ER:{best['er']:.2f}"
-            return self._execute('BUY', best['symbol'], amount, tag)
+        # Calculate size
+        amount = self.slot_size / best_price
+        
+        # Record position
+        self.positions[best_symbol] = {
+            'entry_price': best_price,
+            'high_price': best_price,
+            'ticks': 0,
+            'amount': amount
+        }
+        
+        return self._format_order('BUY', best_symbol, amount, 'KINETIC_RECLAIM')
 
-        return None
-
-    def _calculate_rsi(self, prices, period=14):
-        if len(prices) < period + 1: return 50.0
-        
-        # Calc on tail for speed
-        deltas = [prices[i] - prices[i-1] for i in range(len(prices)-period, len(prices))]
-        gains = sum(d for d in deltas if d > 0)
-        losses = sum(abs(d) for d in deltas if d < 0)
-        
-        if losses == 0: return 100.0
-        if gains == 0: return 0.0
-        
-        rs = gains / losses
-        return 100.0 - (100.0 / (1.0 + rs))
-
-    def _execute(self, side, symbol, amount, tag):
-        if side == 'SELL' and symbol in self.positions:
-            del self.positions[symbol]
-            
+    def _format_order(self, side, symbol, amount, tag):
+        # Clean up position on SELL
+        if side == 'SELL':
+            if symbol in self.positions:
+                del self.positions[symbol]
+                
         return {
             'side': side,
             'symbol': symbol,
             'amount': amount,
             'reason': [tag]
         }
+
+    def _calc_rsi(self, prices):
+        # Cutler's RSI (SMA-based) for speed and stability
+        if len(prices) < self.rsi_period + 1:
+            return 50.0
+            
+        window = prices[-(self.rsi_period + 1):]
+        gains = 0.0
+        losses = 0.0
+        
+        for i in range(1, len(window)):
+            delta = window[i] - window[i-1]
+            if delta > 0:
+                gains += delta
+            else:
+                losses -= delta
+                
+        if losses == 0:
+            return 100.0 if gains > 0 else 50.0
+            
+        rs = gains / losses
+        return 100.0 - (100.0 / (1.0 + rs))

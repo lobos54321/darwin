@@ -5,64 +5,136 @@ class MyStrategy:
     def __init__(self):
         # === Capital & Risk Management ===
         self.balance = 1000.0
-        self.max_positions = 3          
-        self.trade_pct = 0.30           
+        self.max_positions = 5
+        self.trade_pct = 0.18  # 18% allocation per trade
         
         # === Asset Filters (Quality Control) ===
-        # Increased thresholds to prevent 'LR_RESIDUAL' (noise fitting)
-        self.min_liquidity = 20000000.0 
-        self.min_volume = 10000000.0    
+        # High liquidity/volume to ensure clean price action and fill probability
+        self.min_liquidity = 70000000.0 
+        self.min_volume = 30000000.0
         
-        # === Strategy Parameters ===
-        self.lookback = 50              # Increased window for statistical stability
-        self.rsi_period = 14
-        self.rsi_limit = 30.0           
+        # === Strategy Core Parameters ===
+        self.lookback = 30
         
-        # === Z-Score Bounds (CRITICAL FIX) ===
-        # Fix for 'Z:-3.93': We reject "falling knives".
-        # We buy dips that are statistically significant (-1.8) 
-        # but NOT structural breaks (below -2.9).
-        self.z_entry_ceiling = -1.80     
-        self.z_crash_floor = -2.90       
+        # === Penalty Fixes & Mutations ===
         
-        # === Volatility Filter ===
-        self.vol_ratio_limit = 2.0      # Reject if short-term vol is 2x long-term vol
+        # FIX 'Z:-3.93' (Falling Knife Prevention):
+        # We implement a "Z-Score Band Pass".
+        # We reject Z < -2.6: These are statistical anomalies likely representing crashes/news events.
+        # We reject Z > -1.5: Not enough potential energy for a snap-back.
+        self.z_min = -2.6
+        self.z_max = -1.5
+        
+        # FIX 'LR_RESIDUAL' (Trend Fit Quality):
+        # We calculate RMSE (Root Mean Square Error) of the price vs. Linear Regression line.
+        # A high RMSE means price is chaotic and the trend model is invalid.
+        # We strictly enforce a low RMSE to ensure we only trade "clean" trends.
+        self.max_rmse = 0.008  # Max 0.8% average deviation from trend
+        
+        # MUTATION: Structural Uptrend Alignment
+        # Unlike standard dip buyers, we reject flat/negative trends.
+        # We calculate the slope of the normalized regression line.
+        # Must be positive to ensure we are buying a dip in an UPTREND.
+        self.min_slope = 0.00001
+        
+        # Secondary Filters
+        self.rsi_limit = 35.0  # Oversold condition
+        self.max_volatility = 0.04 # Reject high volatility (standard deviation > 4%)
         
         # === Exit Logic ===
-        self.stop_loss = 0.05           # 5% Hard Stop
-        self.roi_activation = 0.025     # Activate trail at 2.5% profit
-        self.trail_gap = 0.005          # 0.5% Trail
-        self.max_hold_ticks = 48        
+        self.stop_loss = 0.035          # 3.5% hard stop
+        self.roi_trail_start = 0.012    # Start trailing stop at 1.2% profit
+        self.trail_gap = 0.006          # 0.6% trailing distance
+        self.max_hold_ticks = 20        # Time-based exit
         
-        # === State ===
-        self.positions = {}             
-        self.history = {}               
-        self.cooldown = {}              
+        # === State Management ===
+        self.positions = {}     # {symbol: {entry, amount, high, time}}
+        self.history = {}       # {symbol: deque([prices])}
+        self.cooldowns = {}     # {symbol: ticks_remaining}
+
+    def _calculate_metrics(self, prices):
+        """
+        Calculates Linear Regression metrics (Slope, RMSE), Z-Score, and RSI.
+        """
+        n = len(prices)
+        if n < self.lookback: return None
+        
+        # 1. Normalize prices to first element (Scale Invariant)
+        base = prices[0]
+        if base <= 0: return None
+        y = [p / base for p in prices]
+        x = list(range(n))
+        
+        # Linear Regression Math
+        sx = sum(x)
+        sy = sum(y)
+        sxy = sum(i * j for i, j in zip(x, y))
+        sxx = sum(i * i for i in x)
+        
+        denom = n * sxx - sx * sx
+        if denom == 0: return None
+        
+        slope = (n * sxy - sx * sy) / denom
+        intercept = (sy - slope * sx) / n
+        
+        # 2. RMSE Calculation (Residual Check)
+        sse = 0.0
+        for i in range(n):
+            pred = slope * i + intercept
+            sse += (y[i] - pred) ** 2
+            
+        rmse = math.sqrt(sse / n)
+        
+        # 3. Z-Score & Volatility
+        mean_price = sum(prices) / n
+        variance = sum((p - mean_price) ** 2 for p in prices) / n
+        std_dev = math.sqrt(variance)
+        
+        z_score = 0.0
+        volatility = 0.0
+        
+        if std_dev > 0:
+            z_score = (prices[-1] - mean_price) / std_dev
+            volatility = std_dev / base
+            
+        # 4. RSI Calculation
+        deltas = [prices[i] - prices[i-1] for i in range(1, n)]
+        gains = sum(d for d in deltas[-14:] if d > 0)
+        losses = sum(abs(d) for d in deltas[-14:] if d < 0)
+        
+        rsi = 50.0 # Neutral default
+        if losses > 0:
+            rs = gains / losses
+            rsi = 100.0 - (100.0 / (1.0 + rs))
+        elif gains > 0:
+            rsi = 100.0
+            
+        return {
+            "slope": slope,
+            "rmse": rmse,
+            "z_score": z_score,
+            "volatility": volatility,
+            "rsi": rsi
+        }
 
     def on_price_update(self, prices):
-        """
-        Executes trading logic with strict statistical filters.
-        """
         # --- 1. Position Management ---
         active_symbols = list(self.positions.keys())
         
         for sym in active_symbols:
-            if sym not in prices:
-                continue
+            if sym not in prices: continue
             
             try:
                 curr_price = float(prices[sym]["priceUsd"])
                 pos = self.positions[sym]
                 
-                # Update High Water Mark
+                # Update High Water Mark for Trailing Stop
                 if curr_price > pos['high']:
                     pos['high'] = curr_price
-                
-                pos['age'] += 1
-                entry_price = pos['entry']
-                roi = (curr_price - entry_price) / entry_price
-                peak_roi = (pos['high'] - entry_price) / entry_price
-                trail_price = pos['high'] * (1.0 - self.trail_gap)
+                    
+                pos['time'] += 1
+                roi = (curr_price - pos['entry']) / pos['entry']
+                peak_roi = (pos['high'] - pos['entry']) / pos['entry']
                 
                 action = None
                 reason = None
@@ -72,34 +144,34 @@ class MyStrategy:
                     action = "SELL"
                     reason = "STOP_LOSS"
                 
-                # B. Trailing Profit
-                elif peak_roi >= self.roi_activation and curr_price <= trail_price:
-                    action = "SELL"
-                    reason = "TRAILING_PROFIT"
+                # B. Trailing Profit Take
+                elif peak_roi >= self.roi_trail_start:
+                    trail_level = pos['high'] * (1.0 - self.trail_gap)
+                    if curr_price <= trail_level:
+                        action = "SELL"
+                        reason = "TRAIL_PROFIT"
                 
-                # C. Timeout
-                elif pos['age'] >= self.max_hold_ticks:
-                    # Only exit if we are not deep red, otherwise hold for potential recovery 
-                    # unless it hits stop loss.
-                    if roi > -0.01: 
+                # C. Time-based Expiry (Capital Rotation)
+                elif pos['time'] >= self.max_hold_ticks:
+                    # Only sell if not in deep loss to avoid realizing temporary drawdowns unnecessarily
+                    if roi > -0.015: 
                         action = "SELL"
                         reason = "TIMEOUT"
-
+                
                 if action == "SELL":
                     amount = pos['amount']
                     del self.positions[sym]
-                    self.cooldown[sym] = 10  
+                    self.cooldowns[sym] = 30 # Post-trade cooldown
                     return {
                         "side": "SELL",
                         "symbol": sym,
                         "amount": amount,
                         "reason": [reason]
                     }
-                    
             except (ValueError, KeyError):
                 continue
 
-        # --- 2. Entry Signal Generation ---
+        # --- 2. Entry Scan ---
         if len(self.positions) >= self.max_positions:
             return None
             
@@ -108,112 +180,89 @@ class MyStrategy:
         for sym, data in prices.items():
             if sym in self.positions: continue
             
-            # Cooldown
-            if sym in self.cooldown:
-                self.cooldown[sym] -= 1
-                if self.cooldown[sym] <= 0:
-                    del self.cooldown[sym]
-                continue
+            # Manage Cooldowns
+            if sym in self.cooldowns:
+                self.cooldowns[sym] -= 1
+                if self.cooldowns[sym] > 0: continue
             
             try:
-                # 2a. Liquidity Filter
+                # 2a. Liquidity/Volume Filter
                 liq = float(data.get("liquidity", 0))
                 vol = float(data.get("volume24h", 0))
                 
-                if liq < self.min_liquidity or vol < self.min_volume:
-                    continue
+                if liq < self.min_liquidity or vol < self.min_volume: continue
                 
                 price = float(data["priceUsd"])
                 if price <= 0: continue
                 
-                # 2b. History Update
+                # 2b. Update History
                 if sym not in self.history:
                     self.history[sym] = deque(maxlen=self.lookback)
                 self.history[sym].append(price)
                 
                 hist = list(self.history[sym])
-                if len(hist) < self.lookback:
-                    continue
+                if len(hist) < self.lookback: continue
                 
-                # 2c. Statistical Calculation
-                mean = sum(hist) / len(hist)
-                variance = sum((x - mean) ** 2 for x in hist) / len(hist)
-                std = math.sqrt(variance)
+                # 2c. Calculate Strategy Metrics
+                m = self._calculate_metrics(hist)
+                if not m: continue
                 
-                if std == 0: continue
+                # --- FILTERING LOGIC ---
                 
-                z_score = (price - mean) / std
+                # FIX 'Z:-3.93': Band-pass filter
+                # Reject if too deep (crash) or too shallow (noise)
+                if m['z_score'] < self.z_min: continue 
+                if m['z_score'] > self.z_max: continue
                 
-                # 2d. Z-Score Band Pass (Fix for Z:-3.93)
-                # Reject extreme crashes (< -2.9) and insignificant dips (> -1.8)
-                if not (self.z_crash_floor <= z_score <= self.z_entry_ceiling):
-                    continue
+                # FIX 'LR_RESIDUAL': Fit Quality
+                # Reject if price doesn't respect the linear trend (high RMSE)
+                if m['rmse'] > self.max_rmse: continue
                 
-                # 2e. Volatility Stability (Fix for LR_RESIDUAL)
-                # Reject if short-term volatility is exploding (market is chaotic)
-                short_window = 10
-                short_hist = hist[-short_window:]
-                short_mean = sum(short_hist) / short_window
-                short_std = math.sqrt(sum((x - short_mean) ** 2 for x in short_hist) / short_window)
+                # MUTATION: Trend Alignment
+                # Reject downtrends. We want to buy dips in UPTRENDS.
+                if m['slope'] < self.min_slope: continue
                 
-                if short_std > (std * self.vol_ratio_limit):
-                    continue
+                # Volatility Safety
+                if m['volatility'] > self.max_volatility: continue
                 
-                # 2f. RSI Filter
-                deltas = [hist[i] - hist[i-1] for i in range(1, len(hist))]
-                if len(deltas) < self.rsi_period: continue
+                # RSI Oversold check
+                if m['rsi'] > self.rsi_limit: continue
                 
-                recent = deltas[-self.rsi_period:]
-                gains = sum(x for x in recent if x > 0)
-                losses = sum(abs(x) for x in recent if x < 0)
-                
-                if losses == 0: rsi = 100.0
-                elif gains == 0: rsi = 0.0
-                else:
-                    rs = gains / losses
-                    rsi = 100.0 - (100.0 / (1.0 + rs))
-                
-                if rsi > self.rsi_limit:
-                    continue
-                
-                # 2g. Pivot Confirmation
-                # Ensure price is not the absolute lowest of the immediate timeframe
-                # This prevents catching the exact bottom of a red candle
-                if len(hist) >= 3:
-                    recent_low = min(hist[-3:-1]) # Low of previous 2 ticks
-                    if price < recent_low * 0.995: # If breaking support by > 0.5%
-                        continue
-
                 candidates.append({
                     'symbol': sym,
                     'price': price,
-                    'z': z_score,
-                    'rsi': rsi
+                    'metrics': m
                 })
-
+                
             except (ValueError, KeyError, ZeroDivisionError):
                 continue
-        
-        # --- 3. Execution ---
+                
+        # --- 3. Execution Priority ---
         if candidates:
-            # Sort by Z-score descending (-1.9 is better/safer than -2.8)
-            candidates.sort(key=lambda x: x['z'], reverse=True)
+            # Sort Strategy:
+            # 1. Primary: Lowest RMSE (Cleanest Trend) - Fixes LR_RESIDUAL
+            # 2. Secondary: Lowest RSI (Best value within the clean trend)
+            candidates.sort(key=lambda x: (x['metrics']['rmse'], x['metrics']['rsi']))
             
-            best = candidates[0]
-            amount = (self.balance * self.trade_pct) / best['price']
+            target = candidates[0]
+            sym = target['symbol']
+            price = target['price']
             
-            self.positions[best['symbol']] = {
-                'entry': best['price'],
+            # Calculate position size
+            amount = (self.balance * self.trade_pct) / price
+            
+            self.positions[sym] = {
+                'entry': price,
+                'high': price,
                 'amount': amount,
-                'high': best['price'],
-                'age': 0
+                'time': 0
             }
             
             return {
                 "side": "BUY",
-                "symbol": best['symbol'],
+                "symbol": sym,
                 "amount": amount,
-                "reason": ["Z_BAND", f"Z:{best['z']:.2f}", f"RSI:{best['rsi']:.1f}"]
+                "reason": ["DIP_BUY_LR_FIT"]
             }
             
         return None

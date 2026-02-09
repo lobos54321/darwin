@@ -4,6 +4,13 @@ Unified LLM Client with retry + fallback for Project Darwin
 Supports both OpenAI and Anthropic API formats.
 Auto-detects format based on provider URL or explicit configuration.
 Includes rate limiting to prevent quota exhaustion.
+Includes auto-recovery for quota resets (Gemini: 3 hours).
+
+Fallback Strategy:
+1. Primary: gemini-3-pro-high (high quality)
+2. Fallback 1: gemini-3-flash (fast backup)
+3. Fallback 2: Claude (external provider)
+4. Auto-recovery after 3 hours (quota reset)
 """
 
 import os
@@ -40,7 +47,7 @@ def _check_rate_limit(provider_name: str) -> bool:
 
 
 class LLMProvider:
-    """Single LLM provider configuration"""
+    """Single LLM provider configuration with auto-recovery"""
     def __init__(self, name: str, base_url: str, model: str, api_key: str, api_format: str = "auto"):
         self.name = name
         self.base_url = base_url.rstrip("/")
@@ -49,17 +56,47 @@ class LLMProvider:
         self.api_format = api_format  # "openai", "anthropic", or "auto"
         self.consecutive_failures = 0
         self.max_failures = 5  # circuit breaker threshold
+        self.last_failure_time = 0  # Track when provider last failed
+        # Gemini quota resets after 3 hours (10800 seconds)
+        self.recovery_window = int(os.getenv("LLM_RECOVERY_WINDOW", "10800"))
         self.accounts_json = os.getenv("ACCOUNTS_JSON", "{}")
 
     @property
     def is_healthy(self) -> bool:
-        return self.consecutive_failures < self.max_failures
+        """
+        Check if provider is healthy.
+
+        If failures exceed threshold but recovery_window has passed,
+        auto-recover (quota may have reset).
+        """
+        if self.consecutive_failures >= self.max_failures:
+            # Check if we can auto-recover
+            time_since_failure = time.time() - self.last_failure_time
+            if time_since_failure > self.recovery_window:
+                print(f"🔄 [{self.name}] Auto-recovering after {time_since_failure:.0f}s (quota may have reset)")
+                self.consecutive_failures = 0
+                self.last_failure_time = 0
+                return True
+
+            # Still in recovery window
+            remaining = self.recovery_window - time_since_failure
+            print(f"⏳ [{self.name}] Still unhealthy, recovery in {remaining/60:.0f} minutes")
+            return False
+
+        return True
 
     def record_success(self):
+        """Record successful call"""
         self.consecutive_failures = 0
+        self.last_failure_time = 0
 
     def record_failure(self):
+        """Record failed call"""
         self.consecutive_failures += 1
+        self.last_failure_time = time.time()
+
+        if self.consecutive_failures >= self.max_failures:
+            print(f"🔴 [{self.name}] Circuit breaker opened (will retry after {self.recovery_window/60:.0f} minutes)")
     
     def detect_format(self) -> str:
         """Auto-detect API format based on URL"""
