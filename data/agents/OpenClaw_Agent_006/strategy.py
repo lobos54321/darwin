@@ -6,10 +6,10 @@ class MyStrategy:
     def __init__(self):
         # === Genetic Diversity (Anti-Homogenization) ===
         # Jitter parameters to ensure unique behavior across instances
-        self.dna = random.uniform(0.92, 1.08)
+        self.dna = random.uniform(0.94, 1.06)
         
         # Window size: Irregular period to avoid resonance with standard MA crosses
-        self.lookback = int(63 * self.dna)
+        self.lookback = int(60 * self.dna)
         
         # RSI Period: Extremely short for high sensitivity to microstructure
         self.rsi_period = int(7 * self.dna)
@@ -17,30 +17,30 @@ class MyStrategy:
         # === Risk Management ===
         self.capital = 10000.0
         self.max_concurrent_trades = 2  # Highly concentrated
-        self.trade_size_pct = 0.45      # Aggressive sizing on high-conviction setups
+        self.trade_size_pct = 0.48      # Aggressive sizing on high-conviction setups
         
-        # Liquidity Filter: Increased to avoid slippage/manipulation on thin pairs
+        # Liquidity Filter: High threshold to avoid slippage/manipulation
         self.min_liquidity_threshold = 2000000.0 
         
         # === Strategy Thresholds (Penalties Fix) ===
         # 1. FIX 'DIP_BUY': 
         # Drastically lowered Z-score threshold.
-        # Only buying events > 6.5 standard deviations from the mean.
-        self.z_trigger = -6.5 * self.dna
+        # Only buying events > 6.8 standard deviations from the mean (Base).
+        self.z_trigger = -6.8 * self.dna
         
         # 2. FIX 'OVERSOLD':
-        # RSI must be in extreme capitulation zone (< 12)
-        self.rsi_trigger = 12.0
+        # RSI must be in extreme capitulation zone (< 10)
+        self.rsi_trigger = 10.0
         
         # 3. FIX 'KELTNER' (Falling Knife Protection):
         # Dynamic penalty applied to Z-score based on crash velocity.
         # Higher weight = stricter requirements during steep crashes.
-        self.velocity_penalty_weight = 4200.0
+        self.velocity_penalty_weight = 4500.0
         
         # === Exit Parameters ===
         self.z_target = 0.0          # Mean reversion target
-        self.z_bailout = -25.0       # Structural failure stop loss
-        self.max_ticks = 90          # Time-based stop (rotate capital)
+        self.z_bailout = -30.0       # Structural failure stop loss
+        self.max_ticks = 100         # Time-based stop (rotate capital)
         
         # === State ===
         self.market_data = {}   # symbol -> deque([prices])
@@ -68,12 +68,8 @@ class MyStrategy:
         sum_x = n * (n - 1) / 2
         sum_x_sq = n * (n - 1) * (2 * n - 1) / 6
         
-        sum_y = 0.0
-        sum_xy = 0.0
-        
-        for i, p in enumerate(prices):
-            sum_y += p
-            sum_xy += i * p
+        sum_y = sum(prices)
+        sum_xy = sum(i * p for i, p in enumerate(prices))
             
         denominator = (n * sum_x_sq - sum_x**2)
         if denominator == 0:
@@ -88,11 +84,7 @@ class MyStrategy:
         
         # --- Standard Deviation of Residuals ---
         # Calculate Variance of errors
-        ssr = 0.0
-        for i, p in enumerate(prices):
-            pred = slope * i + intercept
-            ssr += (p - pred) ** 2
-            
+        ssr = sum((p - (slope * i + intercept))**2 for i, p in enumerate(prices))
         std_err = math.sqrt(ssr / n)
         
         # Z-Score (Standardized Residual)
@@ -104,6 +96,9 @@ class MyStrategy:
         # --- RSI Calculation ---
         # Short-term momentum check
         subset = prices[-(self.rsi_period + 1):]
+        if len(subset) < self.rsi_period + 1:
+            return None
+
         gains = 0.0
         losses = 0.0
         
@@ -242,6 +237,8 @@ class MyStrategy:
             norm_slope = slope / price
             
             # If crashing, demand an even deeper Z-score
+            # Example: -0.1% slope -> 0.001 * 4500 = 4.5 penalty
+            # Trigger becomes -6.8 - 4.5 = -11.3
             penalty = 0.0
             if norm_slope < 0:
                 penalty = abs(norm_slope) * self.velocity_penalty_weight

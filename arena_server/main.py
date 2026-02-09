@@ -38,6 +38,7 @@ from tournament import TournamentManager
 from redis_state import redis_state
 from bot_agents import BotManager
 from baseline_manager import BaselineManager
+from baseline_to_skill_sync import create_sync_task
 
 # 配置日志
 logging.basicConfig(
@@ -233,6 +234,10 @@ async def lifespan(app: FastAPI):
 
     price_broadcast_task = None  # Agents fetch their own prices
 
+    # 🧬 Baseline to Skill Sync (每10分钟同步一次)
+    baseline_sync_task = create_sync_task(baseline_manager, interval_seconds=600)
+    logger.info("🔄 Baseline to Skill sync task started (every 10 minutes)")
+
     # 🤖 Spawn demo bots so dashboard is never empty
     await bot_manager.spawn_bots()
 
@@ -254,6 +259,7 @@ async def lifespan(app: FastAPI):
     futures_task.cancel()
     epoch_task.cancel()
     autosave_task.cancel()
+    baseline_sync_task.cancel()  # Cancel baseline sync task
     # price_broadcast_task is None (agents fetch their own prices)
     hive_task.cancel()
 
@@ -639,6 +645,15 @@ async def end_epoch():
 
         logger.info(f"🧬 Baseline updated to v{new_baseline['version']}")
         logger.info(f"   Performance: PnL={performance['avg_pnl']}%, WinRate={performance['win_rate']}%")
+
+        # 🔄 立即同步到SKILL.md
+        try:
+            from baseline_to_skill_sync import BaselineToSkillSync
+            syncer = BaselineToSkillSync(baseline_manager)
+            if syncer.sync_to_skill():
+                logger.info(f"✅ Synced baseline v{new_baseline['version']} to SKILL.md")
+        except Exception as sync_error:
+            logger.error(f"Failed to sync baseline to SKILL.md: {sync_error}")
 
     except Exception as e:
         logger.error(f"Failed to update baseline: {e}")

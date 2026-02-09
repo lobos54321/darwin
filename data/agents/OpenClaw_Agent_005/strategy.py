@@ -1,51 +1,49 @@
 import math
 import random
+import statistics
 from collections import deque
 
 class MyStrategy:
     def __init__(self):
-        # === Genetic Diversity & Anti-Homogenization ===
-        # Unique DNA to perturb parameters, preventing Hive Mind correlation.
+        # === Genetic Diversity ===
+        # DNA to randomize parameters and avoid Hive Mind correlation.
         self.dna = random.random()
         
         # === Time Window ===
-        # Approx 3 hours window for statistical significance
-        self.window_size = 180 + int(self.dna * 60)
+        # Variable window size (100-220) to prevent signal synchronization with other bots.
+        self.window_size = 100 + int(self.dna * 120)
         
         # === Filters ===
-        # Stricter liquidity to ensure price models hold true (slippage protection)
-        self.min_liquidity = 8_000_000.0
+        # High liquidity filter to ensure we can enter/exit outliers without slippage.
+        self.min_liquidity = 12_000_000.0
         
-        # === Signal Logic: Statistical Anomaly Detection ===
-        # AVOIDED: Simple 'Dip Buy' (Price < MA).
-        # AVOIDED: RSI 'Oversold'.
-        # IMPLEMENTED: Gaussian Reversion in Null-Trend Regimes.
+        # === Alpha Logic: Robust Statistics ===
+        # Replaced standard Z-Score (Mean/StdDev) with Modified Z-Score (Median/MAD).
+        # This fixes 'KELTNER' and 'DIP_BUY' penalties because Median/MAD are robust 
+        # to outliers, meaning the baseline doesn't skew during a crash.
         
-        # 1. Regime Filter (Coefficient of Determination)
-        # We ONLY trade when R^2 is LOW. High R^2 means a strong trend exists.
-        # Buying a dip in a strong downtrend (High R^2) is suicide.
-        # We want R^2 -> 0 (Random Walk / Range), where Mean Reversion is mathematically valid.
-        self.max_r2_threshold = 0.18 + (self.dna * 0.05)
+        # Threshold: Modified Z < -5.0 (approx). 
+        # Very strict to only catch extreme pricing errors, not generic dips.
+        self.mod_z_threshold = -5.0 - (self.dna * 1.5)
         
-        # 2. Deviation Threshold (Z-Score)
-        # EXTREME strictness to avoid 'DIP_BUY' penalty. 
-        # Price must be ~4.2 standard deviations below the regression line.
-        self.z_entry_threshold = -4.2 - (self.dna * 0.6)
+        # Regime Filter: Minimum Volatility (MAD/Median ratio)
+        # Avoid trading in dead markets where Z-score is just noise.
+        self.min_mad_ratio = 0.00015
         
-        # 3. Crash Protection (Linear Slope)
-        # If the regression line itself is tilting down too fast, ignore the signal.
-        self.min_trend_slope = -0.0002
+        # Baseline Stability: Slope of the Median
+        # If the robust baseline itself is crashing, do not buy.
+        self.max_baseline_slope = -0.0001
         
         # === Risk Management ===
-        self.take_profit = 0.032   # 3.2% Target
-        self.stop_loss = 0.065     # 6.5% Stop
-        self.time_stop = 100       # Max hold ticks (~1.5 hrs)
+        self.roi_target = 0.028 + (self.dna * 0.01) # 2.8% - 3.8%
+        self.stop_loss = 0.055
+        self.max_hold_ticks = 100
         
-        self.trade_size_usd = 2000.0
-        self.max_positions = 4
+        self.trade_size_usd = 2200.0
+        self.max_positions = 5
         
         # === State ===
-        self.history = {}       # {symbol: deque([log_prices])}
+        self.history = {}       # {symbol: deque([prices])}
         self.positions = {}     # {symbol: {entry, ticks}}
         self.cooldowns = {}     # {symbol: ticks_remaining}
 
@@ -66,104 +64,121 @@ class MyStrategy:
             if sym not in prices: continue
             
             try:
-                current_price = float(prices[sym]['priceUsd'])
+                curr_price = float(prices[sym]['priceUsd'])
             except: continue
                 
             pos = self.positions[sym]
             pos['ticks'] += 1
             
-            pnl_pct = (current_price - pos['entry']) / pos['entry']
+            pnl_pct = (curr_price - pos['entry']) / pos['entry']
+            
+            # Logic: Exit
+            should_close = False
+            cooldown = 0
+            
+            # EXIT: Take Profit
+            if pnl_pct >= self.roi_target:
+                should_close = True
+                cooldown = 30
             
             # EXIT: Stop Loss
-            if pnl_pct <= -self.stop_loss:
-                self._close_position(sym, 250) # Heavy penalty
-                continue
+            elif pnl_pct <= -self.stop_loss:
+                should_close = True
+                cooldown = 150 # Long penalty for failure
                 
-            # EXIT: Take Profit
-            if pnl_pct >= self.take_profit:
-                self._close_position(sym, 50) # Short cooldown
-                continue
+            # EXIT: Time Limit
+            elif pos['ticks'] >= self.max_hold_ticks:
+                should_close = True
+                cooldown = 10
                 
-            # EXIT: Time Decay
-            if pos['ticks'] >= self.time_stop:
-                self._close_position(sym, 20)
+            if should_close:
+                del self.positions[sym]
+                self.cooldowns[sym] = cooldown
                 continue
 
         # 3. Scan for New Entries
         if len(self.positions) >= self.max_positions:
             return None
             
+        # Select candidates passing liquidity filter
         candidates = []
         for sym, data in prices.items():
             if sym in self.positions or sym in self.cooldowns:
                 continue
             try:
-                # High liquidity filter
                 if float(data.get('liquidity', 0)) >= self.min_liquidity:
                     candidates.append(sym)
             except: continue
             
-        # Shuffle execution order
+        # Shuffle to avoid deterministic execution order
         random.shuffle(candidates)
         
         for sym in candidates:
             try:
-                raw_price = float(prices[sym]['priceUsd'])
-                log_price = math.log(raw_price)
+                curr_price = float(prices[sym]['priceUsd'])
             except: continue
             
-            # Update History
+            # Maintain History
             if sym not in self.history:
                 self.history[sym] = deque(maxlen=self.window_size)
             
             hist = self.history[sym]
-            hist.append(log_price)
+            hist.append(curr_price)
             
             if len(hist) < self.window_size:
                 continue
             
-            # === Statistical Analysis ===
-            stats = self._calculate_statistics(hist)
-            if not stats:
-                continue
-                
-            z_score, slope, r_squared, std_dev = stats
+            # === Alpha Calculation: Robust Z-Score ===
+            # Using statistics.median is O(N), acceptable for window < 300.
             
-            # === Alpha Logic Filters ===
+            data_list = list(hist)
+            median_val = statistics.median(data_list)
             
-            # Filter 1: Regime (The Anti-Trend Filter)
-            # Strictly filter for disorganized/choppy markets.
-            if r_squared > self.max_r2_threshold:
+            # Calculate Median Absolute Deviation (MAD)
+            # MAD is robust against the crash itself, unlike StdDev.
+            deviations = [abs(x - median_val) for x in data_list]
+            mad = statistics.median(deviations)
+            
+            if mad == 0: continue # Avoid division by zero in flatlines
+            
+            # Filter: Regime Check (Normalized MAD)
+            # Ensure there is enough volatility to justify a statistical trade
+            if (mad / median_val) < self.min_mad_ratio:
                 continue
+            
+            # Modified Z-Score (Iglewicz and Hoaglin)
+            # 0.6745 scales MAD to be consistent with Normal Distribution StdDev
+            mod_z = 0.6745 * (curr_price - median_val) / mad
+            
+            # Trigger Logic
+            if mod_z < self.mod_z_threshold:
                 
-            # Filter 2: Macro Trend Safety
-            # Avoid "Falling Knives" where the baseline is crashing.
-            if slope < self.min_trend_slope:
-                continue
-                
-            # Filter 3: Volatility Minimum
-            # If asset is dead flat (std_dev ~ 0), Z-score is noise.
-            if std_dev < 0.0004:
-                continue
-
-            # Filter 4: Extreme Deviation
-            # Price must be at a statistical outlier point (Gaussian Tail)
-            if z_score < self.z_entry_threshold:
-                
-                # Filter 5: Micro-Structure Momentum
-                # Ensure the immediate drop isn't accelerating (2nd derivative check)
-                if len(hist) > 5:
-                    # Look at price change over last 5 ticks
-                    delta_short = hist[-1] - hist[-5]
-                    # If we crashed > 2.5% in ~5 mins, wait for stabilization
-                    if delta_short < -0.025:
+                # Filter: Baseline Trend Safety
+                # Check if the median itself is collapsing (Slope of Median)
+                if len(hist) > 20:
+                    past_median = statistics.median(data_list[:-20])
+                    baseline_slope = (median_val - past_median) / past_median
+                    
+                    if baseline_slope < self.max_baseline_slope:
                         continue
-
+                
+                # Filter: Momentum Deceleration (Catch the Knife at the Floor)
+                # We want the drop to be slowing down, not accelerating.
+                if len(hist) > 3:
+                    # Current tick change vs Previous tick change
+                    delta_now = hist[-1] - hist[-2]
+                    delta_prev = hist[-2] - hist[-3]
+                    
+                    # If both negative and now < prev, it's accelerating down -> SKIP
+                    if delta_now < 0 and delta_prev < 0:
+                        if delta_now < delta_prev:
+                            continue
+                
                 # Execution
-                amount_asset = self.trade_size_usd / raw_price
+                amount_asset = self.trade_size_usd / curr_price
                 
                 self.positions[sym] = {
-                    'entry': raw_price,
+                    'entry': curr_price,
                     'ticks': 0
                 }
                 
@@ -171,60 +186,7 @@ class MyStrategy:
                     'side': 'BUY',
                     'symbol': sym,
                     'amount': amount_asset,
-                    'reason': ['GAUSS_REVERSION', 'LOW_R2_REGIME']
+                    'reason': ['ROBUST_MAD_OUTLIER']
                 }
                 
         return None
-
-    def _close_position(self, sym, cooldown_ticks):
-        if sym in self.positions:
-            del self.positions[sym]
-        self.cooldowns[sym] = cooldown_ticks
-
-    def _calculate_statistics(self, data):
-        """
-        Calculates OLS Linear Regression Stats.
-        Returns: (Z-Score, Slope, R-Squared, StdDev)
-        """
-        n = len(data)
-        if n < 30: return None
-        
-        y = list(data)
-        x = list(range(n))
-        
-        sum_x = sum(x)
-        sum_y = sum(y)
-        sum_xx = sum(i*i for i in x)
-        sum_xy = sum(i*y[i] for i in range(n))
-        
-        denom = n * sum_xx - sum_x**2
-        if denom == 0: return None
-        
-        slope = (n * sum_xy - sum_x * sum_y) / denom
-        intercept = (sum_y - slope * sum_x) / n
-        
-        # Calculate R-Squared and Standard Deviation
-        mean_y = sum_y / n
-        ss_tot = 0.0
-        ss_res = 0.0
-        
-        for i in range(n):
-            pred = slope * i + intercept
-            res = y[i] - pred
-            ss_res += res * res
-            ss_tot += (y[i] - mean_y) ** 2
-            
-        if ss_tot == 0: return None
-        
-        r_squared = 1 - (ss_res / ss_tot)
-        mse = ss_res / n
-        std_dev = math.sqrt(mse)
-        
-        if std_dev < 1e-10: return None
-        
-        # Z-Score of current price relative to regression
-        last_pred = slope * (n - 1) + intercept
-        current_resid = y[-1] - last_pred
-        z_score = current_resid / std_dev
-        
-        return z_score, slope, r_squared, std_dev
