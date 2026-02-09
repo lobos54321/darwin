@@ -1,14 +1,21 @@
 """
 模拟撮合引擎
 处理 Agent 的虚拟交易，计算盈亏
+
+支持任意币种交易 - Agents 可以交易任何 DexScreener 上的代币
 """
 
+import aiohttp
+import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
 from enum import Enum
 from collections import deque
 from config import INITIAL_BALANCE, SIMULATED_SLIPPAGE
+
+# DexScreener API
+DEXSCREENER_BASE_URL = "https://api.dexscreener.com/latest/dex"
 
 
 class OrderSide(Enum):
@@ -134,22 +141,78 @@ class MatchingEngine:
     def get_account(self, agent_id: str) -> Optional[AgentAccount]:
         """获取账户"""
         return self.accounts.get(agent_id)
-    
+
+    async def _fetch_price_realtime(self, symbol: str) -> Optional[float]:
+        """实时从 DexScreener 获取价格（支持任意币种）
+
+        尝试通过 symbol 搜索代币，返回流动性最高的交易对价格
+        """
+        try:
+            url = f"{DEXSCREENER_BASE_URL}/search?q={symbol}"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        pairs = data.get("pairs", [])
+
+                        if not pairs:
+                            return None
+
+                        # 过滤：只要 baseToken.symbol 匹配的
+                        matching_pairs = [
+                            p for p in pairs
+                            if p.get("baseToken", {}).get("symbol", "").upper() == symbol.upper()
+                        ]
+
+                        if not matching_pairs:
+                            return None
+
+                        # 取流动性最高的交易对
+                        best_pair = max(
+                            matching_pairs,
+                            key=lambda p: float(p.get("liquidity", {}).get("usd", 0) or 0)
+                        )
+
+                        price = float(best_pair.get("priceUsd", 0))
+                        if price > 0:
+                            return price
+
+        except Exception as e:
+            print(f"Error fetching price for {symbol}: {e}")
+
+        return None
+
     def execute_order(self, agent_id: str, symbol: str, side: OrderSide, amount_usd: float, reason: List[str] = None) -> tuple:
-        """执行订单
-        
+        """执行订单 - 支持任意币种
+
+        如果币种不在缓存中，会实时从 DexScreener 获取价格
+
         Returns:
             tuple: (success: bool, message: str, fill_price: float)
         """
         account = self.accounts.get(agent_id)
         if not account:
             return (False, "Account not found", 0.0)
-        
-        if symbol not in self.current_prices:
-            return (False, f"Unknown symbol: {symbol}", 0.0)
-        
-        current_price = self.current_prices[symbol]
-        
+
+        # 获取当前价格（如果不在缓存中，实时获取）
+        current_price = self.current_prices.get(symbol)
+
+        if current_price is None:
+            # 实时从 DexScreener 获取价格
+            try:
+                # 使用同步方式调用异步函数（在事件循环中）
+                loop = asyncio.get_event_loop()
+                current_price = loop.run_until_complete(self._fetch_price_realtime(symbol))
+
+                if current_price is None:
+                    return (False, f"Cannot fetch price for symbol: {symbol}. Please ensure it exists on DexScreener.", 0.0)
+
+                # 缓存价格
+                self.current_prices[symbol] = current_price
+
+            except Exception as e:
+                return (False, f"Error fetching price for {symbol}: {str(e)}", 0.0)
+
         # 应用滑点
         if side == OrderSide.BUY:
             fill_price = current_price * (1 + SIMULATED_SLIPPAGE)

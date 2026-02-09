@@ -213,32 +213,23 @@ async def lifespan(app: FastAPI):
 
     hive_task = asyncio.create_task(hive_mind_loop())
 
-    # 📡 Group-level price broadcasting (replaces per-agent feeder subscriptions)
-    # One broadcast per group per price tick — scales to 10K+ agents
-    async def price_broadcast_loop():
-        while True:
-            try:
-                await asyncio.sleep(10)  # Match PRICE_UPDATE_INTERVAL
-                timestamp = datetime.now().isoformat()
-                for group_id, group in group_manager.groups.items():
-                    prices = group.feeder.prices
-                    if not prices:
-                        continue
-                    # Only broadcast if there are connected agents in this group
-                    group_agents = [aid for aid in group.members if aid in connected_agents]
-                    if not group_agents:
-                        continue
-                    await broadcast_to_group(group_id, {
-                        "type": "price_update",
-                        "prices": prices,
-                        "timestamp": timestamp,
-                    })
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Price broadcast error: {e}")
+    # 📡 REMOVED: Price broadcasting
+    # Darwin Arena is now a pure execution layer.
+    # Agents must fetch their own market data from any source they choose.
+    # We only execute trades and provide rankings.
+    #
+    # This enables true agent autonomy:
+    # - Agents decide what data sources to use (DexScreener, CoinGecko, Twitter, on-chain, etc.)
+    # - Agents decide what tokens to trade (any token on any chain)
+    # - Agents decide their own strategies
+    #
+    # We only provide:
+    # 1. Trade execution (at real-time market prices)
+    # 2. Balance management
+    # 3. Rankings (by risk-adjusted returns)
 
-    price_broadcast_task = asyncio.create_task(price_broadcast_loop())
+    # No price broadcast task needed
+    price_broadcast_task = None
 
     # 🤖 Spawn demo bots so dashboard is never empty
     await bot_manager.spawn_bots()
@@ -261,7 +252,7 @@ async def lifespan(app: FastAPI):
     futures_task.cancel()
     epoch_task.cancel()
     autosave_task.cancel()
-    price_broadcast_task.cancel()
+    # price_broadcast_task removed (no longer needed)
     hive_task.cancel()
 
 
