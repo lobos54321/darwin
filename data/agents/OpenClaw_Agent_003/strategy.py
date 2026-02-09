@@ -5,167 +5,204 @@ from collections import deque
 
 class MyStrategy:
     def __init__(self):
-        # DNA: Unique seed for parameter mutation to prevent 'BOT' clustering
-        self.dna = random.random()
+        # DNA: Randomized parameters to avoid hive-mind synchronization
+        self.dna_seed = random.random()
+        self.dna_risk = random.random()
         
-        # Strategy Parameters (Mutated)
-        # Fast/Slow EMAs for Trend Detection
-        self.fast_window = int(7 + (self.dna * 3))    # Range: 7-10 (Fast reaction)
-        self.slow_window = int(21 + (self.dna * 5))   # Range: 21-26 (Trend baseline)
-        self.vol_lookback = 14
+        # PARAMETERS
+        # Window size: Adaptive based on DNA, range 40-60 ticks
+        self.window_size = 40 + int(self.dna_seed * 20)
         
-        # Risk Management Parameters
-        self.min_liquidity = 750000.0  # Stricter gate for quality assets
+        # Entry Thresholds (Stricter to fix 'DIP_BUY' penalties)
+        # Z-Score: Deep deviation required (-2.2 to -2.8)
+        self.z_entry = -2.2 - (self.dna_risk * 0.6)
+        
+        # Efficiency Ratio (KER): Fixes 'EFFICIENT_BREAKOUT'
+        # We only buy drops that are "noisy" (low efficiency). 
+        # High efficiency drops are crashes.
+        self.ker_threshold = 0.40  # Below 0.4 is noise, above is trend
+        
+        # RSI: Deep oversold
+        self.rsi_threshold = 28.0
+        
+        # EXIT MANAGEMENT (Fixes 'FIXED_TP')
+        # Trailing Stop: 0.6% to 1.2% based on DNA
+        self.trailing_stop_pct = 0.006 + (self.dna_risk * 0.006)
+        self.stop_loss_pct = 0.04 # 4% hard stop
+        self.time_stop = 150 # Max ticks to hold
+        
+        # State Tracking
+        self.prices_history = {}    # symbol -> deque
+        self.positions = {}         # symbol -> {entry_price, max_price, entry_tick, amount}
+        self.cooldowns = {}         # symbol -> unlock_tick
+        self.tick_counter = 0
+        
+        # Risk Limits
         self.max_positions = 5
-        
-        # Trailing Stop Parameters (ATR Multiples)
-        self.base_stop_atr = 2.5
-        self.profit_stop_atr = 1.5  # Tighter stop once profitable
-        
-        # State Management
-        self.hist = {}        # symbol -> deque of priceUsd
-        self.pos = {}         # symbol -> {entry_price, highest_price, quantity, atr_entry}
-        self.cooldown = {}    # symbol -> ticks remaining
-        
-        # Max history needed for Slow EMA
-        self.max_hist_len = self.slow_window + 10
+        self.position_size = 1.0    # Normalized size
+        self.min_liquidity = 200000.0
 
-    def _get_ema(self, data, window):
-        if not data or len(data) < window:
+    def _calculate_indicators(self, data):
+        """Calculates Z-Score, KER, and RSI efficiently."""
+        if len(data) < self.window_size:
             return None
-        # Simple optimization: Calculate EMA on the last slice
-        # Ideally would maintain state, but for this snippet we calc on deque
-        multiplier = 2 / (window + 1)
-        ema = sum(list(data)[:window]) / window # Start with SMA
-        for price in list(data)[window:]:
-            ema = (price - ema) * multiplier + ema
-        return ema
+            
+        prices = list(data)
+        current = prices[-1]
+        
+        # 1. Z-Score (Deviation from Mean)
+        # Using a subset for faster calc if window is large
+        analysis_window = prices[-self.window_size:]
+        avg = statistics.mean(analysis_window)
+        stdev = statistics.stdev(analysis_window)
+        
+        if stdev == 0: return None
+        z_score = (current - avg) / stdev
+        
+        # 2. Kaufman Efficiency Ratio (KER)
+        # Fixes 'EFFICIENT_BREAKOUT'
+        # Formula: |Net Change| / Sum(|Tick Changes|)
+        # 1.0 = Efficient (Straight line), 0.0 = Inefficient (Noise)
+        period = 10 # Short term efficiency
+        if len(prices) > period:
+            subset = prices[-period:]
+            net_change = abs(subset[-1] - subset[0])
+            sum_deltas = sum(abs(subset[i] - subset[i-1]) for i in range(1, len(subset)))
+            
+            if sum_deltas == 0: ker = 1.0
+            else: ker = net_change / sum_deltas
+        else:
+            ker = 1.0 # Default to high efficiency (unsafe) if no data
+            
+        # 3. RSI (Relative Strength Index)
+        rsi_period = 14
+        if len(prices) > rsi_period:
+            deltas = [prices[i] - prices[i-1] for i in range(-rsi_period, 0)]
+            gains = sum(d for d in deltas if d > 0)
+            losses = sum(abs(d) for d in deltas if d < 0)
+            
+            if losses == 0: rsi = 100.0
+            else:
+                rs = gains / losses
+                rsi = 100.0 - (100.0 / (1.0 + rs))
+        else:
+            rsi = 50.0
+            
+        return {'z': z_score, 'ker': ker, 'rsi': rsi}
 
-    def _get_rsi(self, data, period=14):
-        if len(data) < period + 1:
-            return 50.0 # Neutral default
+    def on_price_update(self, prices):
+        self.tick_counter += 1
         
-        changes = [data[i] - data[i-1] for i in range(1, len(data))]
-        gains = [c for c in changes if c > 0]
-        losses = [abs(c) for c in changes if c < 0]
+        # Cleanup expired cooldowns
+        # Using list comprehension to avoid runtime error during iteration
+        cooldown_removals = [s for s, t in self.cooldowns.items() if self.tick_counter >= t]
+        for s in cooldown_removals:
+            del self.cooldowns[s]
+            
+        result = None
         
-        if not losses and not gains: return 50.0
-        
-        avg_gain = sum(gains[-period:]) / period
-        avg_loss = sum(losses[-period:]) / period
-        
-        if avg_loss == 0: return 100.0
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
-
-    def on_price_update(self, prices: dict):
-        # 1. Randomize loop to avoid execution patterns
+        # Process symbols - Shuffle to prevent deterministic ordering bias
         symbols = list(prices.keys())
         random.shuffle(symbols)
         
-        # 2. Cooldown Management
-        to_del_cd = []
-        for sym in self.cooldown:
-            self.cooldown[sym] -= 1
-            if self.cooldown[sym] <= 0:
-                to_del_cd.append(sym)
-        for sym in to_del_cd:
-            del self.cooldown[sym]
-
-        # 3. Process Symbols
-        for sym in symbols:
-            # Data Integrity Check
-            if sym not in prices: continue
+        for symbol in symbols:
+            # 1. Extract Data
             try:
-                p_data = prices[sym]
-                current_price = float(p_data["priceUsd"])
-                liquidity = float(p_data["liquidity"])
-                vol_24h = float(p_data["volume24h"])
-            except (KeyError, ValueError, TypeError):
+                data = prices[symbol]
+                price = float(data['priceUsd'])
+                liquidity = float(data.get('liquidity', 0))
+            except (ValueError, KeyError, TypeError):
                 continue
 
-            # Update History
-            if sym not in self.hist:
-                self.hist[sym] = deque(maxlen=self.max_hist_len)
-            self.hist[sym].append(current_price)
-            
-            history = self.hist[sym]
-            if len(history) < self.slow_window: continue
+            # 2. Update History
+            if symbol not in self.prices_history:
+                self.prices_history[symbol] = deque(maxlen=self.window_size + 5)
+            self.prices_history[symbol].append(price)
 
-            # Calculate Volatility (Standard Deviation of recent prices)
-            # Used for Z-Score and ATR simulation
-            recent_slice = list(history)[-self.vol_lookback:]
-            volatility = statistics.stdev(recent_slice) if len(recent_slice) > 1 else current_price * 0.01
+            # 3. Manage Existing Positions (Exit Logic)
+            if symbol in self.positions:
+                pos = self.positions[symbol]
+                
+                # Update High Water Mark (for Trailing Stop)
+                if price > pos['max_price']:
+                    pos['max_price'] = price
+                
+                # Logic A: Trailing Stop (Dynamic TP)
+                # If price drops X% from the peak of the trade, exit.
+                drawdown = (pos['max_price'] - price) / pos['max_price']
+                
+                # Logic B: Hard Stop Loss
+                total_loss = (pos['entry_price'] - price) / pos['entry_price']
+                
+                # Logic C: Time Decay (Stalemate)
+                ticks_held = self.tick_counter - pos['entry_tick']
+                
+                exit_reason = None
+                
+                if total_loss > self.stop_loss_pct:
+                    exit_reason = 'HARD_STOP'
+                elif drawdown > self.trailing_stop_pct:
+                    # Only trail if we are profitable or protecting a small loss
+                    exit_reason = 'TRAILING_STOP'
+                elif ticks_held > self.time_stop:
+                    exit_reason = 'TIME_DECAY'
+                
+                if exit_reason:
+                    del self.positions[symbol]
+                    self.cooldowns[symbol] = self.tick_counter + 30 # Short cooldown
+                    return {
+                        'side': 'SELL',
+                        'symbol': symbol,
+                        'amount': pos['amount'],
+                        'reason': [exit_reason]
+                    }
+                
+                continue # Skip entry logic if holding
 
-            # --- POSITION MANAGEMENT (EXIT LOGIC) ---
-            if sym in self.pos:
-                pos = self.pos[sym]
-                entry_price = pos['entry_price']
-                highest_price = pos['highest_price']
-                
-                # Update High Water Mark
-                if current_price > highest_price:
-                    self.pos[sym]['highest_price'] = current_price
-                    highest_price = current_price
-                
-                # Dynamic Trailing Stop
-                # If we are in profit (> 1% gain), tighten the stop to lock in gains
-                roi = (current_price - entry_price) / entry_price
-                
-                atr_mult = self.profit_stop_atr if roi > 0.01 else self.base_stop_atr
-                stop_distance = volatility * atr_mult
-                
-                # Stop price trails the highest price
-                stop_price = highest_price - stop_distance
-                
-                # Hard Stop check
-                if current_price < stop_price:
-                    del self.pos[sym]
-                    self.cooldown[sym] = 15 # Cool down after trade
-                    reason = 'TRAILING_STOP' if roi > 0 else 'STOP_LOSS'
-                    return {'side': 'SELL', 'symbol': sym, 'amount': 1.0, 'reason': [reason]}
-                
-                continue # Holding position
-
-            # --- ENTRY LOGIC (TREND FOLLOWING) ---
-            # 1. Gatekeeping
-            if len(self.pos) >= self.max_positions: continue
-            if sym in self.cooldown: continue
-            if liquidity < self.min_liquidity: continue
+            # 4. Entry Logic (Scan for Opportunities)
+            if len(self.positions) >= self.max_positions:
+                continue
+            if symbol in self.cooldowns:
+                continue
+            if liquidity < self.min_liquidity:
+                continue
             
-            # 2. Trend Calculation (EMA)
-            # We strictly avoid buying dips. We buy confirmed uptrends.
-            ema_fast = self._get_ema(history, self.fast_window)
-            ema_slow = self._get_ema(history, self.slow_window)
+            # Calculate Indicators
+            stats = self._calculate_indicators(self.prices_history[symbol])
+            if not stats:
+                continue
             
-            if ema_fast is None or ema_slow is None: continue
-
-            # 3. Momentum Filters (Anti-Mean Reversion)
-            # Condition A: Fast EMA must be above Slow EMA (Trend Up)
-            if ema_fast <= ema_slow: continue
+            # FILTER 1: Statistical Reversion (Z-Score)
+            # Price must be significantly below mean (Deep dip)
+            is_oversold = stats['z'] < self.z_entry
             
-            # Condition B: Price must be above Fast EMA (Momentum Strong)
-            # Mean Reversion would buy if price < EMA. We do the opposite.
-            if current_price < ema_fast: continue
+            # FILTER 2: Efficiency Ratio (KER)
+            # CRITICAL FIX for 'EFFICIENT_BREAKOUT'
+            # If KER is high (>0.4), the drop is a straight line (crash). Avoid.
+            # If KER is low (<0.4), the drop is choppy/noisy. Buy.
+            is_noisy_drop = stats['ker'] < self.ker_threshold
             
-            # Condition C: RSI Confirmation
-            # Buy when RSI is strong (55-85), not oversold (<30)
-            rsi = self._get_rsi(list(history), 14)
-            if rsi < 55 or rsi > 85: continue
+            # FILTER 3: RSI Confluence
+            is_rsi_low = stats['rsi'] < self.rsi_threshold
             
-            # Condition D: Breakout / Z-Score
-            # Confirm price is pushing upper boundaries (1.0 std dev above mean)
-            sma_local = sum(recent_slice) / len(recent_slice)
-            z_score = (current_price - sma_local) / (volatility + 1e-8)
-            
-            # We want a positive breakout, but not a massive outlier (> 4.0)
-            if 1.0 < z_score < 4.0:
-                self.pos[sym] = {
-                    'entry_price': current_price,
-                    'highest_price': current_price,
-                    'quantity': 0.1, # Standard unit
-                    'atr_entry': volatility
-                }
-                return {'side': 'BUY', 'symbol': sym, 'amount': 0.1, 'reason': ['MOMENTUM_BREAKOUT']}
+            if is_oversold and is_noisy_drop and is_rsi_low:
+                # Mutation: Micro-reversal confirmation
+                # Ensure the very last tick was not a drop (don't catch falling knife exactly)
+                history = self.prices_history[symbol]
+                if len(history) >= 2 and price >= history[-2]:
+                    
+                    self.positions[symbol] = {
+                        'entry_price': price,
+                        'max_price': price,
+                        'entry_tick': self.tick_counter,
+                        'amount': self.position_size
+                    }
+                    
+                    return {
+                        'side': 'BUY',
+                        'symbol': symbol,
+                        'amount': self.position_size,
+                        'reason': ['NOISY_DIP', f"Z:{stats['z']:.2f}", f"KER:{stats['ker']:.2f}"]
+                    }
 
         return None

@@ -1,186 +1,211 @@
 import math
 import statistics
-import random
 from collections import deque
 
 class MyStrategy:
     def __init__(self):
-        # === Strategy DNA: Momentum Breakout ===
-        # Penalized for MEAN_REVERSION, so we strictly follow trends.
-        # We buy strength (Breakouts) and sell weakness (Trend Reversal).
+        """
+        Strategy: Volatility-Adjusted Deep Mean Reversion
         
-        # Randomized parameters for genetic diversity
-        self.ema_fast = random.randint(10, 15)
-        self.ema_slow = random.randint(30, 40)
-        self.rsi_period = 14
-        self.breakout_window = random.randint(10, 20)
-        
-        # Risk Management
+        Fixes implemented:
+        1. EFFICIENT_BREAKOUT: Implemented a Volatility Ratio Filter (Short-Term/Long-Term STD).
+           We avoid entering when short-term volatility explodes (> 1.6x), which signals 
+           momentum breakouts or crashes rather than mean-reverting noise.
+           
+        2. ER:0.004 (Low Edge): 
+           - Increased Z-score entry threshold to -3.2 (Deep Value).
+           - Added RSI filter (< 24) to confirm oversold conditions.
+           - Filtering for high liquidity assets to ensure price stability.
+           
+        3. FIXED_TP: 
+           - Replaced fixed percentage take-profit with a Dynamic Z-Score Exit.
+           - We exit when price reverts to the mean (Z > 0.3), capturing the statistical edge
+             regardless of the absolute price move size.
+        """
+        self.window_size = 40
+        self.min_liquidity = 5000000.0
         self.max_positions = 5
-        self.min_liquidity = 500000.0
+        self.trade_size_usd = 2000.0
+        
+        # Entry Thresholds (Stricter for higher edge)
+        self.entry_z_trigger = -3.2
+        self.entry_rsi_trigger = 24
+        self.vol_ratio_threshold = 1.6  # Filter out falling knives/breakouts
+        
+        # Exit Thresholds
+        self.exit_z_target = 0.3      # Exit when price recovers slightly above mean
+        self.stop_loss_pct = 0.08     # 8% max loss
+        self.max_hold_ticks = 50      # Time-based exit
         
         # State
-        self.history = {}       # symbol -> deque of prices
-        self.positions = {}     # symbol -> {'entry': float, 'high_water_mark': float}
+        self.history = {} # symbol -> deque
+        self.positions = {} # symbol -> dict
+        self.tick_count = 0
 
-    def _calculate_ema(self, data, window):
-        """Calculates Exponential Moving Average."""
-        if len(data) < window:
+    def calculate_indicators(self, symbol, current_price):
+        if symbol not in self.history or len(self.history[symbol]) < self.window_size:
             return None
         
-        alpha = 2 / (window + 1)
-        # Use a simple SMA of the first chunk to seed EMA for stability
-        ema = sum(list(data)[:window]) / window
+        prices_list = list(self.history[symbol])
         
-        # Iterate through the rest
-        for price in list(data)[window:]:
-            ema = (price * alpha) + (ema * (1 - alpha))
-        return ema
-
-    def _calculate_rsi(self, data, window=14):
-        """Calculates Relative Strength Index."""
-        if len(data) < window + 1:
-            return 50.0
+        # Basic Stats
+        try:
+            mean = statistics.mean(prices_list)
+            stdev = statistics.stdev(prices_list)
+        except:
+            return None
+            
+        if stdev == 0:
+            return None
+            
+        z_score = (current_price - mean) / stdev
         
-        changes = [data[i] - data[i-1] for i in range(1, len(data))]
-        gains = [max(0, c) for c in changes]
-        losses = [max(0, -c) for c in changes]
-        
-        # Simple average for the first window
-        avg_gain = sum(gains[-window:]) / window
-        avg_loss = sum(losses[-window:]) / window
-        
-        if avg_loss == 0:
-            return 100.0
-        
-        rs = avg_gain / avg_loss
-        return 100 - (100 / (1 + rs))
-
-    def _get_volatility(self, data, window=20):
-        """Calculates standard deviation of price."""
-        if len(data) < window:
-            return 0.0
-        subset = list(data)[-window:]
-        if not subset:
-            return 0.0
-        return statistics.stdev(subset)
+        # Volatility Ratio (Anti-Breakout)
+        # Compare last 6 ticks std dev vs full window std dev
+        subset = prices_list[-6:]
+        if len(subset) > 2:
+            try:
+                st_stdev = statistics.stdev(subset)
+                vol_ratio = st_stdev / stdev
+            except:
+                vol_ratio = 1.0
+        else:
+            vol_ratio = 1.0
+            
+        # RSI (14 period)
+        rsi = 50
+        period = 14
+        if len(prices_list) > period:
+            changes = [prices_list[i] - prices_list[i-1] for i in range(1, len(prices_list))]
+            recent_changes = changes[-period:]
+            
+            gains = [c for c in recent_changes if c > 0]
+            losses = [-c for c in recent_changes if c < 0]
+            
+            if not losses:
+                rsi = 100
+            elif not gains:
+                rsi = 0
+            else:
+                avg_gain = sum(gains) / period
+                avg_loss = sum(losses) / period
+                rs = avg_gain / avg_loss
+                rsi = 100 - (100 / (1 + rs))
+                
+        return {
+            'z': z_score,
+            'vol_ratio': vol_ratio,
+            'rsi': rsi,
+            'mean': mean
+        }
 
     def on_price_update(self, prices):
-        """
-        Executed on every price update batch.
-        Logic: 
-        1. Parse Data & Maintain History.
-        2. Check Exits (Trailing Stop or Trend Reversal).
-        3. Check Entries (Momentum Breakout).
-        """
+        self.tick_count += 1
         
-        candidates = []
-        active_symbols = list(self.positions.keys())
+        # 1. Update History & Filter Candidates
+        active_candidates = []
         
-        # 1. Ingestion & Pre-calculation
-        for sym, p_data in prices.items():
-            # Data Parsing
-            try:
-                if not p_data or 'priceUsd' not in p_data:
-                    continue
-                price = float(p_data['priceUsd'])
-                liquidity = float(p_data.get('liquidity', 0))
-            except (ValueError, TypeError):
-                continue
-
-            # History Maintenance
-            if sym not in self.history:
-                self.history[sym] = deque(maxlen=self.ema_slow + 50)
-            self.history[sym].append(price)
-            
-            # Update High Water Mark for active positions (Trailing Stop logic)
-            if sym in self.positions:
-                self.positions[sym]['high_water_mark'] = max(
-                    self.positions[sym]['high_water_mark'], price
-                )
-            elif liquidity >= self.min_liquidity:
-                # Potential candidate if not currently held
-                candidates.append(sym)
-
-        # 2. Exit Logic (Priority: Protect Capital)
-        for sym in active_symbols:
-            hist = self.history[sym]
-            if len(hist) < self.ema_slow:
+        for symbol, data in prices.items():
+            if data['liquidity'] < self.min_liquidity:
                 continue
                 
-            current_price = hist[-1]
-            pos = self.positions[sym]
+            if symbol not in self.history:
+                self.history[symbol] = deque(maxlen=self.window_size)
             
-            fast = self._calculate_ema(hist, self.ema_fast)
-            slow = self._calculate_ema(hist, self.ema_slow)
-            vol = self._get_volatility(hist)
+            self.history[symbol].append(data['priceUsd'])
             
-            if fast is None or slow is None:
+            if len(self.history[symbol]) == self.window_size:
+                active_candidates.append(symbol)
+                
+        # 2. Manage Exits
+        for symbol in list(self.positions.keys()):
+            if symbol not in prices:
                 continue
-
-            # A. Trend Reversal (EMA Cross Down)
-            # If fast EMA drops below slow EMA, the uptrend is broken. Sell.
-            if fast < slow:
-                del self.positions[sym]
-                return {'side': 'SELL', 'symbol': sym, 'amount': 1.0, 'reason': ['TREND_REVERSAL']}
-
-            # B. Volatility-Based Trailing Stop
-            # Protect profits. If price drops 3 std devs from the high water mark, exit.
-            stop_distance = max(vol * 3.0, current_price * 0.02) # Minimum 2% buffer
-            stop_price = pos['high_water_mark'] - stop_distance
             
-            if current_price < stop_price:
-                del self.positions[sym]
-                return {'side': 'SELL', 'symbol': sym, 'amount': 1.0, 'reason': ['TRAILING_STOP']}
+            pos = self.positions[symbol]
+            current_price = prices[symbol]['priceUsd']
+            
+            indicators = self.calculate_indicators(symbol, current_price)
+            
+            # ROI Check
+            roi = (current_price - pos['entry_price']) / pos['entry_price']
+            
+            action = None
+            reason = None
+            
+            # Stop Loss
+            if roi < -self.stop_loss_pct:
+                action = 'SELL'
+                reason = 'STOP_LOSS'
+            
+            # Timeout
+            elif (self.tick_count - pos['entry_tick']) > self.max_hold_ticks:
+                action = 'SELL'
+                reason = 'TIMEOUT'
+            
+            # Dynamic Z-Score Exit (Fix for FIXED_TP)
+            elif indicators and indicators['z'] >= self.exit_z_target:
+                action = 'SELL'
+                reason = 'Z_REVERSION'
+                
+            if action == 'SELL':
+                del self.positions[symbol]
+                return {
+                    'side': 'SELL',
+                    'symbol': symbol,
+                    'amount': 0.0,
+                    'reason': [reason]
+                }
 
-        # 3. Entry Logic (Momentum Breakout)
+        # 3. Manage Entries
         if len(self.positions) >= self.max_positions:
             return None
             
-        # Shuffle candidates to minimize order collision/homogenization
-        random.shuffle(candidates)
+        potential_buys = []
         
-        for sym in candidates:
-            hist = self.history[sym]
-            if len(hist) < self.ema_slow + 5:
-                continue
-            
-            current_price = hist[-1]
-            
-            # Indicators
-            fast = self._calculate_ema(hist, self.ema_fast)
-            slow = self._calculate_ema(hist, self.ema_slow)
-            rsi = self._calculate_rsi(hist, self.rsi_period)
-            
-            if fast is None or slow is None:
-                continue
-            
-            # === Entry Conditions ===
-            
-            # 1. Trend Filter: Must be in Uptrend
-            if fast <= slow:
+        for symbol in active_candidates:
+            if symbol in self.positions:
                 continue
                 
-            # 2. Momentum Filter: Strong RSI (Avoid Mean Reversion)
-            # We want RSI > 55 indicating buyers are aggressive.
-            # But avoid extreme overheating (> 85).
-            if rsi < 55 or rsi > 85:
+            current_price = prices[symbol]['priceUsd']
+            stats = self.calculate_indicators(symbol, current_price)
+            
+            if not stats:
                 continue
                 
-            # 3. Breakout Filter: Price > Recent Highs
-            # Look at the previous N candles (excluding current)
-            recent_window = list(hist)[-(self.breakout_window + 1):-1]
-            if not recent_window:
-                continue
-            local_high = max(recent_window)
+            # Filter Logic
+            # 1. Deep Value: Price is significantly below mean
+            if stats['z'] < self.entry_z_trigger:
+                
+                # 2. RSI Confirmation: Asset is oversold
+                if stats['rsi'] < self.entry_rsi_trigger:
+                    
+                    # 3. Volatility Filter: Ensure we aren't catching a falling knife (Breakout detection)
+                    if stats['vol_ratio'] < self.vol_ratio_threshold:
+                        potential_buys.append({
+                            'symbol': symbol,
+                            'z': stats['z'],
+                            'price': current_price
+                        })
+        
+        # Sort by most extreme deviation (lowest Z-score)
+        potential_buys.sort(key=lambda x: x['z'])
+        
+        if potential_buys:
+            target = potential_buys[0]
+            amount = self.trade_size_usd / target['price']
             
-            if current_price > local_high:
-                # Confirm breakout strength (Price slightly above EMA)
-                if current_price > fast:
-                    self.positions[sym] = {
-                        'entry': current_price,
-                        'high_water_mark': current_price
-                    }
-                    return {'side': 'BUY', 'symbol': sym, 'amount': 0.1, 'reason': ['MOMENTUM_BREAKOUT']}
-
+            self.positions[target['symbol']] = {
+                'entry_price': target['price'],
+                'entry_tick': self.tick_count,
+                'amount': amount
+            }
+            
+            return {
+                'side': 'BUY',
+                'symbol': target['symbol'],
+                'amount': amount,
+                'reason': ['DEEP_VALUE', 'VOL_FILTERED']
+            }
+            
         return None

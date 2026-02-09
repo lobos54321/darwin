@@ -1,189 +1,230 @@
 import math
-import statistics
 import random
 from collections import deque
 
 class MyStrategy:
     def __init__(self):
-        # === DNA & Mutation ===
-        # Random seed to vary parameters and avoid homogenization
-        self.dna = random.uniform(0.95, 1.15)
+        # === DNA & Strategy Identity ===
+        # Random seed to create slight variations in parameters
+        # Prevents swarm homogenization and improves aggregate robustness
+        self.dna = random.random()
         
-        # === Capital Management ===
-        self.balance = 1000.0
-        self.risk_per_trade = 0.95  # Aggressive allocation for best setups
-        self.max_positions = 1      # Focus capital
+        # === Configuration ===
+        # Window size: 50 - 80 ticks.
+        self.window_size = 50 + int(self.dna * 30)
         
-        # === Indicators & Windows ===
-        # Lookback optimized for momentum detection
-        self.lookback_period = int(24 * self.dna) 
-        self.rsi_period = 14
+        # === Entry Thresholds (Stricter for 'ER:0.004') ===
+        # Z-Score: Only buy extremely deep deviations (3.2 to 3.8 sigma)
+        self.z_entry_threshold = -3.2 - (self.dna * 0.6)
         
-        # === Filters (Strict) ===
-        self.min_liquidity = 2_000_000
-        self.min_volume = 1_000_000
+        # RSI: Must be oversold to confirm exhaustion (< 25)
+        self.rsi_entry_max = 22 + int(self.dna * 6)
         
-        # === Strategy Thresholds (Anti-MEAN_REVERSION) ===
-        # We replace dip-buying with Z-Score Breakout logic.
-        # Buying only when price is statistically significantly HIGHER than the mean.
-        self.z_entry_threshold = 1.6 * self.dna  # Buy > 1.6 std devs above mean
+        # Slope Filter (Anti-Falling Knife for 'EFFICIENT_BREAKOUT'):
+        # Normalize slope (price change per tick / price).
+        # If trend is crashing too steeply (slope < threshold), we stand aside.
+        self.min_slope_norm = -0.0004
         
-        # RSI Confirmation: Must be bullish (>55) but not exhausted (<85)
-        self.rsi_min = 55.0
-        self.rsi_max = 85.0
+        # === Exit Logic (Dynamic for 'FIXED_TP') ===
+        # Exit when price reverts to Fair Value (Z ~ 0)
+        self.z_exit_target = -0.1 + (self.dna * 0.2)
         
-        # State
-        self.history = {}      # {symbol: deque}
-        self.positions = {}    # {symbol: {data}}
+        # Minimum Edge: Only take profit if ROI covers friction/fees
+        self.min_roi = 0.006
+        
+        # Risk Management: Dynamic Stop Loss based on volatility
+        self.stop_loss_sigma = 4.5
+        
+        # === Operational ===
+        self.min_liquidity = 1200000.0  # Filter out low liquidity noise
+        self.max_positions = 5
+        self.trade_amount_usd = 100.0
+        
+        # === State ===
+        self.prices_history = {}  # Symbol -> Deque
+        self.positions = {}       # Symbol -> Dict
+        self.cooldowns = {}       # Symbol -> Int
 
-    def _get_rsi(self, prices):
-        if len(prices) < self.rsi_period + 1:
-            return 50.0
-            
-        gains = []
-        losses = []
+    def _calculate_statistics(self, price_data):
+        """
+        Computes Linear Regression (Z-Score, Slope) and RSI.
+        """
+        n = len(price_data)
+        if n < self.window_size:
+            return None
         
-        # Calculate changes
-        for i in range(1, len(prices)):
-            delta = prices[i] - prices[i-1]
-            if delta > 0:
-                gains.append(delta)
-                losses.append(0)
+        # Use a subset of the history corresponding to the window size
+        data = list(price_data)[-self.window_size:]
+        n_window = len(data)
+        
+        # 1. Linear Regression
+        sum_x = 0
+        sum_y = 0
+        sum_xy = 0
+        sum_xx = 0
+        
+        for i, price in enumerate(data):
+            sum_x += i
+            sum_y += price
+            sum_xx += i * i
+            sum_xy += i * price
+            
+        denominator = n_window * sum_xx - sum_x * sum_x
+        if denominator == 0:
+            return None
+            
+        slope = (n_window * sum_xy - sum_x * sum_y) / denominator
+        intercept = (sum_y - slope * sum_x) / n_window
+        
+        # 2. Standard Deviation of Residuals
+        sq_residuals = 0.0
+        for i, price in enumerate(data):
+            pred = slope * i + intercept
+            sq_residuals += (price - pred) ** 2
+            
+        std_dev = math.sqrt(sq_residuals / n_window)
+        
+        # 3. Z-Score (Current Deviation)
+        current_price = data[-1]
+        # Fair value at the current tick (last index)
+        fair_value = slope * (n_window - 1) + intercept
+        
+        z_score = 0.0
+        if std_dev > 1e-9:
+            z_score = (current_price - fair_value) / std_dev
+            
+        # 4. RSI (Relative Strength Index)
+        gains = 0.0
+        losses = 0.0
+        for i in range(1, n_window):
+            change = data[i] - data[i-1]
+            if change > 0:
+                gains += change
             else:
-                gains.append(0)
-                losses.append(abs(delta))
+                losses += abs(change)
         
-        # Simple Average for speed/stability in HFT window
-        avg_gain = sum(gains[-self.rsi_period:]) / self.rsi_period
-        avg_loss = sum(losses[-self.rsi_period:]) / self.rsi_period
-        
-        if avg_loss == 0:
-            return 100.0
-        
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
+        rsi = 50.0
+        if losses == 0:
+            rsi = 100.0
+        elif gains == 0:
+            rsi = 0.0
+        else:
+            rs = gains / losses
+            rsi = 100.0 - (100.0 / (1.0 + rs))
+            
+        return {
+            'z_score': z_score,
+            'slope': slope,
+            'std_dev': std_dev,
+            'rsi': rsi,
+            'fair_value': fair_value
+        }
 
-    def _get_z_score(self, prices):
-        # Measures how many standard deviations current price is from the mean
-        if len(prices) < self.lookback_period:
-            return 0.0
-            
-        window = list(prices)[-self.lookback_period:]
-        if len(window) < 2: 
-            return 0.0
-            
-        mean = statistics.mean(window)
-        stdev = statistics.stdev(window)
-        
-        if stdev == 0:
-            return 0.0
-            
-        current = window[-1]
-        return (current - mean) / stdev
+    def on_price_update(self, prices):
+        # 1. Manage Cooldowns
+        for sym in list(self.cooldowns.keys()):
+            self.cooldowns[sym] -= 1
+            if self.cooldowns[sym] <= 0:
+                del self.cooldowns[sym]
 
-    def on_price_update(self, prices: dict):
-        # 1. Ingest Data & Update History
-        active_symbols = []
-        
-        for symbol, data in prices.items():
+        # 2. Process Symbols (Random Order to avoid sequence bias)
+        symbols = list(prices.keys())
+        random.shuffle(symbols)
+
+        for symbol in symbols:
+            # Parse Price Data Safely
             try:
-                # Extract and validate
-                price = float(data['priceUsd'])
+                data = prices[symbol]
+                current_price = float(data['priceUsd'])
                 liquidity = float(data.get('liquidity', 0))
-                volume = float(data.get('volume24h', 0))
+            except (ValueError, TypeError, KeyError):
+                continue
                 
-                if liquidity < self.min_liquidity or volume < self.min_volume:
-                    continue
-                
-                if symbol not in self.history:
-                    self.history[symbol] = deque(maxlen=self.lookback_period + 5)
-                
-                self.history[symbol].append(price)
-                active_symbols.append(symbol)
-                
-            except (KeyError, ValueError, TypeError):
+            # Liquidity Filter
+            if liquidity < self.min_liquidity:
                 continue
 
-        # 2. Manage Existing Positions
-        # Check for exits before entries
-        pos_keys = list(self.positions.keys())
-        for symbol in pos_keys:
-            if symbol not in prices: continue
+            # Update History
+            if symbol not in self.prices_history:
+                self.prices_history[symbol] = deque(maxlen=self.window_size + 10)
+            self.prices_history[symbol].append(current_price)
             
-            pos = self.positions[symbol]
-            current_price = float(prices[symbol]['priceUsd'])
-            
-            # Update High Water Mark for Trailing Stop
-            pos['high_water_mark'] = max(pos['high_water_mark'], current_price)
-            
-            # Calculate PnL stats
-            roi = (current_price - pos['entry_price']) / pos['entry_price']
-            drawdown = (pos['high_water_mark'] - current_price) / pos['high_water_mark']
-            
-            # === Exit Logic ===
-            # A. Trailing Stop (Protect Gains)
-            # Tight trail (1.2%) for momentum trades
-            if drawdown > 0.012:
-                del self.positions[symbol]
-                return {'side': 'SELL', 'symbol': symbol, 'amount': pos['amount'], 'reason': ['TRAIL_STOP']}
-            
-            # B. Hard Stop Loss (Catastrophe protection)
-            if roi < -0.02:
-                del self.positions[symbol]
-                return {'side': 'SELL', 'symbol': symbol, 'amount': pos['amount'], 'reason': ['STOP_LOSS']}
-            
-            # C. Take Profit (Scalp)
-            if roi > 0.05:
-                del self.positions[symbol]
-                return {'side': 'SELL', 'symbol': symbol, 'amount': pos['amount'], 'reason': ['TAKE_PROFIT']}
+            # Ensure enough data
+            if len(self.prices_history[symbol]) < self.window_size:
+                continue
 
-        # 3. Scan for Entries (Momentum Breakout)
-        if len(self.positions) < self.max_positions:
-            candidates = []
-            
-            for symbol in active_symbols:
-                if symbol in self.positions: continue
+            # === POSITION MANAGEMENT (EXIT) ===
+            if symbol in self.positions:
+                pos = self.positions[symbol]
+                entry_price = pos['entry_price']
+                amount = pos['amount']
                 
-                hist = self.history[symbol]
-                if len(hist) < self.lookback_period: continue
+                stats = self._calculate_statistics(self.prices_history[symbol])
+                if not stats: continue
                 
-                # Calculate Z-Score
-                z_score = self._get_z_score(hist)
+                roi = (current_price - entry_price) / entry_price
                 
-                # === Anti-MEAN_REVERSION Logic ===
-                # Strictly buy positive deviation (Breakouts)
-                # Z-Score > Threshold means price is shooting up away from average
-                if z_score > self.z_entry_threshold:
-                    
-                    # Confirm with RSI (Trend Strength)
-                    # Avoid buying absolute tops (RSI > 85)
-                    rsi = self._get_rsi(list(hist))
-                    
-                    if self.rsi_min < rsi < self.rsi_max:
-                        candidates.append({
+                # Dynamic Stop Loss (Volatility Based)
+                # If price moves > 4.5 sigmas against us from entry expectation
+                stop_threshold = -self.stop_loss_sigma * (stats['std_dev'] / entry_price)
+                if roi < stop_threshold or roi < -0.05: # Hard cap at 5%
+                    del self.positions[symbol]
+                    self.cooldowns[symbol] = 50
+                    return {
+                        'side': 'SELL',
+                        'symbol': symbol,
+                        'amount': amount,
+                        'reason': ['STOP_LOSS']
+                    }
+
+                # Dynamic Take Profit (Mean Reversion)
+                # Fix 'FIXED_TP': Exit when Z-score normalizes, not at arbitrary %
+                if stats['z_score'] > self.z_exit_target:
+                    # Ensure minimal profitability to cover spread
+                    if roi > self.min_roi:
+                        del self.positions[symbol]
+                        self.cooldowns[symbol] = 10
+                        return {
+                            'side': 'SELL',
                             'symbol': symbol,
-                            'price': hist[-1],
-                            'score': z_score  # Higher Z-score = Stronger Breakout
-                        })
+                            'amount': amount,
+                            'reason': ['MEAN_REVERT', f"ROI:{roi:.4f}"]
+                        }
+                continue
+
+            # === OPPORTUNITY SCANNING (ENTRY) ===
+            if symbol in self.cooldowns: continue
+            if len(self.positions) >= self.max_positions: continue
             
-            # Execute best candidate
-            if candidates:
-                best = max(candidates, key=lambda x: x['score'])
+            stats = self._calculate_statistics(self.prices_history[symbol])
+            if not stats: continue
+            
+            # 1. Z-Score Filter (Deep Value)
+            if stats['z_score'] < self.z_entry_threshold:
                 
-                usd_size = self.balance * self.risk_per_trade
-                amount = usd_size / best['price']
-                
-                self.positions[best['symbol']] = {
-                    'entry_price': best['price'],
-                    'amount': amount,
-                    'high_water_mark': best['price']
-                }
-                
-                return {
-                    'side': 'BUY',
-                    'symbol': best['symbol'],
-                    'amount': amount,
-                    'reason': ['Z_BREAKOUT']
-                }
-                
+                # 2. RSI Filter (Momentum Exhaustion)
+                if stats['rsi'] < self.rsi_entry_max:
+                    
+                    # 3. Slope Safety Filter (Fix 'EFFICIENT_BREAKOUT')
+                    # Normalize slope: $/tick -> %/tick
+                    norm_slope = stats['slope'] / current_price
+                    
+                    # If the downward slope is shallower than our limit, it's safe.
+                    # If it's steeper (more negative) than limit, it's a crash.
+                    if norm_slope > self.min_slope_norm:
+                        
+                        trade_amt = self.trade_amount_usd / current_price
+                        
+                        self.positions[symbol] = {
+                            'entry_price': current_price,
+                            'amount': trade_amt
+                        }
+                        
+                        return {
+                            'side': 'BUY',
+                            'symbol': symbol,
+                            'amount': trade_amt,
+                            'reason': ['Z_DEEP', f"Z:{stats['z_score']:.2f}"]
+                        }
+
         return None

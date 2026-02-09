@@ -28,20 +28,28 @@ class HiveMind:
         self.tag_stats = defaultdict(lambda: {"wins": 0, "losses": 0, "total_pnl": 0.0, "trades": 0})
         # Per-agent tag usage: {agent_id: {tag: count}}
         self.agent_tags = defaultdict(lambda: defaultdict(int))
+        # Enhanced granular stats
+        self.tag_by_token = defaultdict(lambda: defaultdict(lambda: {"wins": 0, "losses": 0, "total_pnl": 0.0, "trades": 0}))
+        self.tag_combos = defaultdict(lambda: {"wins": 0, "losses": 0, "total_pnl": 0.0, "trades": 0})
+        self.tag_history = defaultdict(list)  # Track recent performance for trend analysis
 
     def analyze_alpha(self) -> Dict[str, dict]:
         """
         精确归因：基于每笔已平仓交易的实际 PnL。
+        增强版：添加 by_token, by_combo, trend 等细粒度分析
 
         逻辑:
         1. 找到所有 SELL 记录 (有 trade_pnl)
         2. 回溯同 Agent + 同 Symbol 的 BUY 记录的 reason tags
         3. 将 SELL 的 PnL 归因到这些 BUY tags 上
         4. SELL 自身的 tags (TAKE_PROFIT, STOP_LOSS 等) 也记录
+        5. 细分统计：by_token, by_combo, trend
         """
         trades = list(self.engine.trade_history)
         self.tag_stats.clear()
         self.agent_tags.clear()
+        self.tag_by_token.clear()
+        self.tag_combos.clear()
 
         # Index BUY trades by (agent, symbol) for fast lookup
         buy_index = defaultdict(list)  # {(agent, symbol): [trade, ...]}
@@ -61,6 +69,7 @@ class HiveMind:
             agent_id = t.get("agent_id", t.get("agent"))
             symbol = t["symbol"]
             is_win = trade_pnl > 0
+            timestamp = t.get("timestamp", 0)
 
             # 1. Attribute to the BUY entry tags (WHY did we enter?)
             buy_key = (agent_id, symbol)
@@ -75,16 +84,45 @@ class HiveMind:
 
             # 3. Attribute PnL to entry tags (most important)
             for tag in entry_tags:
+                # Overall stats
                 self.tag_stats[tag]["trades"] += 1
                 self.tag_stats[tag]["total_pnl"] += trade_pnl
                 if is_win:
                     self.tag_stats[tag]["wins"] += 1
                 else:
                     self.tag_stats[tag]["losses"] += 1
+
                 # Track per-agent usage
                 self.agent_tags[agent_id][tag] += 1
 
-            # 4. Also attribute to exit tags (secondary signal)
+                # By-token breakdown
+                self.tag_by_token[tag][symbol]["trades"] += 1
+                self.tag_by_token[tag][symbol]["total_pnl"] += trade_pnl
+                if is_win:
+                    self.tag_by_token[tag][symbol]["wins"] += 1
+                else:
+                    self.tag_by_token[tag][symbol]["losses"] += 1
+
+                # Track history for trend analysis (keep last 20 trades per tag)
+                self.tag_history[tag].append({
+                    "pnl": trade_pnl,
+                    "timestamp": timestamp,
+                    "is_win": is_win
+                })
+                if len(self.tag_history[tag]) > 20:
+                    self.tag_history[tag].pop(0)
+
+            # 4. Track tag combinations (if multiple entry tags)
+            if len(entry_tags) >= 2:
+                combo_key = "+".join(sorted(entry_tags))
+                self.tag_combos[combo_key]["trades"] += 1
+                self.tag_combos[combo_key]["total_pnl"] += trade_pnl
+                if is_win:
+                    self.tag_combos[combo_key]["wins"] += 1
+                else:
+                    self.tag_combos[combo_key]["losses"] += 1
+
+            # 5. Also attribute to exit tags (secondary signal)
             for tag in exit_tags:
                 if tag.startswith("PNL_"):
                     continue  # Skip PnL info tags
@@ -95,21 +133,70 @@ class HiveMind:
                 else:
                     self.tag_stats[tag]["losses"] += 1
 
-        # Build alpha report
+        # Build enhanced alpha report
         alpha_report = {}
         for tag, stats in self.tag_stats.items():
             total = stats["wins"] + stats["losses"]
             if total < 2:  # Need minimum samples
                 continue
+
             win_rate = (stats["wins"] / total) * 100
             avg_pnl = stats["total_pnl"] / total
+
+            # Build by_token breakdown
+            by_token = {}
+            if tag in self.tag_by_token:
+                for symbol, token_stats in self.tag_by_token[tag].items():
+                    token_total = token_stats["wins"] + token_stats["losses"]
+                    if token_total >= 1:
+                        by_token[symbol] = {
+                            "win_rate": round((token_stats["wins"] / token_total) * 100, 1),
+                            "avg_pnl": round(token_stats["total_pnl"] / token_total, 2),
+                            "trades": token_total
+                        }
+
+            # Calculate trend (recent 10 trades vs older 10 trades)
+            trend = "stable"
+            if tag in self.tag_history and len(self.tag_history[tag]) >= 10:
+                history = self.tag_history[tag]
+                recent_pnl = sum(h["pnl"] for h in history[-10:]) / 10
+                older_pnl = sum(h["pnl"] for h in history[-20:-10]) / 10 if len(history) >= 20 else recent_pnl
+
+                if recent_pnl > older_pnl * 1.2:
+                    trend = "improving"
+                elif recent_pnl < older_pnl * 0.8:
+                    trend = "declining"
+
             alpha_report[tag] = {
                 "win_rate": round(win_rate, 1),
                 "avg_pnl": round(avg_pnl, 2),
                 "trades": total,
                 "impact": "POSITIVE" if avg_pnl > 0 else "NEGATIVE",
-                "score": round(stats["total_pnl"], 2)
+                "score": round(stats["total_pnl"], 2),
+                "by_token": by_token,
+                "recent_trend": trend
             }
+
+        # Add best combos to report
+        best_combos = []
+        for combo_key, combo_stats in self.tag_combos.items():
+            combo_total = combo_stats["wins"] + combo_stats["losses"]
+            if combo_total >= 2:
+                combo_win_rate = (combo_stats["wins"] / combo_total) * 100
+                combo_avg_pnl = combo_stats["total_pnl"] / combo_total
+                if combo_avg_pnl > 0:
+                    best_combos.append({
+                        "combo": combo_key.split("+"),
+                        "win_rate": round(combo_win_rate, 1),
+                        "avg_pnl": round(combo_avg_pnl, 2),
+                        "trades": combo_total
+                    })
+
+        # Sort by avg_pnl and keep top 5
+        best_combos.sort(key=lambda x: x["avg_pnl"], reverse=True)
+        alpha_report["_meta"] = {
+            "best_combos": best_combos[:5]
+        }
 
         return alpha_report
 
