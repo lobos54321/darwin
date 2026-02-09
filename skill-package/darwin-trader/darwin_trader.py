@@ -231,7 +231,13 @@ async def darwin_status() -> Dict[str, Any]:
 
         # Format positions
         positions = []
-        for symbol, quantity in agent_state["positions"].items():
+        for symbol, data in agent_state["positions"].items():
+            # Handle both dict format (with details) and simple number format
+            if isinstance(data, dict):
+                quantity = data.get("amount", 0)
+            else:
+                quantity = data
+
             if quantity > 0:
                 positions.append({
                     "symbol": symbol,
