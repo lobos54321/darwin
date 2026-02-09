@@ -10,7 +10,7 @@ from typing import Dict, List
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Request, Header, Body
 from fastapi.responses import FileResponse, Response, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.background import BackgroundTask
+from starlette.background import BackgroundTask
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 import json
