@@ -10,6 +10,7 @@ from typing import Dict, List
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Request, Header, Body
 from fastapi.responses import FileResponse, Response, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.background import BackgroundTask
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 import json
@@ -1275,11 +1276,60 @@ async def get_darwin_cli():
 
 @app.get("/skill/core.zip")
 async def get_skill_core():
-    """获取 Agent 核心代码包"""
-    zip_path = os.path.join(os.path.dirname(__file__), "..", "skill-core.zip")
-    if not os.path.exists(zip_path):
-        raise HTTPException(status_code=404, detail="skill-core.zip not found")
-    return FileResponse(zip_path, media_type="application/zip", filename="core.zip")
+    """
+    动态生成 Agent 核心代码包 (始终返回最新代码)
+
+    包含:
+    - agent_template/ (最新的agent.py和strategy.py)
+    - requirements.txt
+    - CLIENT_GUIDE.md
+    - run scripts
+    """
+    import zipfile
+    import io
+    import tempfile
+
+    # 源目录
+    base_dir = os.path.join(os.path.dirname(__file__), "..")
+    agent_template_dir = os.path.join(base_dir, "agent_template")
+
+    # 创建临时zip文件
+    temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+
+    try:
+        with zipfile.ZipFile(temp_zip.name, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # 添加 agent_template/ 目录（排除缓存和备份）
+            for root, dirs, files in os.walk(agent_template_dir):
+                # 排除 __pycache__ 和 backups
+                dirs[:] = [d for d in dirs if d not in ['__pycache__', 'backups']]
+
+                for file in files:
+                    if file.endswith('.pyc'):
+                        continue
+
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, base_dir)
+                    zipf.write(file_path, arcname)
+
+            # 添加其他文件
+            for filename in ['requirements.txt', 'CLIENT_GUIDE.md', 'run_mac.command', 'run_win.bat']:
+                file_path = os.path.join(base_dir, filename)
+                if os.path.exists(file_path):
+                    zipf.write(file_path, filename)
+
+        # 返回zip文件
+        return FileResponse(
+            temp_zip.name,
+            media_type="application/zip",
+            filename="core.zip",
+            background=BackgroundTask(lambda: os.unlink(temp_zip.name))
+        )
+
+    except Exception as e:
+        # 清理临时文件
+        if os.path.exists(temp_zip.name):
+            os.unlink(temp_zip.name)
+        raise HTTPException(status_code=500, detail=f"Failed to generate core.zip: {str(e)}")
 
 @app.get("/skill/darwin-arena.zip")
 async def get_skill_package():
