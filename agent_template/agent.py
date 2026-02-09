@@ -641,7 +641,16 @@ Reply with ONLY the insight."""
         return f"{self.persona['emoji']} {prefix}{base_content}{suffix}"
 
     async def _call_llm(self, prompt: str, max_tokens: int = 1024) -> str:
-        """Call LLM proxy to generate content (reuses self_coder config)"""
+        """
+        Call LLM proxy to generate content (reuses self_coder config)
+        
+        DEFENSIVE PROGRAMMING:
+        - Always returns a string (never dict, never None)
+        - Handles quota exhaustion gracefully
+        - Provides safe fallback on any error
+        """
+        SAFE_FALLBACK = "Market analysis in progress."
+        
         headers = {
             "x-api-key": LLM_API_KEY,
             "anthropic-version": "2023-06-01",
@@ -669,18 +678,46 @@ Reply with ONLY the insight."""
                 ) as resp:
                     if resp.status != 200:
                         text = await resp.text()
-                        print(f"⚠️ LLM call failed ({resp.status}): {text[:200]}")
-                        return ""
+                        # Check for quota exhaustion specifically
+                        if "exhausted" in text.lower() or "quota" in text.lower():
+                            print(f"⚠️ LLM quota exhausted, using fallback")
+                        else:
+                            print(f"⚠️ LLM call failed ({resp.status}): {text[:200]}")
+                        return SAFE_FALLBACK  # Return safe string, not empty
+                    
                     data = await resp.json()
+                    
+                    # Defensive: ensure data is a dict
+                    if not isinstance(data, dict):
+                        print(f"⚠️ LLM returned non-dict: {type(data)}")
+                        return SAFE_FALLBACK
+                    
                     content_blocks = data.get("content", [])
+                    
+                    # Defensive: ensure content_blocks is a list
+                    if not isinstance(content_blocks, list):
+                        print(f"⚠️ LLM content is not a list: {type(content_blocks)}")
+                        return SAFE_FALLBACK
+                    
                     result = ""
                     for block in content_blocks:
-                        if block.get("type") == "text":
-                            result += block.get("text", "")
-                    return result.strip()
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text_content = block.get("text", "")
+                            if isinstance(text_content, str):
+                                result += text_content
+                    
+                    # Final check: ensure we return a non-empty string
+                    result = result.strip()
+                    if not result:
+                        return SAFE_FALLBACK
+                    return result
+                    
+        except asyncio.CancelledError:
+            # Don't catch cancellation - let it propagate
+            raise
         except Exception as e:
             print(f"⚠️ LLM call exception: {e}")
-            return ""
+            return SAFE_FALLBACK
 
     def _get_market_summary(self) -> str:
         """Build a brief market state summary from strategy data"""

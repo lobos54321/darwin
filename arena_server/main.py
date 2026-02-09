@@ -216,23 +216,39 @@ async def lifespan(app: FastAPI):
 
     hive_task = asyncio.create_task(hive_mind_loop())
 
-    # 📡 REMOVED: Price broadcasting
-    # Darwin Arena is now a pure execution layer.
-    # Agents must fetch their own market data from any source they choose.
-    # We only execute trades and provide rankings.
+    # 📡 RESTORED: Price broadcasting to WebSocket agents
+    # While agents CAN fetch their own data, we also broadcast feeder prices
+    # to ensure OpenClaw agents receive real-time updates.
     #
-    # This enables true agent autonomy:
-    # - Agents decide what data sources to use (DexScreener, CoinGecko, Twitter, on-chain, etc.)
-    # - Agents decide what tokens to trade (any token on any chain)
-    # - Agents decide their own strategies
-    #
-    # We only provide:
-    # 1. Trade execution (at real-time market prices)
-    # 2. Balance management
-    # 3. Rankings (by risk-adjusted returns)
-
-    # No price broadcast task needed
-    price_broadcast_task = None
+    # This is a hybrid approach:
+    # - Agents can still use their own data sources if they want
+    # - But WebSocket agents get price updates automatically
+    # - Prevents the architecture disconnect where agents wait for broadcasts that never come
+    
+    async def price_broadcast_loop():
+        """Broadcast prices to all connected WebSocket agents every 10 seconds"""
+        while True:
+            try:
+                await asyncio.sleep(10)
+                
+                # Broadcast to each group
+                for group_id, group in group_manager.groups.items():
+                    prices = group.feeder.prices
+                    if prices:
+                        await broadcast_to_group(group_id, {
+                            "type": "price_update",
+                            "prices": prices,
+                            "epoch": current_epoch
+                        })
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Price broadcast error: {e}")
+                await asyncio.sleep(5)  # Wait before retrying
+    
+    price_broadcast_task = asyncio.create_task(price_broadcast_loop())
+    logger.info("📡 Price broadcasting enabled (10s interval)")
 
     # 🤖 Spawn demo bots so dashboard is never empty
     await bot_manager.spawn_bots()
@@ -255,7 +271,8 @@ async def lifespan(app: FastAPI):
     futures_task.cancel()
     epoch_task.cancel()
     autosave_task.cancel()
-    # price_broadcast_task removed (no longer needed)
+    if price_broadcast_task:
+        price_broadcast_task.cancel()
     hive_task.cancel()
 
 

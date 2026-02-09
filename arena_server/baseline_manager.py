@@ -218,14 +218,23 @@ class Strategy:
         new_version = self.current_baseline["version"] + 1
 
         # 策略代码更新逻辑
-        # 目前：保持当前策略，只更新 hive_data
-        # 未来：可以用 LLM 融合赢家策略
         new_strategy_code = self.current_baseline["strategy_code"]
 
         if winner_strategy:
-            # TODO: 用 LLM 融合赢家策略的成功元素
-            # 目前先保持原策略
-            logger.info(f"📝 Winner strategy received but not merged yet (future feature)")
+            # 尝试使用 LLM 融合赢家策略
+            try:
+                fused_code = self._fuse_with_winner_strategy_sync(
+                    current_code=new_strategy_code,
+                    winner_code=winner_strategy,
+                    hive_data=hive_data
+                )
+                if fused_code:
+                    new_strategy_code = fused_code
+                    logger.info(f"🧬 Successfully fused winner strategy elements!")
+                else:
+                    logger.info(f"📝 Winner strategy received but fusion skipped (LLM unavailable)")
+            except Exception as e:
+                logger.warning(f"⚠️ Strategy fusion failed: {e} - keeping current baseline")
 
         # 更新 baseline
         self.current_baseline = {
@@ -282,6 +291,95 @@ class Strategy:
 
         logger.error(f"❌ Cannot rollback: version {version} not found")
         return False
+
+    def _fuse_with_winner_strategy_sync(
+        self,
+        current_code: str,
+        winner_code: str,
+        hive_data: Dict
+    ) -> Optional[str]:
+        """
+        使用 LLM 融合赢家策略的成功元素 (同步版本)
+        
+        融合策略:
+        1. 分析赢家策略的关键参数和逻辑
+        2. 结合 Hive Mind 的 boost/penalize 信号
+        3. 生成融合后的策略代码
+        
+        Returns:
+            融合后的策略代码，失败返回 None
+        """
+        try:
+            from llm_client import call_llm
+            import asyncio
+            
+            boost_tags = hive_data.get("boost", [])
+            penalize_tags = hive_data.get("penalize", [])
+            
+            # 构建融合提示
+            prompt = f"""You are a Python trading strategy expert. Your task is to intelligently merge the best elements from a winning strategy into the baseline strategy.
+
+## Current Baseline Strategy (to be improved):
+```python
+{current_code[:3000]}
+```
+
+## Winner Strategy (contains successful patterns):
+```python
+{winner_code[:3000]}
+```
+
+## Hive Mind Signals:
+- BOOST (proven profitable): {boost_tags}
+- PENALIZE (losing patterns): {penalize_tags}
+
+## Your Task:
+1. Identify the KEY SUCCESS FACTORS in the winner strategy (parameters, entry/exit logic, risk management)
+2. Extract those elements and merge them into the baseline structure
+3. Ensure the merged strategy BOOSTS the successful patterns and AVOIDS the penalized patterns
+4. Keep the code clean and functional
+
+## Output:
+Return ONLY the complete Python strategy code (starting with `import` and including the full `MyStrategy` class).
+Do NOT include explanations or markdown - just the raw Python code."""
+
+            # Run async call synchronously
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            
+            if loop and loop.is_running():
+                # We're in an async context - can't use run_until_complete
+                # Return None to skip fusion this time
+                logger.info("⏭️ Skipping LLM fusion (async context)")
+                return None
+            else:
+                # Sync context - can run async code
+                result = asyncio.run(call_llm(
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=4000,
+                    temperature=0.2  # Low temperature for code generation
+                ))
+            
+            if result and "class MyStrategy" in result:
+                # Basic validation - ensure it looks like valid Python
+                if "def on_price_update" in result and "def __init__" in result:
+                    logger.info(f"✅ Strategy fusion generated {len(result)} chars of code")
+                    return result
+                else:
+                    logger.warning("⚠️ Fused strategy missing required methods")
+                    return None
+            else:
+                logger.warning("⚠️ LLM returned invalid strategy code")
+                return None
+                
+        except ImportError:
+            logger.warning("⚠️ llm_client not available for strategy fusion")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Strategy fusion error: {e}")
+            return None
 
     def get_performance_comparison(self) -> List[Dict]:
         """
