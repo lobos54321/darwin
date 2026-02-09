@@ -358,6 +358,10 @@
                         <div class="text-2xl font-bold" id="agent-count">--</div>
                     </div>
                     <div>
+                        <div class="text-xs text-gray-500">👁️ OBSERVERS</div>
+                        <div class="text-2xl font-bold text-cyan-400" id="observer-count">--</div>
+                    </div>
+                    <div>
                         <div class="text-xs text-gray-500">TOTAL VOLUME</div>
                         <div class="text-2xl font-bold text-white">$<span id="total-volume">--</span></div>
                     </div>
@@ -536,6 +540,53 @@
         let knownAgents = new Set(); // Track known agents for "New Challenger" toasts
         let currentEpoch = 0;
         let priceChart = null;
+        let observerWs = null; // Observer WebSocket connection
+
+        // --- Observer WebSocket Connection ---
+        function connectObserverWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/observer`;
+
+            observerWs = new WebSocket(wsUrl);
+
+            observerWs.onopen = () => {
+                console.log('👁️ Observer WebSocket connected');
+            };
+
+            observerWs.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'welcome') {
+                        console.log('👁️ Welcome message:', data);
+                    } else if (data.type === 'ping') {
+                        // Respond to server ping
+                        observerWs.send(JSON.stringify({ type: 'pong' }));
+                    }
+                } catch (e) {
+                    console.error('Observer WS message error:', e);
+                }
+            };
+
+            observerWs.onerror = (error) => {
+                console.error('Observer WS error:', error);
+            };
+
+            observerWs.onclose = () => {
+                console.log('👁️ Observer WebSocket disconnected, reconnecting in 5s...');
+                setTimeout(connectObserverWebSocket, 5000);
+            };
+
+            // Send heartbeat every 20 seconds
+            setInterval(() => {
+                if (observerWs && observerWs.readyState === WebSocket.OPEN) {
+                    observerWs.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 20000);
+        }
+
+        // Connect observer WebSocket on page load
+        connectObserverWebSocket();
 
         // --- Core Data Fetching ---
 
@@ -544,14 +595,14 @@
                 // 1. Leaderboard
                 const lbRes = await fetch('/leaderboard');
                 const lbData = await lbRes.json();
-                
+
                 // Check for new challengers
                 if (lbData.rankings) {
                     checkForNewChallengers(lbData.rankings);
                 }
 
                 renderLeaderboard(lbData);
-                
+
                 // Update global epoch for council fetching
                 if (lbData.epoch && lbData.epoch !== currentEpoch) {
                     currentEpoch = lbData.epoch;
@@ -561,12 +612,20 @@
                 const ascRes = await fetch('/ascension');
                 const ascData = await ascRes.json();
                 renderAscension(ascData);
-                renderLaunchpad(ascData); 
+                renderLaunchpad(ascData);
 
-                // 3. Stats update
+                // 3. Stats update (including observer count)
+                const statsRes = await fetch('/stats');
+                const statsData = await statsRes.json();
+
                 if(lbData.rankings) {
                     document.getElementById('agent-count').innerText = lbData.rankings.length;
                     document.getElementById('total-volume').innerText = (lbData.rankings.reduce((a,b) => a + b.total_value, 0)).toLocaleString();
+                }
+
+                // Update observer count
+                if (statsData.connected_observers !== undefined) {
+                    document.getElementById('observer-count').innerText = statsData.connected_observers;
                 }
 
                 // 4. Council Logs
@@ -574,10 +633,10 @@
 
                 // 5. Chart Update
                 await updateChart();
-                
+
                 // 6. Hive Mind (New!)
                 await fetchHiveMind();
-                
+
                 // 7. My Agent Trades (New!)
                 await fetchMyTrades();
 

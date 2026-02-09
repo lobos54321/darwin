@@ -114,6 +114,7 @@ def save_api_keys(keys_db):
 API_KEYS_DB = load_api_keys()
 
 connected_agents: Dict[str, WebSocket] = {}
+connected_observers: set = set()  # 观众连接追踪
 current_epoch = 0
 epoch_start_time: datetime = None
 trade_count = 0
@@ -739,6 +740,51 @@ async def upload_strategy(
 
 # ========== WebSocket ==========
 
+@app.websocket("/ws/observer")
+async def observer_websocket(websocket: WebSocket):
+    """
+    观众 WebSocket 连接（无需鉴权）
+    用于 Dashboard 实时更新和观众统计
+    """
+    observer_id = f"observer_{id(websocket)}"
+
+    await websocket.accept()
+    connected_observers.add(observer_id)
+
+    logger.info(f"👁️ Observer connected: {observer_id} (Total observers: {len(connected_observers)})")
+
+    try:
+        # 发送欢迎消息
+        await websocket.send_json({
+            "type": "welcome",
+            "message": "Welcome to Darwin Arena Live!",
+            "epoch": current_epoch,
+            "connected_agents": len(connected_agents),
+            "connected_observers": len(connected_observers)
+        })
+
+        # 保持连接，接收心跳
+        while True:
+            try:
+                data = await asyncio.wait_for(websocket.receive_json(), timeout=30.0)
+
+                # 处理心跳
+                if data.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+
+            except asyncio.TimeoutError:
+                # 30秒没有消息，发送心跳检查
+                await websocket.send_json({"type": "ping"})
+
+    except WebSocketDisconnect:
+        logger.info(f"👁️ Observer disconnected: {observer_id}")
+    except Exception as e:
+        logger.error(f"Observer error: {e}")
+    finally:
+        connected_observers.discard(observer_id)
+        logger.info(f"👁️ Observer removed: {observer_id} (Total observers: {len(connected_observers)})")
+
+
 @app.websocket("/ws/{agent_id}")
 async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str = Query(None)):
     """Agent WebSocket 连接 (带鉴权)"""
@@ -1050,6 +1096,7 @@ async def get_stats():
         "epoch": current_epoch,
         "epoch_start": epoch_start_time.isoformat() if epoch_start_time else None,
         "connected_agents": len(connected_agents),
+        "connected_observers": len(connected_observers),  # 观众数量
         "total_agents": group_manager.total_agents,
         "trade_count": trade_count,
         "total_volume": total_volume,
