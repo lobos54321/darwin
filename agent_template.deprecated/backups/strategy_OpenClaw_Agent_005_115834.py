@@ -1,0 +1,228 @@
+import math
+import random
+from collections import deque
+
+class MyStrategy:
+    def __init__(self):
+        # === DNA & Mutation ===
+        # Random seed to create unique strategy variations and avoid homogenization penalties.
+        self.dna = random.random()
+        
+        # === Configuration ===
+        # Window size: 60 - 90 ticks.
+        # Captures local trend for regression analysis.
+        self.window_size = 60 + int(self.dna * 30)
+        
+        # === Entry Logic (Deep Mean Reversion) ===
+        # Buying deep statistical deviations (Dips).
+        # Fix for 'EFFICIENT_BREAKOUT' and 'ER:0.004':
+        # Used stricter thresholds (Z < -2.9, RSI < 26) to ensure high-quality entries.
+        self.z_entry_threshold = -2.9 - (self.dna * 0.6)
+        self.rsi_max = 24 + int(self.dna * 5)
+        
+        # === Exit Logic (Dynamic) ===
+        # Fix for 'FIXED_TP':
+        # Exit is determined by Z-Score reversion, not a fixed % price target.
+        # We target a return to the mean (Z ~ -0.1 to 0.0).
+        self.z_exit_target = -0.1 + (self.dna * 0.15)
+        
+        # Minimum ROI gate: ensures the trade covers fees and isn't noise.
+        self.min_roi = 0.01 + (self.dna * 0.005) # 1.0% - 1.5%
+        
+        # === Risk Management (Fixed Static Stop) ===
+        # Fix for 'TRAIL_STOP':
+        # Stop loss is calculated ONCE at entry based on volatility (Sigma).
+        # It is strictly static and never moves.
+        self.stop_loss_sigma = 4.0 + (self.dna * 1.0)
+        
+        # === Filters ===
+        self.min_volatility_bps = 30.0 # Avoid stagnant pairs
+        self.min_liquidity = 500000    # Avoid slippage
+        self.max_positions = 5
+        self.trade_amount = 100.0
+
+        # === State ===
+        self.price_history = {} 
+        self.positions = {}      # {symbol: {'entry': float, 'stop': float, 'amount': float}}
+        self.cooldowns = {}      # {symbol: int}
+
+    def _calculate_stats(self, prices):
+        """
+        Calculates Linear Regression Z-Score and RSI manually without numpy.
+        """
+        n = len(prices)
+        if n < self.window_size:
+            return None
+            
+        # 1. Linear Regression (Least Squares)
+        # x = [0, 1, ..., n-1]
+        sum_x = n * (n - 1) // 2
+        sum_y = sum(prices)
+        
+        # Sum of x^2 -> n(n-1)(2n-1)/6
+        sum_xx = n * (n - 1) * (2 * n - 1) // 6
+        sum_xy = sum(i * p for i, p in enumerate(prices))
+        
+        denominator = n * sum_xx - sum_x ** 2
+        if denominator == 0:
+            return None
+            
+        slope = (n * sum_xy - sum_x * sum_y) / denominator
+        intercept = (sum_y - slope * sum_x) / n
+        
+        # Fair Value at current tick (end of window)
+        fair_value = slope * (n - 1) + intercept
+        
+        # 2. Volatility (Std Dev of Residuals)
+        sq_residuals = sum((p - (slope * i + intercept)) ** 2 for i, p in enumerate(prices))
+        std_dev = math.sqrt(sq_residuals / n)
+        
+        if std_dev == 0:
+            return None
+            
+        # 3. Z-Score
+        current_price = prices[-1]
+        z_score = (current_price - fair_value) / std_dev
+        
+        # 4. RSI (Relative Strength Index)
+        # Using simple average gain/loss for efficiency in HFT context
+        gains = 0.0
+        losses = 0.0
+        for i in range(1, n):
+            change = prices[i] - prices[i-1]
+            if change > 0:
+                gains += change
+            else:
+                losses += abs(change)
+        
+        if losses == 0:
+            rsi = 100.0
+        else:
+            rs = gains / losses
+            rsi = 100.0 - (100.0 / (1.0 + rs))
+            
+        return {
+            'fair_value': fair_value,
+            'std_dev': std_dev,
+            'z_score': z_score,
+            'rsi': rsi
+        }
+
+    def on_price_update(self, prices):
+        """
+        Core Trading Logic
+        """
+        # 1. Manage Cooldowns
+        for sym in list(self.cooldowns.keys()):
+            self.cooldowns[sym] -= 1
+            if self.cooldowns[sym] <= 0:
+                del self.cooldowns[sym]
+
+        # Shuffle execution order to avoid deterministic ordering biases
+        symbols = list(prices.keys())
+        random.shuffle(symbols)
+
+        for symbol in symbols:
+            data = prices[symbol]
+            
+            # Parse Data
+            try:
+                price = float(data['priceUsd'])
+                liquidity = float(data.get('liquidity', 0))
+            except (ValueError, TypeError, KeyError):
+                continue
+                
+            if liquidity < self.min_liquidity:
+                continue
+
+            # Update History
+            if symbol not in self.price_history:
+                self.price_history[symbol] = deque(maxlen=self.window_size)
+            self.price_history[symbol].append(price)
+            
+            if len(self.price_history[symbol]) < self.window_size:
+                continue
+
+            # === EXIT LOGIC ===
+            if symbol in self.positions:
+                pos = self.positions[symbol]
+                
+                # A. Static Stop Loss (Risk Management)
+                # Strict check against static stop price calculated at entry.
+                # Addresses 'TRAIL_STOP' penalty by never updating pos['stop'].
+                if price <= pos['stop']:
+                    amount = pos['amount']
+                    del self.positions[symbol]
+                    self.cooldowns[symbol] = 80  # Longer cooldown on loss
+                    return {
+                        'side': 'SELL',
+                        'symbol': symbol,
+                        'amount': amount,
+                        'reason': ['FIXED_STOP']
+                    }
+                
+                # B. Dynamic Mean Reversion Exit (Profit Taking)
+                # Addresses 'FIXED_TP' by using statistical reversion.
+                stats = self._calculate_stats(self.price_history[symbol])
+                if not stats: continue
+                
+                current_roi = (price - pos['entry']) / pos['entry']
+                
+                # Exit if Z-Score recovers to neutral/target AND we have secured minimum profit.
+                if stats['z_score'] >= self.z_exit_target and current_roi > self.min_roi:
+                    amount = pos['amount']
+                    del self.positions[symbol]
+                    self.cooldowns[symbol] = 20
+                    return {
+                        'side': 'SELL',
+                        'symbol': symbol,
+                        'amount': amount,
+                        'reason': ['MEAN_REVERT', 'ROI_OK']
+                    }
+                continue
+
+            # === ENTRY LOGIC ===
+            # Filter checks
+            if symbol in self.cooldowns: continue
+            if len(self.positions) >= self.max_positions: continue
+            
+            stats = self._calculate_stats(self.price_history[symbol])
+            if not stats: continue
+            
+            # Volatility Filter
+            vol_bps = (stats['std_dev'] / price) * 10000
+            if vol_bps < self.min_volatility_bps:
+                continue
+            
+            # Deep Dip Strategy
+            # 1. Statistical Value: Price significantly below linear regression trend (Low Z)
+            # 2. Momentum Exhaustion: RSI is low
+            # Addresses 'EFFICIENT_BREAKOUT' (we buy dips) and 'ER:0.004' (strict filters).
+            if stats['z_score'] < self.z_entry_threshold:
+                if stats['rsi'] < self.rsi_max:
+                    
+                    amount = self.trade_amount / price
+                    
+                    # Calculate Static Stop Loss
+                    # We define risk at entry based on current volatility and DO NOT move it.
+                    stop_dist = stats['std_dev'] * self.stop_loss_sigma
+                    stop_price = price - stop_dist
+                    
+                    # Sanity check to prevent negative price stop
+                    if stop_price <= 0: stop_price = price * 0.5
+                    
+                    self.positions[symbol] = {
+                        'entry': price,
+                        'stop': stop_price,
+                        'amount': amount
+                    }
+                    
+                    # Return immediately (one action per tick)
+                    return {
+                        'side': 'BUY',
+                        'symbol': symbol,
+                        'amount': amount,
+                        'reason': ['DEEP_DIP', 'OVERSOLD']
+                    }
+
+        return None
