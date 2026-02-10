@@ -720,36 +720,81 @@ class StrategyUpload(BaseModel):
 
 @app.post("/agent/strategy")
 async def upload_strategy(
-    upload: StrategyUpload, 
+    upload: StrategyUpload,
     x_agent_id: str = Header(None),
-    x_api_key: str = Header(None)
+    x_api_key: str = Header(None),
+    skip_sandbox: bool = Query(False, description="Skip sandbox testing (admin only)")
 ):
     """
     允许 Agent 上传最新的策略代码
-    用于 'Champion Strategy' 功能
+
+    🧪 新增：沙盒测试系统
+    - 自动验证语法、安全性、运行时错误
+    - 回测预测性能
+    - 测试通过才允许部署
     """
     if not x_agent_id or not x_api_key:
         raise HTTPException(status_code=401, detail="Missing Auth Headers")
-    
+
     # 鉴权
     stored_agent_id = API_KEYS_DB.get(x_api_key)
     if stored_agent_id != x_agent_id:
         raise HTTPException(status_code=403, detail="Invalid API Key")
 
-    # 简单的代码安全检查 (防止上传非 Python 文件)
+    # 基础格式检查
     if "class MyStrategy" not in upload.code:
-        raise HTTPException(status_code=400, detail="Invalid strategy code format")
+        raise HTTPException(status_code=400, detail="Invalid strategy code format: Missing MyStrategy class")
 
-    # 保存路径: data/agents/{id}/strategy.py
-    save_dir = os.path.join(os.path.dirname(__file__), "..", "data", "agents", x_agent_id)
-    os.makedirs(save_dir, exist_ok=True)
-    
-    save_path = os.path.join(save_dir, "strategy.py")
-    with open(save_path, "w") as f:
-        f.write(upload.code)
-    
-    logger.info(f"📥 Received new strategy from {x_agent_id}")
-    return {"status": "success", "message": "Strategy updated"}
+    # 🧪 沙盒测试（除非管理员跳过）
+    if not skip_sandbox:
+        from evolution import validate_and_deploy_strategy
+
+        logger.info(f"🧪 Running sandbox tests for {x_agent_id}...")
+
+        data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
+        success, message, test_result = await validate_and_deploy_strategy(
+            agent_id=x_agent_id,
+            new_strategy_code=upload.code,
+            data_dir=data_dir,
+            min_backtest_rounds=10,
+        )
+
+        if not success:
+            logger.warning(f"❌ Strategy rejected for {x_agent_id}: {message}")
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "Strategy validation failed",
+                    "message": message,
+                    "test_result": test_result.to_dict() if test_result else None,
+                }
+            )
+
+        logger.info(f"✅ Strategy validated and deployed for {x_agent_id}")
+        return {
+            "status": "success",
+            "message": "Strategy validated and deployed",
+            "test_result": {
+                "predicted_pnl": test_result.predicted_pnl,
+                "avg_pnl_per_round": test_result.avg_pnl_per_round,
+                "win_rate": test_result.win_rate,
+                "backtest_rounds": test_result.backtest_rounds,
+            }
+        }
+
+    else:
+        # 管理员跳过沙盒测试，直接保存
+        logger.warning(f"⚠️ Sandbox testing skipped for {x_agent_id} (admin override)")
+
+        save_dir = os.path.join(os.path.dirname(__file__), "..", "data", "agents", x_agent_id)
+        os.makedirs(save_dir, exist_ok=True)
+
+        save_path = os.path.join(save_dir, "strategy.py")
+        with open(save_path, "w") as f:
+            f.write(upload.code)
+
+        logger.info(f"📥 Strategy saved for {x_agent_id} (no validation)")
+        return {"status": "success", "message": "Strategy updated (sandbox skipped)"}
 
 
 # ========== WebSocket ==========

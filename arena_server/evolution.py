@@ -2,12 +2,21 @@
 🧬 Evolution Engine - Project Darwin
 服务端职责：裁判 + 主持（生成赢家分享、读取赢家策略）
 客户端职责：进化（agent 用自己的 LLM 重写策略）
+
+新增：策略沙盒测试系统
+- 在提交新策略前，先在沙盒环境测试
+- 检测语法错误、安全漏洞、运行时错误
+- 用历史数据回测预测性能
 """
 
 import os
 import asyncio
-from typing import Dict, Any, List, Optional
-from llm_client import call_llm
+from typing import Dict, Any, List, Optional, Tuple
+from arena_server.llm_client import call_llm
+from arena_server.strategy_sandbox import (
+    validate_strategy_before_submission,
+    SandboxTestResult,
+)
 
 
 class MutationEngine:
@@ -99,6 +108,7 @@ async def run_council_and_evolution(
     losers: List[str],
     broadcast_fn=None,  # async function to broadcast to group
     group_id: int = 0,
+    enable_sandbox: bool = True,  # 🧪 新增：是否启用沙盒测试
 ) -> Dict[str, Any]:
     """
     议事厅 + 通知客户端进化
@@ -107,6 +117,7 @@ async def run_council_and_evolution(
     1. 生成赢家分享（LLM 主持）
     2. 记录到议事厅
     3. 广播 mutation_phase 给客户端，让客户端用自己的 LLM 进化
+    4. 🧪 新增：接收客户端提交的新策略，沙盒测试后才允许部署
 
     服务端不再做的事：
     - 替 agent 调 LLM 重写策略（这是客户端的事）
@@ -150,15 +161,96 @@ async def run_council_and_evolution(
         "losers": losers,
         "winner_wisdom": winner_wisdom,
         "winner_strategy": winner_strategy[:3000],  # Cap size for WebSocket
+        "sandbox_enabled": enable_sandbox,  # 🧪 告知客户端是否需要沙盒测试
     }
 
     if broadcast_fn:
         await broadcast_fn(mutation_data)
 
     print(f"✅ mutation_phase broadcasted. Agents will evolve with their own LLM.")
+    if enable_sandbox:
+        print(f"🧪 Sandbox testing enabled - new strategies will be validated before deployment.")
 
     return {
         "winner_id": winner_id,
         "winner_wisdom": winner_wisdom,
         "losers_notified": losers,
+        "sandbox_enabled": enable_sandbox,
     }
+
+
+async def validate_and_deploy_strategy(
+    agent_id: str,
+    new_strategy_code: str,
+    data_dir: str,
+    min_backtest_rounds: int = 10,
+) -> Tuple[bool, str, Optional[SandboxTestResult]]:
+    """
+    🧪 验证并部署新策略
+
+    流程：
+    1. 沙盒测试（语法、安全、回测）
+    2. 测试通过 → 保存策略文件
+    3. 测试失败 → 返回错误信息
+
+    Args:
+        agent_id: Agent ID
+        new_strategy_code: 新策略代码
+        data_dir: 数据目录
+        min_backtest_rounds: 最小回测轮数
+
+    Returns:
+        (success, message, test_result)
+    """
+    print(f"\n🧪 === SANDBOX TESTING: {agent_id} ===")
+
+    # === 第1步：沙盒测试 ===
+    allowed, message, test_result = await validate_strategy_before_submission(
+        new_strategy_code,
+        agent_id,
+        min_backtest_rounds,
+    )
+
+    if not allowed:
+        print(f"❌ Strategy rejected for {agent_id}")
+        print(f"   Reason: {message}")
+        return False, message, test_result
+
+    # === 第2步：保存策略文件 ===
+    print(f"✅ Strategy validated for {agent_id}")
+    print(f"   {message}")
+
+    agent_dir = os.path.join(data_dir, "agents", agent_id)
+    os.makedirs(agent_dir, exist_ok=True)
+
+    strategy_path = os.path.join(agent_dir, "strategy.py")
+
+    # 备份旧策略
+    if os.path.exists(strategy_path):
+        backup_path = os.path.join(agent_dir, f"strategy_backup_{epoch_timestamp()}.py")
+        try:
+            with open(strategy_path, "r") as f:
+                old_code = f.read()
+            with open(backup_path, "w") as f:
+                f.write(old_code)
+            print(f"📦 Old strategy backed up to: {backup_path}")
+        except Exception as e:
+            print(f"⚠️ Failed to backup old strategy: {e}")
+
+    # 保存新策略
+    try:
+        with open(strategy_path, "w") as f:
+            f.write(new_strategy_code)
+        print(f"💾 New strategy deployed: {strategy_path}")
+        print(f"📊 Predicted performance: {test_result.predicted_pnl:+.2f}% over {test_result.backtest_rounds} rounds")
+        return True, "Strategy deployed successfully", test_result
+    except Exception as e:
+        error_msg = f"Failed to save strategy file: {str(e)}"
+        print(f"❌ {error_msg}")
+        return False, error_msg, test_result
+
+
+def epoch_timestamp() -> str:
+    """生成时间戳（用于备份文件名）"""
+    from datetime import datetime
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
