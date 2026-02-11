@@ -35,6 +35,9 @@ echo "📦 Downloading agent files..."
 # Download baseline strategy
 curl -sL https://www.darwinx.fun/skill/darwin-trader/baseline_strategy.py -o "$AGENT_DIR/baseline_strategy.py"
 
+# Download darwin_trader module
+curl -sL https://www.darwinx.fun/skill/darwin-trader/darwin_trader.py -o "$AGENT_DIR/darwin_trader.py"
+
 # Download requirements
 curl -sL https://www.darwinx.fun/skill/darwin-trader/requirements.txt -o "$AGENT_DIR/requirements.txt"
 
