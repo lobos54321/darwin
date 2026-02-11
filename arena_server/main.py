@@ -934,7 +934,7 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
                 amount = float(data["amount"])
                 reason = data.get("reason", []) # 🏷️ Get tags
                 
-                success, msg, fill_price = engine.execute_order(
+                success, msg, fill_price = await engine.execute_order(
                     agent_id, symbol, side, amount, reason
                 )
                 

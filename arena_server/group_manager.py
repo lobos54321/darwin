@@ -219,13 +219,13 @@ class GroupManager:
         self.agent_to_group[agent_id] = group.group_id
         return group.engine.accounts.get(agent_id)
 
-    def execute_order(self, agent_id: str, symbol: str, side: OrderSide,
+    async def execute_order(self, agent_id: str, symbol: str, side: OrderSide,
                       amount_usd: float, reason: list = None) -> tuple:
         """Route order to the agent's group engine"""
         group = self.get_group(agent_id)
         if not group:
             return (False, "Agent not in any group", 0.0)
-        return group.engine.execute_order(agent_id, symbol, side, amount_usd, reason)
+        return await group.engine.execute_order(agent_id, symbol, side, amount_usd, reason)
 
     def get_balance(self, agent_id: str) -> float:
         group = self.get_group(agent_id)

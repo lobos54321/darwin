@@ -182,7 +182,7 @@ class MatchingEngine:
 
         return None
 
-    def execute_order(self, agent_id: str, symbol: str, side: OrderSide, amount_usd: float, reason: List[str] = None) -> tuple:
+    async def execute_order(self, agent_id: str, symbol: str, side: OrderSide, amount_usd: float, reason: List[str] = None) -> tuple:
         """执行订单 - 支持任意币种
 
         如果币种不在缓存中，会实时从 DexScreener 获取价格
@@ -200,9 +200,7 @@ class MatchingEngine:
         if current_price is None:
             # 实时从 DexScreener 获取价格
             try:
-                # 使用同步方式调用异步函数（在事件循环中）
-                loop = asyncio.get_event_loop()
-                current_price = loop.run_until_complete(self._fetch_price_realtime(symbol))
+                current_price = await self._fetch_price_realtime(symbol)
 
                 if current_price is None:
                     return (False, f"Cannot fetch price for symbol: {symbol}. Please ensure it exists on DexScreener.", 0.0)
@@ -331,26 +329,31 @@ class MatchingEngine:
 
 # 测试
 if __name__ == "__main__":
-    engine = MatchingEngine()
+    import asyncio
     
-    # 注册测试 Agent
-    engine.register_agent("Agent_001")
-    engine.register_agent("Agent_002")
+    async def test():
+        engine = MatchingEngine()
+        
+        # 注册测试 Agent
+        engine.register_agent("Agent_001")
+        engine.register_agent("Agent_002")
+        
+        # 模拟价格
+        engine.update_prices({
+            "CLANKER": {"priceUsd": 35.0},
+            "MOLT": {"priceUsd": 0.05},
+        })
+        
+        # 执行交易
+        await engine.execute_order("Agent_001", "CLANKER", OrderSide.BUY, 500)
+        await engine.execute_order("Agent_002", "MOLT", OrderSide.BUY, 300)
+        
+        # 价格变动
+        engine.update_prices({
+            "CLANKER": {"priceUsd": 38.0},  # +8.5%
+            "MOLT": {"priceUsd": 0.045},     # -10%
+        })
+        
+        engine.print_leaderboard()
     
-    # 模拟价格
-    engine.update_prices({
-        "CLANKER": {"priceUsd": 35.0},
-        "MOLT": {"priceUsd": 0.05},
-    })
-    
-    # 执行交易
-    engine.execute_order("Agent_001", "CLANKER", OrderSide.BUY, 500)
-    engine.execute_order("Agent_002", "MOLT", OrderSide.BUY, 300)
-    
-    # 价格变动
-    engine.update_prices({
-        "CLANKER": {"priceUsd": 38.0},  # +8.5%
-        "MOLT": {"priceUsd": 0.045},     # -10%
-    })
-    
-    engine.print_leaderboard()
+    asyncio.run(test())

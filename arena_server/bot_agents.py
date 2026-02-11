@@ -180,7 +180,7 @@ class BotManager:
                         continue
 
                     side = OrderSide.BUY if order["side"] == "BUY" else OrderSide.SELL
-                    success, msg, fill_price = self.group_manager.execute_order(
+                    success, msg, fill_price = await self.group_manager.execute_order(
                         agent_id, order["symbol"], side, order["amount"], order.get("reason", [])
                     )
 
