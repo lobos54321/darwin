@@ -1586,6 +1586,56 @@ async def get_install_shorturl():
     return FileResponse(script_path, media_type="text/plain", filename="install.sh")
 
 
+@app.get("/quick")
+async def get_quick_deploy():
+    """
+    Quick Deploy Script - One-command autonomous agent deployment
+    用法: curl -sL https://www.darwinx.fun/quick | bash -s "YourAgentName"
+    """
+    script_path = os.path.join(os.path.dirname(__file__), "..", "skill-package", "darwin-trader", "quick_deploy.sh")
+    
+    # 如果文件不存在，返回内联脚本
+    if not os.path.exists(script_path):
+        # 从本地 skill 目录读取
+        local_script = os.path.expanduser("~/clawd/skills/darwin-trader/quick_deploy.sh")
+        if os.path.exists(local_script):
+            return FileResponse(local_script, media_type="text/plain", filename="quick_deploy.sh")
+        
+        raise HTTPException(status_code=404, detail="quick_deploy.sh not found")
+    
+    return FileResponse(script_path, media_type="text/plain", filename="quick_deploy.sh")
+
+
+@app.get("/skill/darwin-trader/baseline_strategy.py")
+async def get_baseline_strategy_script():
+    """获取 Baseline Strategy Python 脚本"""
+    script_path = os.path.join(os.path.dirname(__file__), "..", "skill-package", "darwin-trader", "baseline_strategy.py")
+    
+    # Fallback to local skill directory
+    if not os.path.exists(script_path):
+        local_script = os.path.expanduser("~/clawd/skills/darwin-trader/baseline_strategy.py")
+        if os.path.exists(local_script):
+            return FileResponse(local_script, media_type="text/x-python", filename="baseline_strategy.py")
+        raise HTTPException(status_code=404, detail="baseline_strategy.py not found")
+    
+    return FileResponse(script_path, media_type="text/x-python", filename="baseline_strategy.py")
+
+
+@app.get("/skill/darwin-trader/quick_deploy.sh")
+async def get_quick_deploy_script():
+    """获取 Quick Deploy 脚本"""
+    script_path = os.path.join(os.path.dirname(__file__), "..", "skill-package", "darwin-trader", "quick_deploy.sh")
+    
+    # Fallback to local skill directory
+    if not os.path.exists(script_path):
+        local_script = os.path.expanduser("~/clawd/skills/darwin-trader/quick_deploy.sh")
+        if os.path.exists(local_script):
+            return FileResponse(local_script, media_type="text/plain", filename="quick_deploy.sh")
+        raise HTTPException(status_code=404, detail="quick_deploy.sh not found")
+    
+    return FileResponse(script_path, media_type="text/plain", filename="quick_deploy.sh")
+
+
 @app.get("/champion-strategy")
 async def get_champion_strategy():
     """返回当前冠军策略代码"""
