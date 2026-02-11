@@ -218,6 +218,45 @@ async def lifespan(app: FastAPI):
 
     hive_task = asyncio.create_task(hive_mind_loop())
 
+    # 🧬 归因分析 + 热更新广播: 每 10 分钟分析一次策略标签效果
+    async def attribution_loop():
+        while True:
+            await asyncio.sleep(600)  # 10 分钟
+            try:
+                for group_id, group in group_manager.groups.items():
+                    # 运行归因分析
+                    report = group.attribution.analyze()
+                    
+                    if report.get("total_trades", 0) > 0:
+                        # 生成热更新建议
+                        patch = group.attribution.generate_hot_patch()
+                        
+                        # 广播给该组所有 Agents
+                        hot_patch_message = {
+                            "type": "hot_patch",
+                            "epoch": current_epoch,
+                            "group_id": group_id,
+                            "boost_tags": patch.get("boost", []),
+                            "penalize_tags": patch.get("penalize", []),
+                            "attribution_report": {
+                                "top_performers": report.get("top_performers", []),
+                                "bottom_performers": report.get("bottom_performers", []),
+                                "total_trades": report.get("total_trades", 0)
+                            },
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        
+                        await broadcast_to_group(group_id, hot_patch_message)
+                        
+                        logger.info(f"🔥 Hot Patch sent to Group {group_id}: "
+                                  f"Boost {len(patch.get('boost', []))} tags, "
+                                  f"Penalize {len(patch.get('penalize', []))} tags")
+            except Exception as e:
+                logger.error(f"Attribution loop error: {e}")
+                logger.error(traceback.format_exc())
+
+    attribution_task = asyncio.create_task(attribution_loop())
+
     # 📡 REMOVED: Price broadcasting (Pure Execution Layer)
     # Darwin Arena is a pure execution layer - agents fetch their own market data.
     # This enables true agent autonomy:
@@ -262,6 +301,7 @@ async def lifespan(app: FastAPI):
     baseline_sync_task.cancel()  # Cancel baseline sync task
     # price_broadcast_task is None (agents fetch their own prices)
     hive_task.cancel()
+    attribution_task.cancel()
 
 
 app = FastAPI(
@@ -340,7 +380,7 @@ async def broadcast_to_agents(message: dict):
         connected_agents.pop(agent_id, None)
 
 
-async def broadcast_to_group(group_id: int, message: dict):
+async def broadcast_to_group(group_id: int, message: dict, exclude: str = None):
     """广播消息给指定组内所有连接的 Agent (并发发送)"""
     group = group_manager.get_group_by_id(group_id)
     if not group:
@@ -357,7 +397,9 @@ async def broadcast_to_group(group_id: int, message: dict):
             except Exception:
                 disconnected.append(agent_id)
 
-    await asyncio.gather(*[_send(aid) for aid in group.members])
+    # 过滤掉被排除的 agent
+    target_agents = [aid for aid in group.members if aid != exclude]
+    await asyncio.gather(*[_send(aid) for aid in target_agents])
 
     for agent_id in disconnected:
         connected_agents.pop(agent_id, None)
@@ -941,6 +983,41 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
                 if success:
                     trade_count += 1
                     total_volume += amount
+                    
+                    # 📊 记录到归因分析器
+                    trade_record = {
+                        "agent_id": agent_id,
+                        "symbol": symbol,
+                        "side": side_str,
+                        "amount": amount,
+                        "price": fill_price,
+                        "value": amount if side_str == "BUY" else amount * fill_price,
+                        "reason": reason,
+                        "time": datetime.now().isoformat()
+                    }
+                    
+                    # 如果是 SELL，从 trade_history 获取 trade_pnl
+                    if side_str == "SELL" and engine.trade_history:
+                        last_trade = engine.trade_history[0]
+                        if last_trade.get("agent_id") == agent_id and last_trade.get("symbol") == symbol:
+                            trade_record["trade_pnl"] = last_trade.get("trade_pnl")
+                    
+                    group.attribution.record_trade(trade_record)
+                    
+                    # 🗣️ Council 广播：让其他 Agents 看到这笔交易
+                    council_message = {
+                        "type": "council_trade",
+                        "agent_id": agent_id,
+                        "symbol": symbol,
+                        "side": side_str,
+                        "amount": amount,
+                        "price": fill_price,
+                        "reason": reason,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    
+                    # 广播给同组所有其他 Agents（排除发送者）
+                    await broadcast_to_group(group.group_id, council_message, exclude=agent_id)
                 
                 await websocket.send_json({
                     "type": "order_result",

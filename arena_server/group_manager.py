@@ -3,22 +3,21 @@ GroupManager - 分组竞技管理器
 
 核心设计：
 1. 动态分组：根据总人数自动调整每组大小 (10→20→50→100)
-2. 代币池轮转：每个新组分配不同的代币池（多链: Base, ETH, Solana...）
-3. 独立进化：每组有自己的 MatchingEngine + HiveMind
+2. 负载均衡：每个新组分配不同的匹配引擎
+3. 独立进化：每组有自己的 MatchingEngine + HiveMind + AttributionAnalyzer
 4. 冠军赛：各组冠军可晋级跨组总决赛
 
 架构:
   GroupManager
-    ├── Group 0 (Base memes: CLANKER/MOLT/LOB/WETH)
+    ├── Group 0
     │     ├── engine (MatchingEngine)
     │     ├── hive_mind (HiveMind)
-    │     ├── feeder (DexScreenerFeeder)
+    │     ├── attribution (AttributionAnalyzer)
     │     └── members: {Agent_001, Agent_002, ...}
-    ├── Group 1 (Base blue chips: DEGEN/BRETT/TOSHI/HIGHER)
-    │     ├── engine / hive_mind / feeder
+    ├── Group 1
+    │     ├── engine / hive_mind / attribution
     │     └── members: {Agent_011, Agent_012, ...}
-    ├── Group 2 (ETH memes: PEPE/SHIB/FLOKI/TURBO)
-    └── Group 3 (Solana memes: WIF/BONK/POPCAT/MEW)
+    └── ...
 """
 
 import asyncio
@@ -28,8 +27,8 @@ from collections import deque
 
 from matching import MatchingEngine, OrderSide, Position
 from hive_mind import HiveMind
-from feeder import DexScreenerFeeder
-from config import TOKEN_POOLS, GROUP_SIZE_THRESHOLDS, GROUP_DEFAULT_SIZE, INITIAL_BALANCE
+from attribution import AttributionAnalyzer
+from config import GROUP_SIZE_THRESHOLDS, GROUP_DEFAULT_SIZE, INITIAL_BALANCE
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +42,10 @@ class Group:
 
     def __init__(self, group_id: int):
         self.group_id = group_id
-        self.token_pool = {}  # 空字典 - 不限制代币
         self.members: Set[str] = set()
         self.engine = MatchingEngine()
         self.hive_mind = HiveMind(self.engine)
-        # 不再需要预先订阅特定代币的 feeder
+        self.attribution = AttributionAnalyzer(review_interval=3600)  # 1 小时复盘
         # 价格通过 execute_order 中的 _fetch_price_realtime 按需获取
         self.feeder = None
         self._feeder_task: Optional[asyncio.Task] = None
@@ -241,6 +239,23 @@ class GroupManager:
         """Update prices — routes to all groups (for futures feeder compat)"""
         for group in self.groups.values():
             group.engine.update_prices(prices)
+
+    async def broadcast_to_group(self, group_id: int, message: dict, exclude: str = None):
+        """
+        广播消息给指定组的所有 Agents
+        
+        Args:
+            group_id: 目标组 ID
+            message: 要广播的消息（dict）
+            exclude: 排除的 agent_id（通常是发送者自己）
+        """
+        group = self.groups.get(group_id)
+        if not group:
+            return
+        
+        # 需要从 main.py 传入 active_connections
+        # 这里先定义接口，实际调用在 main.py 中实现
+        pass
 
     # ========== Leaderboard ==========
 
