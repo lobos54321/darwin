@@ -371,6 +371,15 @@ async def end_epoch():
     logger.info(f"🏁 EPOCH {current_epoch} ENDED | {len(group_manager.groups)} groups")
     logger.info(f"{'='*60}")
 
+    # === 记录所有 Agent 的 PnL 历史（用于风险指标计算）===
+    for group_id, group in group_manager.groups.items():
+        for agent_id, account in group.engine.accounts.items():
+            current_pnl_percent = account.get_pnl_percent(group.engine.current_prices)
+            account.pnl_history.append(current_pnl_percent)
+            # 限制历史长度，避免内存无限增长
+            if len(account.pnl_history) > 100:
+                account.pnl_history = account.pnl_history[-100:]
+
     # === 全局排行（跨组）用于 Ascension ===
     global_rankings = group_manager.get_leaderboard()
     group_manager.print_leaderboard()
@@ -1157,18 +1166,18 @@ async def get_leaderboard():
     enriched_rankings = []
     for i, r in enumerate(rankings):
         agent_id, pnl_percent, total_value = r
-        agent = engine.agents.get(agent_id)
+        account = engine.accounts.get(agent_id)
 
-        if agent and agent.pnl_history:
+        if account and account.pnl_history and len(account.pnl_history) >= 2:
             # 计算累计资产价值历史
             values = [10000.0]  # 初始资金
             cumulative_value = 10000.0
-            for pnl in agent.pnl_history:
+            for pnl in account.pnl_history:
                 cumulative_value = cumulative_value * (1 + pnl / 100)
                 values.append(cumulative_value)
 
-            cumulative_return = sum(agent.pnl_history)
-            metrics = calculate_composite_score(agent.pnl_history, values, cumulative_return)
+            cumulative_return = sum(account.pnl_history)
+            metrics = calculate_composite_score(account.pnl_history, values, cumulative_return)
         else:
             metrics = {
                 "sharpe_ratio": 0.0,
@@ -1210,15 +1219,15 @@ async def get_stats():
     # 计算全局风险指标
     from arena_server.metrics import calculate_composite_score
 
-    all_agents = list(engine.agents.values())
+    all_agents = list(engine.accounts.values())
     if all_agents:
         # 收集所有历史 PnL
         all_pnls = []
         all_values = [10000.0]
         cumulative_value = 10000.0
 
-        for agent in all_agents:
-            for pnl in agent.pnl_history:
+        for account in all_agents:
+            for pnl in account.pnl_history:
                 all_pnls.append(pnl)
                 cumulative_value = cumulative_value * (1 + pnl / 100)
                 all_values.append(cumulative_value)
