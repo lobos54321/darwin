@@ -619,10 +619,30 @@ async def end_epoch():
         positive_count = sum(1 for pnl in all_pnls if pnl > 0)
         win_rate = (positive_count / len(all_pnls) * 100) if all_pnls else 0.0
 
+        # 计算科学的风险指标
+        from arena_server.metrics import calculate_composite_score
+
+        # 收集所有 Agent 的累计资产价值
+        all_values = [10000.0]  # 初始资金
+        cumulative_value = 10000.0
+        for pnl in all_pnls:
+            cumulative_value = cumulative_value * (1 + pnl / 100)
+            all_values.append(cumulative_value)
+
+        cumulative_return = sum(all_pnls)
+
+        # 计算完整的风险指标
+        metrics = calculate_composite_score(all_pnls, all_values, cumulative_return)
+
         performance = {
             "avg_pnl": round(avg_pnl, 2),
             "win_rate": round(win_rate, 1),
-            "sharpe_ratio": 0.0  # TODO: 计算夏普比率
+            "sharpe_ratio": metrics["sharpe_ratio"],
+            "sortino_ratio": metrics["sortino_ratio"],
+            "max_drawdown": metrics["max_drawdown"],
+            "calmar_ratio": metrics["calmar_ratio"],
+            "composite_score": metrics["composite_score"],
+            "volatility": metrics["volatility"]
         }
 
         # 获取全局赢家的策略
@@ -1128,13 +1148,49 @@ async def get_trades():
 
 @app.get("/leaderboard")
 async def get_leaderboard():
+    """获取排行榜（包含风险指标）"""
+    from arena_server.metrics import calculate_composite_score
+
     rankings = engine.get_leaderboard()
+
+    # 为每个 Agent 计算风险指标
+    enriched_rankings = []
+    for i, r in enumerate(rankings):
+        agent_id, pnl_percent, total_value = r
+        agent = engine.agents.get(agent_id)
+
+        if agent and agent.pnl_history:
+            # 计算累计资产价值历史
+            values = [10000.0]  # 初始资金
+            cumulative_value = 10000.0
+            for pnl in agent.pnl_history:
+                cumulative_value = cumulative_value * (1 + pnl / 100)
+                values.append(cumulative_value)
+
+            cumulative_return = sum(agent.pnl_history)
+            metrics = calculate_composite_score(agent.pnl_history, values, cumulative_return)
+        else:
+            metrics = {
+                "sharpe_ratio": 0.0,
+                "sortino_ratio": 0.0,
+                "max_drawdown": 0.0,
+                "composite_score": 0.0
+            }
+
+        enriched_rankings.append({
+            "rank": i + 1,
+            "agent_id": agent_id,
+            "pnl_percent": pnl_percent,
+            "total_value": total_value,
+            "sharpe_ratio": metrics["sharpe_ratio"],
+            "sortino_ratio": metrics["sortino_ratio"],
+            "max_drawdown": metrics["max_drawdown"],
+            "composite_score": metrics["composite_score"]
+        })
+
     return {
         "epoch": current_epoch,
-        "rankings": [
-            {"rank": i+1, "agent_id": r[0], "pnl_percent": r[1], "total_value": r[2]}
-            for i, r in enumerate(rankings)
-        ]
+        "rankings": enriched_rankings
     }
 
 
@@ -1148,20 +1204,61 @@ async def get_prices():
 
 @app.get("/stats")
 async def get_stats():
-    """获取系统统计信息"""
+    """获取系统统计信息（包含风险指标）"""
     rankings = engine.get_leaderboard()
+
+    # 计算全局风险指标
+    from arena_server.metrics import calculate_composite_score
+
+    all_agents = list(engine.agents.values())
+    if all_agents:
+        # 收集所有历史 PnL
+        all_pnls = []
+        all_values = [10000.0]
+        cumulative_value = 10000.0
+
+        for agent in all_agents:
+            for pnl in agent.pnl_history:
+                all_pnls.append(pnl)
+                cumulative_value = cumulative_value * (1 + pnl / 100)
+                all_values.append(cumulative_value)
+
+        if all_pnls:
+            cumulative_return = sum(all_pnls)
+            global_metrics = calculate_composite_score(all_pnls, all_values, cumulative_return)
+        else:
+            global_metrics = {
+                "composite_score": 0.0,
+                "sharpe_ratio": 0.0,
+                "sortino_ratio": 0.0,
+                "max_drawdown": 0.0,
+                "calmar_ratio": 0.0,
+                "win_rate": 0.0,
+                "volatility": 0.0
+            }
+    else:
+        global_metrics = {
+            "composite_score": 0.0,
+            "sharpe_ratio": 0.0,
+            "sortino_ratio": 0.0,
+            "max_drawdown": 0.0,
+            "calmar_ratio": 0.0,
+            "win_rate": 0.0,
+            "volatility": 0.0
+        }
 
     return {
         "epoch": current_epoch,
         "epoch_start": epoch_start_time.isoformat() if epoch_start_time else None,
         "connected_agents": len(connected_agents),
-        "connected_observers": len(connected_observers),  # 观众数量
+        "connected_observers": len(connected_observers),
         "total_agents": group_manager.total_agents,
         "trade_count": trade_count,
         "total_volume": total_volume,
         "groups": group_manager.get_stats(),
         "top_agent": rankings[0][0] if rankings else None,
         "top_pnl": rankings[0][1] if rankings else 0,
+        "risk_metrics": global_metrics,
         "economy": {
             "l2_entry_fee_eth": 0.01,
             "token_launch_fee_eth": 0.1,

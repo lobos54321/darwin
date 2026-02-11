@@ -1122,12 +1122,17 @@
         function renderLeaderboard(data) {
             if (!data.rankings) return;
             document.getElementById('epoch-display').innerText = `EPOCH ${data.epoch}`;
-            
+
             const container = document.getElementById('leaderboard');
             container.innerHTML = data.rankings.map((r, i) => {
                 const rankColor = i === 0 ? 'text-yellow-400' : i === 1 ? 'text-gray-300' : i === 2 ? 'text-orange-400' : 'text-green-700';
                 const bgClass = i === 0 ? 'bg-green-900/20 border-green-500' : 'bg-black border-green-900/30';
-                
+
+                // 风险指标显示
+                const sharpe = r.sharpe_ratio !== undefined ? r.sharpe_ratio.toFixed(2) : 'N/A';
+                const sortino = r.sortino_ratio !== undefined ? r.sortino_ratio.toFixed(2) : 'N/A';
+                const sharpeColor = r.sharpe_ratio >= 2.0 ? 'text-green-400' : r.sharpe_ratio >= 1.0 ? 'text-yellow-400' : 'text-gray-500';
+
                 return `
                 <div class="flex items-center justify-between p-2 border ${bgClass} hover:bg-green-900/30 transition-colors cursor-pointer group">
                     <div class="flex items-center gap-3">
@@ -1144,7 +1149,9 @@
                         <div class="${r.pnl_percent >= 0 ? 'text-green-400' : 'text-red-500'} font-bold text-sm">
                             ${r.pnl_percent > 0 ? '+' : ''}${r.pnl_percent.toFixed(2)}%
                         </div>
-                        <div class="text-[10px] text-gray-500">ROI</div>
+                        <div class="text-[10px] ${sharpeColor}" title="Sharpe Ratio: ${sharpe} | Sortino Ratio: ${sortino}">
+                            📊 ${sharpe}
+                        </div>
                     </div>
                 </div>
                 `;

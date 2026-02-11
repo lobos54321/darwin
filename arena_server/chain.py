@@ -583,32 +583,49 @@ class ChainIntegration:
 class AscensionTracker:
     """
     追踪哪些 Agent 有资格发币
-    逻辑更新: 分层筛选机制
-    L1 (模拟层): 免费，筛选条件: 连胜5局 + 收益 > 100% -> 晋级 L2
-    L2 (竞技层): 付费 0.01 ETH，筛选条件: 连续3场第一 + 收益 > 500% -> 触发发币
+    逻辑更新: 分层筛选机制 + 科学风险指标
+
+    L1 (模拟层): 免费训练层
+      晋级条件:
+      - 综合评分 > 70 分
+      - 夏普比率 > 1.0
+      - 最大回撤 > -20%
+      - 连续 5 个 Epoch 保持正收益
+
+    L2 (竞技层): 付费 0.01 ETH
+      发币条件:
+      - 综合评分 > 85 分
+      - 夏普比率 > 2.0
+      - 索提诺比率 > 2.5
+      - 最大回撤 > -15%
+      - 连续 3 次排名第一
     """
-    
+
     def __init__(self):
         # L1 状态
-        self.l1_consecutive_wins: dict[str, int] = {}
-        self.l1_total_returns: dict[str, float] = {}
-        self.l2_qualified: set[str] = set()  # 晋级到 L2 的 Agent
+        self.l1_consecutive_positive: dict[str, int] = {}  # 连续正收益次数
+        self.l1_returns_history: dict[str, list] = {}      # 收益率历史
+        self.l1_values_history: dict[str, list] = {}       # 资产价值历史
+        self.l1_total_returns: dict[str, float] = {}       # 累计收益率
+        self.l2_qualified: set[str] = set()                # 晋级到 L2 的 Agent
 
-        # L2 状态 (目前为了简化，假设所有晋级者自动进入 L2 资金池)
-        self.l2_consecutive_wins: dict[str, int] = {}
-        self.l2_total_returns: dict[str, float] = {}
-        self.ascended: set[str] = set()      # 最终发币的 Agent
-        
+        # L2 状态
+        self.l2_consecutive_wins: dict[str, int] = {}      # 连续获胜次数
+        self.l2_returns_history: dict[str, list] = {}      # 收益率历史
+        self.l2_values_history: dict[str, list] = {}       # 资产价值历史
+        self.l2_total_returns: dict[str, float] = {}       # 累计收益率
+        self.ascended: set[str] = set()                    # 最终发币的 Agent
+
         # 资金池模拟 (50个炮灰 * 0.01 ETH)
         self.pool_eth = 0.5 
     
     def record_epoch_result(self, rankings: list[tuple]) -> dict:
         """
-        记录 Epoch 结果，自动根据 Agent 等级更新状态
-        
+        记录 Epoch 结果，使用科学的风险指标评估
+
         Args:
             rankings: [(agent_id, pnl_percent, total_value), ...]
-        
+
         Returns:
             {
                 "promoted_to_l2": [agent_ids],
@@ -617,13 +634,19 @@ class AscensionTracker:
         """
         if not rankings:
             return {}
-        
+
+        from arena_server.metrics import (
+            calculate_composite_score,
+            check_l1_promotion_criteria,
+            check_l2_launch_criteria
+        )
+
         winner_id = rankings[0][0]
         result = {"promoted_to_l2": [], "ready_to_launch": []}
-        
+
         # 判断赢家等级
         is_l2_winner = winner_id in self.l2_qualified
-        
+
         if is_l2_winner:
             # === L2 逻辑 (发币赛) ===
             # 更新 L2 连胜
@@ -631,63 +654,161 @@ class AscensionTracker:
                 if agent_id != winner_id:
                     self.l2_consecutive_wins[agent_id] = 0
             self.l2_consecutive_wins[winner_id] = self.l2_consecutive_wins.get(winner_id, 0) + 1
-            
-            # 更新 L2 收益
-            for agent_id, pnl, _ in rankings:
-                if agent_id in self.l2_qualified: # 只统计 L2 选手的收益
-                    self.l2_total_returns[agent_id] = self.l2_total_returns.get(agent_id, 0) + pnl
-            
-            # 检查发币条件
-            wins = self.l2_consecutive_wins.get(winner_id, 0)
-            ret = self.l2_total_returns.get(winner_id, 0)
-            
-            # 阈值: 连胜 >= 3 OR 收益 > 500% (测试用 2 和 200)
-            if (wins >= 2 or ret > 200) and winner_id not in self.ascended:
-                self.ascended.add(winner_id)
-                result["ready_to_launch"].append(winner_id)
-                print(f"🚀 {winner_id} achieves ASCENSION! Liquidity Pool: {self.pool_eth} ETH")
-                
+
+            # 更新 L2 收益历史
+            for agent_id, pnl, total_value in rankings:
+                if agent_id in self.l2_qualified:
+                    # 初始化历史记录
+                    if agent_id not in self.l2_returns_history:
+                        self.l2_returns_history[agent_id] = []
+                        self.l2_values_history[agent_id] = [10000.0]  # 初始资金
+                        self.l2_total_returns[agent_id] = 0.0
+
+                    # 记录本轮收益
+                    self.l2_returns_history[agent_id].append(pnl)
+                    self.l2_values_history[agent_id].append(total_value)
+                    self.l2_total_returns[agent_id] += pnl
+
+            # 计算风险指标
+            if winner_id in self.l2_returns_history:
+                metrics = calculate_composite_score(
+                    returns=self.l2_returns_history[winner_id],
+                    cumulative_values=self.l2_values_history[winner_id],
+                    cumulative_return=self.l2_total_returns[winner_id]
+                )
+
+                # 检查发币条件（使用科学指标）
+                wins = self.l2_consecutive_wins.get(winner_id, 0)
+                if check_l2_launch_criteria(metrics, wins) and winner_id not in self.ascended:
+                    self.ascended.add(winner_id)
+                    result["ready_to_launch"].append(winner_id)
+                    print(f"🚀 {winner_id} achieves ASCENSION!")
+                    print(f"   📊 Composite Score: {metrics['composite_score']:.2f}/100")
+                    print(f"   📈 Sharpe Ratio: {metrics['sharpe_ratio']:.3f}")
+                    print(f"   📉 Sortino Ratio: {metrics['sortino_ratio']:.3f}")
+                    print(f"   💰 Liquidity Pool: {self.pool_eth} ETH")
+
         else:
             # === L1 逻辑 (晋级赛) ===
-            # 更新 L1 连胜
-            for agent_id in list(self.l1_consecutive_wins.keys()):
-                if agent_id != winner_id:
-                    self.l1_consecutive_wins[agent_id] = 0
-            self.l1_consecutive_wins[winner_id] = self.l1_consecutive_wins.get(winner_id, 0) + 1
-            
-            # 更新 L1 收益
-            for agent_id, pnl, _ in rankings:
+            # 更新 L1 收益历史
+            for agent_id, pnl, total_value in rankings:
                 if agent_id not in self.l2_qualified:
-                    self.l1_total_returns[agent_id] = self.l1_total_returns.get(agent_id, 0) + pnl
-            
-            # 检查晋级条件
-            # 阈值: 连胜 >= 5 AND 收益 > 100% (测试用 2 和 50)
-            wins = self.l1_consecutive_wins.get(winner_id, 0)
-            ret = self.l1_total_returns.get(winner_id, 0)
-            
-            if wins >= 2 and ret > 50:
-                self.l2_qualified.add(winner_id)
-                result["promoted_to_l2"].append(winner_id)
-                print(f"🌟 {winner_id} promoted to L2 Arena! (Entry Fee: 0.01 ETH)")
-        
+                    # 初始化历史记录
+                    if agent_id not in self.l1_returns_history:
+                        self.l1_returns_history[agent_id] = []
+                        self.l1_values_history[agent_id] = [10000.0]  # 初始资金
+                        self.l1_total_returns[agent_id] = 0.0
+                        self.l1_consecutive_positive[agent_id] = 0
+
+                    # 记录本轮收益
+                    self.l1_returns_history[agent_id].append(pnl)
+                    self.l1_values_history[agent_id].append(total_value)
+                    self.l1_total_returns[agent_id] += pnl
+
+                    # 更新连续正收益计数
+                    if pnl > 0:
+                        self.l1_consecutive_positive[agent_id] += 1
+                    else:
+                        self.l1_consecutive_positive[agent_id] = 0
+
+            # 计算风险指标
+            if winner_id in self.l1_returns_history:
+                metrics = calculate_composite_score(
+                    returns=self.l1_returns_history[winner_id],
+                    cumulative_values=self.l1_values_history[winner_id],
+                    cumulative_return=self.l1_total_returns[winner_id]
+                )
+
+                # 检查晋级条件（使用科学指标）
+                consecutive_positive = self.l1_consecutive_positive.get(winner_id, 0)
+                if check_l1_promotion_criteria(metrics, consecutive_positive):
+                    self.l2_qualified.add(winner_id)
+                    result["promoted_to_l2"].append(winner_id)
+                    print(f"🌟 {winner_id} promoted to L2 Arena!")
+                    print(f"   📊 Composite Score: {metrics['composite_score']:.2f}/100")
+                    print(f"   📈 Sharpe Ratio: {metrics['sharpe_ratio']:.3f}")
+                    print(f"   💵 Entry Fee: 0.01 ETH")
+
         return result
     
     def get_stats(self, agent_id: str) -> dict:
-        """获取 Agent 的进度"""
+        """获取 Agent 的进度和风险指标"""
+        from arena_server.metrics import calculate_composite_score
+
         is_l2 = agent_id in self.l2_qualified
+
         if is_l2:
+            # L2 统计
+            returns = self.l2_returns_history.get(agent_id, [])
+            values = self.l2_values_history.get(agent_id, [10000.0])
+            total_return = self.l2_total_returns.get(agent_id, 0.0)
+            wins = self.l2_consecutive_wins.get(agent_id, 0)
+
+            if returns:
+                metrics = calculate_composite_score(returns, values, total_return)
+            else:
+                metrics = {
+                    "composite_score": 0.0,
+                    "sharpe_ratio": 0.0,
+                    "sortino_ratio": 0.0,
+                    "max_drawdown": 0.0,
+                    "calmar_ratio": 0.0,
+                    "win_rate": 0.0
+                }
+
             return {
                 "tier": "L2",
-                "wins": f"{self.l2_consecutive_wins.get(agent_id, 0)}/3",
-                "return": f"{self.l2_total_returns.get(agent_id, 0):.1f}%/500%",
-                "status": "Fighting for Launch"
+                "consecutive_wins": wins,
+                "total_return": f"{total_return:.1f}%",
+                "composite_score": metrics["composite_score"],
+                "sharpe_ratio": metrics["sharpe_ratio"],
+                "sortino_ratio": metrics["sortino_ratio"],
+                "max_drawdown": metrics["max_drawdown"],
+                "win_rate": metrics["win_rate"],
+                "status": "Fighting for Launch",
+                "requirements": {
+                    "composite_score": "85+",
+                    "sharpe_ratio": "2.0+",
+                    "sortino_ratio": "2.5+",
+                    "max_drawdown": ">-15%",
+                    "consecutive_wins": "3"
+                }
             }
         else:
+            # L1 统计
+            returns = self.l1_returns_history.get(agent_id, [])
+            values = self.l1_values_history.get(agent_id, [10000.0])
+            total_return = self.l1_total_returns.get(agent_id, 0.0)
+            consecutive_positive = self.l1_consecutive_positive.get(agent_id, 0)
+
+            if returns:
+                metrics = calculate_composite_score(returns, values, total_return)
+            else:
+                metrics = {
+                    "composite_score": 0.0,
+                    "sharpe_ratio": 0.0,
+                    "sortino_ratio": 0.0,
+                    "max_drawdown": 0.0,
+                    "calmar_ratio": 0.0,
+                    "win_rate": 0.0
+                }
+
             return {
                 "tier": "L1",
-                "wins": f"{self.l1_consecutive_wins.get(agent_id, 0)}/5",
-                "return": f"{self.l1_total_returns.get(agent_id, 0):.1f}%/100%",
-                "status": "Training"
+                "consecutive_positive": consecutive_positive,
+                "total_return": f"{total_return:.1f}%",
+                "composite_score": metrics["composite_score"],
+                "sharpe_ratio": metrics["sharpe_ratio"],
+                "sortino_ratio": metrics["sortino_ratio"],
+                "max_drawdown": metrics["max_drawdown"],
+                "win_rate": metrics["win_rate"],
+                "status": "Training",
+                "requirements": {
+                    "composite_score": "70+",
+                    "sharpe_ratio": "1.0+",
+                    "max_drawdown": ">-20%",
+                    "consecutive_positive": "5"
+                }
             }
     
 if __name__ == "__main__":
