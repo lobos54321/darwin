@@ -48,73 +48,83 @@ class BaselineStrategy:
         
     async def start(self):
         """Initialize and start the trading loop."""
-        print(f"🧬 Darwin Arena Baseline Strategy")
-        print(f"Agent: {self.agent_id}")
-        print(f"Arena: {self.arena_url}")
-        print("=" * 60)
+        print(f"🧬 Darwin Arena Baseline Strategy", flush=True)
+        print(f"Agent: {self.agent_id}", flush=True)
+        print(f"Arena: {self.arena_url}", flush=True)
+        print("=" * 60, flush=True)
         
         # Create HTTP session
+        print("Creating HTTP session", flush=True)
         self.session = aiohttp.ClientSession()
         
         # Connect to arena
-        print("\n📡 Connecting to arena...")
+        print("\n📡 Connecting to arena...", flush=True)
         
         # Check if API key is needed
         if not self.api_key:
             # Check if connecting to remote server
             if "darwinx.fun" in self.arena_url or "localhost" not in self.arena_url:
-                print("⚠️  No API key provided!")
-                print("   For remote connections, you need an API key.")
-                print("   Get one at: https://www.darwinx.fun")
-                print("   Or run locally: python3 baseline_strategy.py YourAgent ws://localhost:8000")
-                print("\n   Attempting connection anyway (will fail if not whitelisted)...")
+                print("⚠️  No API key provided!", flush=True)
+                print("   For remote connections, you need an API key.", flush=True)
+                print("   Get one at: https://www.darwinx.fun", flush=True)
+                print("   Or run locally: python3 baseline_strategy.py YourAgent ws://localhost:8000", flush=True)
+                print("\n   Attempting connection anyway (will fail if not whitelisted)...", flush=True)
         
+        print("About to call darwin_connect", flush=True)
         result = await darwin_connect(self.agent_id, self.arena_url, self.api_key)
+        print(f"darwin_connect returned: {result.get('status')}", flush=True)
         
         if result.get("status") != "connected":
-            print(f"❌ Connection failed: {result.get('message')}")
+            print(f"❌ Connection failed: {result.get('message')}", flush=True)
             return
         
         self.connected = True
         self.tokens = result.get("tokens", [])
         self.balance = result.get("balance", 1000)
         
-        print(f"✅ Connected!")
-        print(f"💰 Starting balance: ${self.balance}")
-        print(f"📊 Token pool: {', '.join(self.tokens)}")
-        print()
+        print(f"✅ Connected!", flush=True)
+        print(f"💰 Starting balance: ${self.balance}", flush=True)
+        print(f"📊 Token pool: {', '.join(self.tokens)}", flush=True)
+        print(flush=True)
         
         # Start trading loop
+        print("About to start trading_loop", flush=True)
         await self.trading_loop()
+        print("trading_loop finished", flush=True)
         
     async def trading_loop(self):
         """Main trading loop - runs every 2 minutes."""
+        print("Entered trading_loop", flush=True)
         iteration = 0
         
         try:
             while self.connected:
                 iteration += 1
-                print(f"\n{'='*60}")
-                print(f"🔄 Iteration {iteration} - {datetime.now().strftime('%H:%M:%S')}")
-                print(f"{'='*60}")
+                print(f"\n{'='*60}", flush=True)
+                print(f"🔄 Iteration {iteration} - {datetime.now().strftime('%H:%M:%S')}", flush=True)
+                print(f"{'='*60}", flush=True)
                 
                 # 1. Fetch Hive Mind recommendations
+                print("Step 1: fetch_hive_mind", flush=True)
                 await self.fetch_hive_mind()
                 
                 # 2. Get current status
+                print("Step 2: update_status", flush=True)
                 await self.update_status()
                 
                 # 3. Check existing positions for stop-loss/take-profit
+                print("Step 3: manage_positions", flush=True)
                 await self.manage_positions()
                 
                 # 4. Look for new opportunities
+                print("Step 4: find_opportunities", flush=True)
                 if len(self.positions) < self.max_positions:
                     await self.find_opportunities()
                 else:
-                    print(f"⏸️  Max positions ({self.max_positions}) reached, skipping new trades")
+                    print(f"⏸️  Max positions ({self.max_positions}) reached, skipping new trades", flush=True)
                 
                 # 5. Wait 2 minutes
-                print(f"\n⏰ Waiting 2 minutes until next iteration...")
+                print(f"\n⏰ Waiting 2 minutes until next iteration...", flush=True)
                 await asyncio.sleep(120)
                 
         except KeyboardInterrupt:
@@ -127,36 +137,45 @@ class BaselineStrategy:
     async def fetch_hive_mind(self):
         """Fetch collective intelligence recommendations from Hive Mind."""
         try:
-            print("\n🧠 Fetching Hive Mind recommendations...")
+            print("\n🧠 Fetching Hive Mind recommendations...", flush=True)
             
+            print(f"Making GET request to {self.http_base}/hive-mind", flush=True)
             async with self.session.get(f"{self.http_base}/hive-mind") as resp:
+                print(f"Got response status: {resp.status}", flush=True)
                 if resp.status != 200:
-                    print(f"⚠️  Hive Mind unavailable (status {resp.status})")
+                    print(f"⚠️  Hive Mind unavailable (status {resp.status})", flush=True)
                     return
                 
+                print("Parsing JSON", flush=True)
                 data = await resp.json()
                 self.last_hive_mind = data
                 
                 epoch = data.get("epoch", "?")
-                print(f"📊 Epoch {epoch}")
+                print(f"📊 Epoch {epoch}", flush=True)
                 
                 # Find our group
                 groups = data.get("groups", {})
+                print(f"Found {len(groups)} groups", flush=True)
                 for group_id, group_data in groups.items():
+                    print(f"Checking group {group_id}", flush=True)
                     group_tokens = group_data.get("tokens", [])
+                    print(f"  Group tokens: {group_tokens}", flush=True)
+                    print(f"  Our tokens: {self.tokens}", flush=True)
                     if set(group_tokens) == set(self.tokens):
-                        print(f"🏢 Group {group_id}: {', '.join(group_tokens)}")
+                        print(f"🏢 Group {group_id}: {', '.join(group_tokens)}", flush=True)
                         
                         # Show alpha report summary
                         alpha_report = group_data.get("alpha_report", {})
                         if alpha_report:
-                            print(f"\n📈 Strategy Performance:")
+                            print(f"\n📈 Strategy Performance:", flush=True)
                             for strategy, stats in list(alpha_report.items())[:3]:
                                 win_rate = stats.get("win_rate", 0)
                                 avg_pnl = stats.get("avg_pnl", 0)
                                 impact = stats.get("impact", "UNKNOWN")
-                                print(f"   {strategy}: {win_rate:.1f}% win rate, {avg_pnl:+.2f}% avg PnL ({impact})")
+                                print(f"   {strategy}: {win_rate:.1f}% win rate, {avg_pnl:+.2f}% avg PnL ({impact})", flush=True)
                         break
+                
+                print("fetch_hive_mind completed", flush=True)
                         
         except Exception as e:
             print(f"⚠️  Failed to fetch Hive Mind: {e}")
@@ -350,6 +369,7 @@ class BaselineStrategy:
 
 async def main():
     """Main entry point."""
+    print("In main()", flush=True)
     if len(sys.argv) < 2:
         print("Usage: python baseline_strategy.py <agent_id> [arena_url] [api_key]")
         print("\nExample:")
@@ -358,13 +378,22 @@ async def main():
         print("  python baseline_strategy.py MyTrader wss://www.darwinx.fun dk_abc123")
         sys.exit(1)
     
+    print("Parsing args", flush=True)
     agent_id = sys.argv[1]
     arena_url = sys.argv[2] if len(sys.argv) > 2 else "wss://www.darwinx.fun"
     api_key = sys.argv[3] if len(sys.argv) > 3 else None
     
+    print(f"Creating strategy for {agent_id}", flush=True)
     strategy = BaselineStrategy(agent_id, arena_url, api_key)
+    print("Starting strategy", flush=True)
     await strategy.start()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    print("Script starting immediately", flush=True)
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        print(f"Error: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
