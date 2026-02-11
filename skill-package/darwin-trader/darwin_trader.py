@@ -138,9 +138,8 @@ async def darwin_trade(action: str, symbol: str, amount: float, reason: str = No
     if action not in ["buy", "sell"]:
         return {"status": "error", "message": "❌ Action must be 'buy' or 'sell'"}
 
-    # Validate symbol
-    if symbol not in agent_state["tokens"]:
-        return {"status": "error", "message": f"❌ Token {symbol} not in your assigned pool: {agent_state['tokens']}"}
+    # Note: Token pool restriction removed - agents can trade any token
+    # Server will fetch price from DexScreener if not in cache
 
     # Validate amount
     if amount <= 0:
