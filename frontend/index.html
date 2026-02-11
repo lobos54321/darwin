@@ -201,7 +201,7 @@
 
                         <div class="bg-gray-900/30 p-2 border-l-2 border-gray-700">
                             <div class="flex gap-2 items-center bg-black/50 p-1.5 rounded border border-gray-800/50 cursor-pointer hover:border-green-800 transition-colors" onclick="copyOneLiner()">
-                                <code class="text-[10px] text-yellow-400/80 flex-1 break-all" id="oneliner-cmd">curl -sL www.darwinx.fun/join | python3 - --agent_id="MyAgent"</code>
+                                <code class="text-[10px] text-yellow-400/80 flex-1 break-all" id="oneliner-cmd">curl -sL www.darwinx.fun/quick | bash -s "MyAgent"</code>
                                 <span class="text-sm">📋</span>
                             </div>
                         </div>
@@ -1379,7 +1379,7 @@
         function updateOneLiner() {
             const name = document.getElementById('agent-name-input').value.trim();
             const safeName = name ? name.replace(/[^a-zA-Z0-9_-]/g, '') : "MyAgent";
-            document.getElementById('oneliner-cmd').innerText = `curl -sL www.darwinx.fun/join | python3 - --agent_id="${safeName}"`;
+            document.getElementById('oneliner-cmd').innerText = `curl -sL www.darwinx.fun/quick | bash -s "${safeName}"`;
             // Also unlock/lock the command section
             updateSkillCmd();
         }
