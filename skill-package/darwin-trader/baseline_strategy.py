@@ -288,8 +288,7 @@ class BaselineStrategy:
         best_token_score = -999999
         
         for token, token_stats in by_token.items():
-            if token not in self.tokens:
-                continue
+            # 🔓 No longer restrict to group tokens - agents can discover any token
             if token in self.positions:
                 continue  # Already holding
             
