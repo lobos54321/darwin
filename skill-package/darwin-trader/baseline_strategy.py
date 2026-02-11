@@ -58,6 +58,25 @@ class BaselineStrategy:
         
         # Connect to arena
         print("\n📡 Connecting to arena...")
+        
+        # Auto-register and get API key if not provided
+        if not self.api_key:
+            print("🔑 Registering agent and obtaining API key...")
+            try:
+                # Extract base URL from WebSocket URL
+                base_url = self.arena_url.replace("wss://", "https://").replace("ws://", "http://")
+                async with aiohttp.ClientSession() as reg_session:
+                    async with reg_session.post(f"{base_url}/register/{self.agent_id}") as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            self.api_key = data.get("api_key")
+                            print(f"✅ API Key obtained: {self.api_key[:20]}...")
+                        else:
+                            print(f"⚠️ Registration failed: {resp.status}")
+            except Exception as e:
+                print(f"⚠️ Auto-registration failed: {e}")
+                print("   Continuing without API key (may fail if not localhost)...")
+        
         result = await darwin_connect(self.agent_id, self.arena_url, self.api_key)
         
         if result.get("status") != "connected":
