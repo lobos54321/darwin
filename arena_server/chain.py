@@ -759,6 +759,7 @@ class AscensionTracker:
             return {
                 "tier": "L2",
                 "consecutive_wins": wins,
+                "wins": f"{wins}/3",  # 前端兼容性
                 "total_return": f"{total_return:.1f}%",
                 "composite_score": metrics["composite_score"],
                 "sharpe_ratio": metrics["sharpe_ratio"],
@@ -796,6 +797,7 @@ class AscensionTracker:
             return {
                 "tier": "L1",
                 "consecutive_positive": consecutive_positive,
+                "wins": f"{consecutive_positive}/5",  # 前端兼容性
                 "total_return": f"{total_return:.1f}%",
                 "composite_score": metrics["composite_score"],
                 "sharpe_ratio": metrics["sharpe_ratio"],
