@@ -55,6 +55,12 @@ data/agents/Agent_003/
 # Temporary strategy copies
 agent_template/strategy_Agent_*.py
 
+# Deprecated code (removed from repo)
+agent_template.deprecated/
+*.deprecated.*
+
 # Test scripts (local only)
 test_e2e_*.py
 verify_proxy.py
+scripts/test_*.py
+scripts/verify_*.py
