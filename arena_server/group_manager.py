@@ -35,19 +35,22 @@ logger = logging.getLogger(__name__)
 
 
 class Group:
-    """一个竞技小组 — 独立的交易+进化单元"""
+    """一个竞技小组 — 独立的交易+进化单元
+    
+    Group 只用于分流和负载均衡，不限制可交易的代币和链。
+    Agents 可以自主选择交易任何代币。
+    """
 
-    def __init__(self, group_id: int, token_pool: Dict[str, str]):
+    def __init__(self, group_id: int):
         self.group_id = group_id
-        self.token_pool = token_pool  # {symbol: address}
+        self.token_pool = {}  # 空字典 - 不限制代币
         self.members: Set[str] = set()
         self.engine = MatchingEngine()
         self.hive_mind = HiveMind(self.engine)
-        self.feeder = DexScreenerFeeder(tokens=token_pool)
+        # 不再需要预先订阅特定代币的 feeder
+        # 价格通过 execute_order 中的 _fetch_price_realtime 按需获取
+        self.feeder = None
         self._feeder_task: Optional[asyncio.Task] = None
-
-        # Wire feeder → engine price updates
-        self.feeder.subscribe(lambda prices: self.engine.update_prices(prices))
 
     @property
     def size(self) -> int:
@@ -55,7 +58,7 @@ class Group:
 
     @property
     def token_symbols(self) -> List[str]:
-        return list(self.token_pool.keys())
+        return []  # 返回空列表 - 不限制代币
 
     def add_member(self, agent_id: str):
         self.members.add(agent_id)
@@ -65,14 +68,12 @@ class Group:
         self.members.discard(agent_id)
 
     async def start_feeder(self):
-        """Start the group's price feeder"""
-        if self._feeder_task is None or self._feeder_task.done():
-            self._feeder_task = asyncio.create_task(self.feeder.start())
-            logger.info(f"📡 Group {self.group_id} feeder started: {self.token_symbols}")
+        """Price feeder no longer needed - prices fetched on-demand"""
+        logger.info(f"📡 Group {self.group_id} ready (on-demand pricing)")
 
     def stop_feeder(self):
-        if self._feeder_task and not self._feeder_task.done():
-            self._feeder_task.cancel()
+        """No feeder to stop"""
+        pass
 
 
 class GroupManager:
@@ -143,20 +144,13 @@ class GroupManager:
 
     # ========== Group Lifecycle ==========
 
-    def _next_token_pool(self) -> Dict[str, str]:
-        """轮转分配代币池"""
-        pool = TOKEN_POOLS[self._pool_index % len(TOKEN_POOLS)]
-        self._pool_index += 1
-        return pool.copy()
-
     def _create_group(self) -> Group:
-        """创建新组"""
+        """创建新组 - 不限制代币池"""
         group_id = self._next_group_id
         self._next_group_id += 1
-        token_pool = self._next_token_pool()
-        group = Group(group_id=group_id, token_pool=token_pool)
+        group = Group(group_id=group_id)  # 不传 token_pool
         self.groups[group_id] = group
-        logger.info(f"🆕 Created Group {group_id} | Tokens: {group.token_symbols}")
+        logger.info(f"🆕 Created Group {group_id} (open token pool - agents can trade any token)")
         return group
 
     async def assign_agent(self, agent_id: str) -> Group:

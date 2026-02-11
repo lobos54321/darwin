@@ -912,10 +912,10 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
         "agent_id": agent_id,
         "epoch": current_epoch,
         "group_id": group.group_id,
-        "tokens": group.token_symbols,
+        # "tokens": [],  # 移除 - agents 可以交易任何代币
         "balance": engine.get_balance(agent_id),
         "positions": engine.get_positions(agent_id),
-        "prices": group.feeder.prices,
+        # "prices": {},  # 移除 - 价格按需获取
         "baseline": baseline  # 🧬 最新最优策略
     })
 
@@ -1141,12 +1141,11 @@ async def health():
 
 @app.get("/history")
 async def get_history():
-    """Get historical price data for charts (all groups merged)"""
-    merged = {}
-    for group in group_manager.groups.values():
-        for symbol, data in group.feeder.history.items():
-            merged[symbol] = list(data)
-    return merged
+    """Get historical price data for charts (从交易历史构建)"""
+    # 由于移除了 feeder，现在从交易历史中提取价格数据
+    # 或者返回空数据，让前端从其他来源获取
+    # TODO: 考虑从 matching_engine 的 price_history 构建
+    return {}  # 暂时返回空，前端需要适配
 
 
 @app.get("/trades")
@@ -1285,7 +1284,7 @@ async def get_hive_mind_status():
             report = group.hive_mind.analyze_alpha()
             patch = group.hive_mind.generate_patch()
             group_reports[group_id] = {
-                "tokens": group.token_symbols,
+                # "tokens": [],  # 移除 - 不限制代币
                 "members": group.size,
                 "alpha_report": report,
                 "latest_patch": patch
@@ -1307,7 +1306,7 @@ async def get_groups():
     for gid, group in group_manager.groups.items():
         rankings = group.engine.get_leaderboard()
         result[gid] = {
-            "tokens": group.token_symbols,
+            # "tokens": [],  # 移除 - 不限制代币
             "members": list(group.members),
             "size": group.size,
             "max_size": group_manager.dynamic_group_size(),
@@ -1770,7 +1769,7 @@ async def get_active_tournament():
             "start_date": active.start_date,
             "end_date": active.end_date,
             "prize_pool_usd": active.prize_pool_usd,
-            "tokens": active.tokens,
+            # "tokens": [],  # 移除 - 锦标赛也不限制代币
             "participants_count": len(active.participants)
         }
     }
