@@ -269,6 +269,20 @@ class BaselineStrategy:
         strategy_data = alpha_report[best_strategy]
         by_token = strategy_data.get("by_token", {})
         
+        # If best strategy has no token data, scan all strategies
+        if not by_token:
+            print("⚠️  Best strategy has no token data, scanning all strategies...")
+            by_token = {}
+            for strategy, stats in alpha_report.items():
+                strategy_tokens = stats.get("by_token", {})
+                for token, token_stats in strategy_tokens.items():
+                    if token not in by_token:
+                        by_token[token] = token_stats
+                    else:
+                        # Merge stats (use better performing one)
+                        if token_stats.get("avg_pnl", 0) > by_token[token].get("avg_pnl", 0):
+                            by_token[token] = token_stats
+        
         # Find best token
         best_token = None
         best_token_score = -999999
@@ -290,7 +304,7 @@ class BaselineStrategy:
                 best_token = token
         
         if not best_token:
-            print("⚠️  No suitable tokens found")
+            print("⚠️  No suitable tokens found with positive performance")
             return
         
         # Calculate position size
