@@ -237,46 +237,62 @@ class AutonomousStrategy:
         
         candidates = []
         
+        # Known popular tokens on Base chain to search
+        base_tokens = [
+            "0x4ed4e862860bed51a9570b96d89af5e1b0efefed",  # DEGEN
+            "0x532f27101965dd16442e59d40670faf5ebb142e4",  # BRETT
+            "0xac1bd2486aaf3b5c0fc3fd868558b082a531b2b4",  # TOSHI
+            "0x0578d8a44db98b23bf096a382e016e29a5ce0ffe",  # HIGHER
+        ]
+        
         try:
-            # Search for trending tokens on Base chain (example)
-            # In production, you would search multiple chains and use more sophisticated criteria
-            url = "https://api.dexscreener.com/latest/dex/search?q=base"
-            
-            async with self.session.get(url) as resp:
-                if resp.status != 200:
-                    print(f"⚠️  DexScreener API error: {resp.status}")
-                    return []
-                
-                data = await resp.json()
-                pairs = data.get("pairs", [])
-                
-                print(f"   Found {len(pairs)} pairs on Base chain")
-                
-                # Filter by liquidity and volume
-                for pair in pairs[:20]:  # Check top 20
-                    liquidity = float(pair.get("liquidity", {}).get("usd", 0))
-                    volume_24h = float(pair.get("volume", {}).get("h24", 0))
+            for token_address in base_tokens:
+                try:
+                    url = f"https://api.dexscreener.com/latest/dex/tokens/{token_address}"
                     
-                    if liquidity >= self.min_liquidity and volume_24h >= self.min_volume_24h:
-                        symbol = pair.get("baseToken", {}).get("symbol", "UNKNOWN")
-                        
-                        # Skip if already holding
-                        if symbol in self.positions:
+                    async with self.session.get(url) as resp:
+                        if resp.status != 200:
                             continue
                         
-                        candidates.append({
-                            "symbol": symbol,
-                            "name": pair.get("baseToken", {}).get("name", ""),
-                            "chain": pair.get("chainId", ""),
-                            "price": float(pair.get("priceUsd", 0)),
-                            "liquidity": liquidity,
-                            "volume_24h": volume_24h,
-                            "price_change_24h": float(pair.get("priceChange", {}).get("h24", 0)),
-                            "pair_address": pair.get("pairAddress", "")
-                        })
-                
-                print(f"   ✅ Found {len(candidates)} candidates meeting criteria")
-                
+                        data = await resp.json()
+                        pairs = data.get("pairs", [])
+                        
+                        if not pairs:
+                            continue
+                        
+                        # Use the most liquid pair
+                        pair = max(pairs, key=lambda p: float(p.get("liquidity", {}).get("usd", 0)))
+                        
+                        liquidity = float(pair.get("liquidity", {}).get("usd", 0))
+                        volume_24h = float(pair.get("volume", {}).get("h24", 0))
+                        
+                        if liquidity >= self.min_liquidity and volume_24h >= self.min_volume_24h:
+                            symbol = pair.get("baseToken", {}).get("symbol", "UNKNOWN")
+                            
+                            # Skip if already holding
+                            if symbol in self.positions:
+                                continue
+                            
+                            candidates.append({
+                                "symbol": symbol,
+                                "name": pair.get("baseToken", {}).get("name", ""),
+                                "chain": pair.get("chainId", ""),
+                                "price": float(pair.get("priceUsd", 0)),
+                                "liquidity": liquidity,
+                                "volume_24h": volume_24h,
+                                "price_change_24h": float(pair.get("priceChange", {}).get("h24", 0)),
+                                "pair_address": pair.get("pairAddress", "")
+                            })
+                    
+                    # Small delay to avoid rate limiting
+                    await asyncio.sleep(0.5)
+                    
+                except Exception as e:
+                    print(f"   ⚠️  Error fetching {token_address}: {e}")
+                    continue
+            
+            print(f"   ✅ Found {len(candidates)} candidates meeting criteria")
+            
         except Exception as e:
             print(f"⚠️  Search error: {e}")
         
