@@ -232,15 +232,44 @@ class BaselineStrategy:
         print(f"\n🔍 Checking positions for exit signals...")
         
         for symbol in list(self.positions.keys()):
-            # In a real implementation, you would:
-            # 1. Fetch current price
-            # 2. Calculate P&L for this position
-            # 3. Check if stop-loss or take-profit triggered
-            # 4. Execute sell if needed
+            quantity = self.positions[symbol]
             
-            # For now, we'll implement basic logic
-            # (In production, the server handles stop-loss/take-profit automatically)
-            pass
+            # Get current price from last state
+            current_price = None
+            if self.last_state:
+                prices = self.last_state.get("prices", {})
+                current_price = prices.get(symbol)
+            
+            if not current_price:
+                continue
+            
+            # Calculate position value
+            position_value = quantity * current_price
+            
+            # Get entry price from positions data
+            entry_price = None
+            if self.last_state:
+                positions = self.last_state.get("positions", [])
+                for pos in positions:
+                    if pos.get("symbol") == symbol:
+                        entry_price = pos.get("entry_price")
+                        break
+            
+            if not entry_price:
+                continue
+            
+            # Calculate P&L percentage
+            pnl_pct = (current_price - entry_price) / entry_price
+            
+            # Check stop-loss
+            if pnl_pct <= self.stop_loss:
+                print(f"🛑 Stop-loss triggered for {symbol}: {pnl_pct*100:.2f}%")
+                await self.execute_trade("sell", symbol, position_value, ["STOP_LOSS"])
+            
+            # Check take-profit
+            elif pnl_pct >= self.take_profit:
+                print(f"🎯 Take-profit triggered for {symbol}: {pnl_pct*100:.2f}%")
+                await self.execute_trade("sell", symbol, position_value, ["TAKE_PROFIT"])
     
     async def find_opportunities(self):
         """Analyze market and find trading opportunities."""
@@ -350,10 +379,10 @@ class BaselineStrategy:
         print(f"   Amount: ${amount:.2f}")
         print(f"   Reason: Following Hive Mind collective intelligence")
         
-        # Execute trade
-        await self.execute_trade("buy", best_token, amount, best_strategy)
+        # Execute trade with strategy tag as list
+        await self.execute_trade("buy", best_token, amount, [best_strategy])
     
-    async def execute_trade(self, action: str, symbol: str, amount: float, reason: str):
+    async def execute_trade(self, action: str, symbol: str, amount: float, reason: list):
         """Execute a trade."""
         try:
             print(f"\n🚀 Executing {action.upper()} {symbol}...")
