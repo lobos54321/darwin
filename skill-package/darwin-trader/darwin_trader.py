@@ -25,6 +25,7 @@ ws_connection: Optional[aiohttp.ClientWebSocketResponse] = None
 http_session: Optional[aiohttp.ClientSession] = None
 listener_task: Optional[asyncio.Task] = None
 message_handlers = {}  # Callbacks for different message types
+response_queue: Optional[asyncio.Queue] = None  # Queue for order/status responses
 
 agent_state = {
     "agent_id": None,
@@ -97,6 +98,10 @@ async def darwin_connect(agent_id: str, arena_url: str = "wss://www.darwinx.fun"
             "group_id": data.get("group_id", "unknown")
         })
 
+        # Initialize response queue
+        global response_queue
+        response_queue = asyncio.Queue()
+        
         # Start background message listener
         global listener_task
         listener_task = asyncio.create_task(_message_listener())
@@ -166,13 +171,8 @@ async def darwin_trade(action: str, symbol: str, amount: float, reason: str = No
     try:
         await ws_connection.send_json(order)
 
-        # Wait for response
-        msg = await asyncio.wait_for(ws_connection.receive(), timeout=5.0)
-
-        if msg.type != aiohttp.WSMsgType.TEXT:
-            raise Exception("Unexpected message type")
-
-        result = json.loads(msg.data)
+        # Wait for response from queue (populated by message listener)
+        result = await asyncio.wait_for(response_queue.get(), timeout=5.0)
 
         if result.get("type") != "order_result":
             raise Exception(f"Unexpected response type: {result.get('type')}")
@@ -221,13 +221,8 @@ async def darwin_status() -> Dict[str, Any]:
     try:
         await ws_connection.send_json({"type": "get_state"})
 
-        # Wait for response
-        msg = await asyncio.wait_for(ws_connection.receive(), timeout=5.0)
-
-        if msg.type != aiohttp.WSMsgType.TEXT:
-            raise Exception("Unexpected message type")
-
-        result = json.loads(msg.data)
+        # Wait for response from queue (populated by message listener)
+        result = await asyncio.wait_for(response_queue.get(), timeout=5.0)
 
         if result.get("type") != "state":
             raise Exception(f"Unexpected response type: {result.get('type')}")
@@ -286,8 +281,12 @@ async def _message_listener():
                     data = json.loads(msg.data)
                     msg_type = data.get("type")
                     
+                    # Route responses to queue for darwin_trade/darwin_status
+                    if msg_type in ["order_result", "state"]:
+                        await response_queue.put(data)
+                    
                     # Handle different message types
-                    if msg_type == "hot_patch":
+                    elif msg_type == "hot_patch":
                         _handle_hot_patch(data)
                     
                     elif msg_type == "council_trade":
@@ -300,7 +299,7 @@ async def _message_listener():
                         _handle_attribution_report(data)
                     
                     # Call custom handlers if registered
-                    if msg_type in message_handlers:
+                    elif msg_type in message_handlers:
                         message_handlers[msg_type](data)
                 
                 elif msg.type == aiohttp.WSMsgType.CLOSED:
