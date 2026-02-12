@@ -71,11 +71,11 @@ TOKEN_POOLS = [
 
 # 动态分组大小: 根据总Agent数自动调整每组大小
 GROUP_SIZE_THRESHOLDS = {
-    100: 10,    # < 100 total agents → 10 per group
-    500: 20,    # < 500 total agents → 20 per group
-    2000: 50,   # < 2000 total agents → 50 per group
+    100: 50,    # < 100 total agents → 50 per group (increased for testing)
+    500: 100,   # < 500 total agents → 100 per group
+    2000: 200,  # < 2000 total agents → 200 per group
 }
-GROUP_DEFAULT_SIZE = 100  # >= 2000 agents → 100 per group
+GROUP_DEFAULT_SIZE = 500  # >= 2000 agents → 500 per group
 
 # === 限制 ===
 MAX_AGENTS_PER_IP = 50  # 每IP最多50个Agent (Increased for testing)
