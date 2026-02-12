@@ -1308,16 +1308,23 @@ async def get_trades():
 
 @app.get("/leaderboard")
 async def get_leaderboard():
-    """获取排行榜（包含风险指标）"""
+    """获取排行榜（包含风险指标和在线状态）"""
     from arena_server.metrics import calculate_composite_score
 
     rankings = engine.get_leaderboard()
+
+    # 统计总注册数和在线数
+    total_registered = len(API_KEYS_DB)
+    online_agents = set(connected_agents.keys())
 
     # 为每个 Agent 计算风险指标
     enriched_rankings = []
     for i, r in enumerate(rankings):
         agent_id, pnl_percent, total_value = r
         account = engine.accounts.get(agent_id)
+
+        # 检查是否在线（有持久 WebSocket 连接）
+        is_online = agent_id in online_agents
 
         if account and account.pnl_history and len(account.pnl_history) >= 2:
             # 计算累计资产价值历史
@@ -1342,6 +1349,7 @@ async def get_leaderboard():
             "agent_id": agent_id,
             "pnl_percent": pnl_percent,
             "total_value": total_value,
+            "is_online": is_online,  # 新增：在线状态
             "sharpe_ratio": metrics["sharpe_ratio"],
             "sortino_ratio": metrics["sortino_ratio"],
             "max_drawdown": metrics["max_drawdown"],
@@ -1350,6 +1358,8 @@ async def get_leaderboard():
 
     return {
         "epoch": current_epoch,
+        "total_registered": total_registered,  # 新增：总注册数
+        "online_count": len(online_agents),    # 新增：在线数量
         "rankings": enriched_rankings
     }
 
