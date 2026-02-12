@@ -47,6 +47,7 @@ class BaselineStrategy:
         self.positions = {}
         self.last_hive_mind = None
         self.last_prices = {}
+        self.last_state = None  # Store last status response for price/position data
         
         # Risk management
         self.max_position_size = 0.15  # 15% per trade
@@ -197,6 +198,9 @@ class BaselineStrategy:
             result = await darwin_status()
             
             if result.get("status") == "success":
+                # Store the full state for use in manage_positions
+                self.last_state = result
+                
                 self.balance = result.get("balance", self.balance)
                 positions = result.get("positions", [])
                 
