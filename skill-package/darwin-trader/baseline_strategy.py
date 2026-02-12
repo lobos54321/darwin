@@ -350,9 +350,11 @@ class BaselineStrategy:
         best_token = None
         best_token_score = -999999
         
+        print(f"📊 Evaluating {len(by_token)} tokens from {best_strategy}:", flush=True)
         for token, token_stats in by_token.items():
             # 🔓 No longer restrict to group tokens - agents can discover any token
             if token in self.positions:
+                print(f"   {token}: SKIP (already holding)", flush=True)
                 continue  # Already holding
             
             win_rate = token_stats.get("win_rate", 0)
@@ -360,6 +362,8 @@ class BaselineStrategy:
             
             # Simple scoring: win_rate * avg_pnl
             token_score = win_rate * avg_pnl if avg_pnl > 0 else -999999
+            
+            print(f"   {token}: win_rate={win_rate:.1f}%, avg_pnl={avg_pnl:+.2f}%, score={token_score:.2f}", flush=True)
             
             if token_score > best_token_score:
                 best_token_score = token_score
