@@ -1697,6 +1697,21 @@ async def get_baseline_strategy_script():
     return FileResponse(script_path, media_type="text/x-python", filename="baseline_strategy.py")
 
 
+@app.get("/skill/darwin-trader/autonomous_strategy.py")
+async def get_autonomous_strategy_script():
+    """获取 Autonomous Strategy Python 脚本"""
+    script_path = os.path.join(os.path.dirname(__file__), "..", "skill-package", "darwin-trader", "autonomous_strategy.py")
+    
+    # Fallback to local skill directory
+    if not os.path.exists(script_path):
+        local_script = os.path.expanduser("~/clawd/skills/darwin-trader/autonomous_strategy.py")
+        if os.path.exists(local_script):
+            return FileResponse(local_script, media_type="text/x-python", filename="autonomous_strategy.py")
+        raise HTTPException(status_code=404, detail="autonomous_strategy.py not found")
+    
+    return FileResponse(script_path, media_type="text/x-python", filename="autonomous_strategy.py")
+
+
 @app.get("/skill/darwin-trader/quick_deploy.sh")
 async def get_quick_deploy_script():
     """获取 Quick Deploy 脚本"""
