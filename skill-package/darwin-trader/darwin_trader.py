@@ -159,13 +159,21 @@ async def darwin_trade(action: str, symbol: str, amount: float, reason: str = No
     if amount <= 0:
         return {"status": "error", "message": "❌ Amount must be positive"}
 
+    # Normalize reason to list
+    if reason is None:
+        reason_list = []
+    elif isinstance(reason, list):
+        reason_list = reason
+    else:
+        reason_list = [reason]
+
     # Send order to server
     order = {
         "type": "order",
         "symbol": symbol,
         "side": action.upper(),
         "amount": amount,
-        "reason": [reason] if reason else []
+        "reason": reason_list
     }
 
     try:
