@@ -132,6 +132,14 @@ class HiveMind:
                     self.tag_stats[tag]["wins"] += 1
                 else:
                     self.tag_stats[tag]["losses"] += 1
+                
+                # Also build by_token for exit tags (TAKE_PROFIT, STOP_LOSS, etc.)
+                self.tag_by_token[tag][symbol]["trades"] += 1
+                self.tag_by_token[tag][symbol]["total_pnl"] += trade_pnl
+                if is_win:
+                    self.tag_by_token[tag][symbol]["wins"] += 1
+                else:
+                    self.tag_by_token[tag][symbol]["losses"] += 1
 
         # Build enhanced alpha report
         alpha_report = {}
