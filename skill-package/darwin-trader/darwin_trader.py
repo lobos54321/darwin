@@ -289,8 +289,8 @@ async def _message_listener():
                     data = json.loads(msg.data)
                     msg_type = data.get("type")
                     
-                    # Route responses to queue for darwin_trade/darwin_status
-                    if msg_type in ["order_result", "state"]:
+                    # Route responses to queue for darwin_trade/darwin_status/darwin_council_share
+                    if msg_type in ["order_result", "state", "council_submitted"]:
                         await response_queue.put(data)
                     
                     # Handle different message types
