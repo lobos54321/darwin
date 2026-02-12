@@ -23,6 +23,9 @@ import aiohttp
 # Global state
 ws_connection: Optional[aiohttp.ClientWebSocketResponse] = None
 http_session: Optional[aiohttp.ClientSession] = None
+listener_task: Optional[asyncio.Task] = None
+message_handlers = {}  # Callbacks for different message types
+
 agent_state = {
     "agent_id": None,
     "balance": 0,
@@ -30,7 +33,9 @@ agent_state = {
     "tokens": [],  # Assigned token pool from server
     "connected": False,
     "arena_url": None,
-    "group_id": None
+    "group_id": None,
+    "strategy_weights": {},  # Hot patch weights
+    "council_trades": []  # Recent council trades
 }
 
 async def darwin_connect(agent_id: str, arena_url: str = "wss://www.darwinx.fun", api_key: str = None) -> Dict[str, Any]:
@@ -91,6 +96,10 @@ async def darwin_connect(agent_id: str, arena_url: str = "wss://www.darwinx.fun"
             "arena_url": arena_url,
             "group_id": data.get("group_id", "unknown")
         })
+
+        # Start background message listener
+        global listener_task
+        listener_task = asyncio.create_task(_message_listener())
 
         return {
             "status": "connected",
@@ -262,6 +271,118 @@ async def darwin_status() -> Dict[str, Any]:
     except Exception as e:
         return {"status": "error", "message": f"❌ Failed to get status: {str(e)}"}
 
+async def _message_listener():
+    """Background task to listen for server messages (hot patches, council trades, etc.)"""
+    global ws_connection, agent_state
+    
+    print("🎧 Message listener started")
+    
+    try:
+        while agent_state["connected"] and ws_connection and not ws_connection.closed:
+            try:
+                msg = await asyncio.wait_for(ws_connection.receive(), timeout=30.0)
+                
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    data = json.loads(msg.data)
+                    msg_type = data.get("type")
+                    
+                    # Handle different message types
+                    if msg_type == "hot_patch":
+                        _handle_hot_patch(data)
+                    
+                    elif msg_type == "council_trade":
+                        _handle_council_trade(data)
+                    
+                    elif msg_type == "price_update":
+                        _handle_price_update(data)
+                    
+                    elif msg_type == "attribution_report":
+                        _handle_attribution_report(data)
+                    
+                    # Call custom handlers if registered
+                    if msg_type in message_handlers:
+                        message_handlers[msg_type](data)
+                
+                elif msg.type == aiohttp.WSMsgType.CLOSED:
+                    print("⚠️ WebSocket closed by server")
+                    break
+                
+                elif msg.type == aiohttp.WSMsgType.ERROR:
+                    print(f"⚠️ WebSocket error: {ws_connection.exception()}")
+                    break
+                    
+            except asyncio.TimeoutError:
+                # Timeout is normal, just continue listening
+                continue
+            except Exception as e:
+                print(f"⚠️ Message listener error: {e}")
+                break
+    
+    finally:
+        print("🎧 Message listener stopped")
+
+def _handle_hot_patch(data: dict):
+    """Handle hot patch message from server"""
+    boost = data.get("boost", [])
+    penalize = data.get("penalize", [])
+    
+    print(f"\n🔥 HOT PATCH RECEIVED")
+    print(f"   ⬆️  Boost: {', '.join(boost) if boost else 'None'}")
+    print(f"   ⬇️  Penalize: {', '.join(penalize) if penalize else 'None'}")
+    
+    # Update strategy weights
+    for tag in boost:
+        agent_state["strategy_weights"][tag] = 1.0
+    
+    for tag in penalize:
+        agent_state["strategy_weights"][tag] = 0.2
+
+def _handle_council_trade(data: dict):
+    """Handle council trade broadcast"""
+    agent_id = data.get("agent_id")
+    symbol = data.get("symbol")
+    side = data.get("side")
+    amount = data.get("amount")
+    reason = data.get("reason", [])
+    
+    # Store in council trades (keep last 50)
+    agent_state["council_trades"].append({
+        "agent_id": agent_id,
+        "symbol": symbol,
+        "side": side,
+        "amount": amount,
+        "reason": reason
+    })
+    
+    if len(agent_state["council_trades"]) > 50:
+        agent_state["council_trades"].pop(0)
+    
+    print(f"📢 Council: {agent_id} {side} {symbol} (${amount:.0f}) - {', '.join(reason)}")
+
+def _handle_price_update(data: dict):
+    """Handle price update message"""
+    prices = data.get("prices", {})
+    # Could update local price cache here
+    # For now, just acknowledge
+    pass
+
+def _handle_attribution_report(data: dict):
+    """Handle attribution analysis report"""
+    report = data.get("attribution_report", {})
+    print(f"\n📊 Attribution Report: {len(report)} tags analyzed")
+
+def register_message_handler(msg_type: str, handler):
+    """Register a custom message handler"""
+    message_handlers[msg_type] = handler
+
+def get_strategy_weights() -> Dict[str, float]:
+    """Get current strategy weights from hot patches"""
+    return agent_state["strategy_weights"].copy()
+
+def get_council_trades() -> list:
+    """Get recent council trades"""
+    return agent_state["council_trades"].copy()
+
 async def darwin_disconnect() -> Dict[str, Any]:
     """
     Disconnect from arena.
@@ -269,7 +390,15 @@ async def darwin_disconnect() -> Dict[str, Any]:
     Returns:
         Disconnection status
     """
-    global ws_connection, http_session, agent_state
+    global ws_connection, http_session, agent_state, listener_task
+
+    # Stop listener task
+    if listener_task and not listener_task.done():
+        listener_task.cancel()
+        try:
+            await listener_task
+        except asyncio.CancelledError:
+            pass
 
     if ws_connection and not ws_connection.closed:
         await ws_connection.close()

@@ -9,6 +9,7 @@ This strategy:
 3. Analyzes market data from DexScreener
 4. Makes trading decisions using LLM reasoning
 5. Executes trades with risk management
+6. Receives and applies hot patches from attribution analysis
 """
 
 import asyncio
@@ -20,7 +21,14 @@ import aiohttp
 from datetime import datetime
 
 # Import the darwin_trader tool functions
-from darwin_trader import darwin_connect, darwin_trade, darwin_status, darwin_disconnect
+from darwin_trader import (
+    darwin_connect, 
+    darwin_trade, 
+    darwin_status, 
+    darwin_disconnect,
+    get_strategy_weights,
+    get_council_trades
+)
 
 class BaselineStrategy:
     """
@@ -45,6 +53,9 @@ class BaselineStrategy:
         self.stop_loss = -0.05  # -5%
         self.take_profit = 0.04  # +4%
         self.max_positions = 4
+        
+        # Strategy weights (updated by hot patches)
+        self.strategy_weights = {}  # Will be populated by hot patches
         
     async def start(self):
         """Initialize and start the trading loop."""
@@ -258,23 +269,31 @@ class BaselineStrategy:
             print("⚠️  No alpha report available")
             return
         
-        # Find best performing strategy
+        # Find best performing strategy (with hot patch weights applied)
         best_strategy = None
         best_score = -999999
+        
+        # Get current strategy weights from hot patches
+        self.strategy_weights = get_strategy_weights()
         
         for strategy, stats in alpha_report.items():
             impact = stats.get("impact", "UNKNOWN")
             score = stats.get("score", 0)
             
-            if impact == "POSITIVE" and score > best_score:
-                best_score = score
+            # Apply hot patch weight (default 0.5 if not set)
+            weight = self.strategy_weights.get(strategy, 0.5)
+            adjusted_score = score * weight
+            
+            if impact == "POSITIVE" and adjusted_score > best_score:
+                best_score = adjusted_score
                 best_strategy = strategy
         
         if not best_strategy:
             print("⚠️  No positive strategies found")
             return
         
-        print(f"✨ Best strategy: {best_strategy} (score: {best_score:.2f})")
+        weight_info = f" (weight: {self.strategy_weights.get(best_strategy, 0.5):.1f})" if best_strategy in self.strategy_weights else ""
+        print(f"✨ Best strategy: {best_strategy} (score: {best_score:.2f}){weight_info}")
         
         # Get token recommendations from this strategy
         strategy_data = alpha_report[best_strategy]
