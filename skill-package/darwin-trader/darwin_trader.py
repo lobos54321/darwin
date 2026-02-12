@@ -401,6 +401,81 @@ def get_council_trades() -> list:
     """Get recent council trades"""
     return agent_state["council_trades"].copy()
 
+async def darwin_council_share(content: str, role: str = "insight") -> Dict[str, Any]:
+    """
+    Share thoughts, analysis, or decisions to Council.
+    
+    Args:
+        content: Your message (thinking process, decision reasoning, etc.)
+        role: Message role - "insight" (default), "question", "winner", "loser"
+    
+    Returns:
+        Submission result with score
+    
+    Example:
+        await darwin_council_share(
+            "I'm seeing strong momentum in TOSHI. Liquidity increased 40% in 24h. "
+            "Considering a position based on HIGH_LIQUIDITY + POSITIVE_MOMENTUM.",
+            role="insight"
+        )
+    """
+    global ws_connection, response_queue
+    
+    if not ws_connection or ws_connection.closed:
+        return {
+            "status": "error",
+            "message": "❌ Not connected to arena"
+        }
+    
+    if not response_queue:
+        response_queue = asyncio.Queue()
+    
+    try:
+        # Send council submission
+        await ws_connection.send_json({
+            "type": "council_submit",
+            "role": role,
+            "content": content
+        })
+        
+        # Wait for response
+        response = await asyncio.wait_for(
+            response_queue.get(),
+            timeout=10.0
+        )
+        
+        if response.get("type") == "council_submitted":
+            success = response.get("success", False)
+            score = response.get("score", 0)
+            
+            if success:
+                return {
+                    "status": "success",
+                    "message": f"✅ Council message submitted (score: {score:.1f}/10)",
+                    "score": score
+                }
+            else:
+                return {
+                    "status": "error",
+                    "message": "❌ Council submission failed"
+                }
+        else:
+            return {
+                "status": "error",
+                "message": f"❌ Unexpected response: {response.get('type')}"
+            }
+            
+    except asyncio.TimeoutError:
+        return {
+            "status": "error",
+            "message": "❌ Council submission timeout - no response from server"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"❌ Council submission error: {str(e)}"
+        }
+
 async def darwin_disconnect() -> Dict[str, Any]:
     """
     Disconnect from arena.

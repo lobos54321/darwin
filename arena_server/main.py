@@ -1018,6 +1018,16 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
                     
                     # 广播给同组所有其他 Agents（排除发送者）
                     await broadcast_to_group(group.group_id, council_message, exclude=agent_id)
+                    
+                    # 📝 记录到 Council Logs（实时交易记录）
+                    reason_str = ", ".join(reason) if isinstance(reason, list) else str(reason)
+                    trade_content = f"💰 {side_str} ${amount:.0f} {symbol} @ ${fill_price:.6f}\n📊 Reason: {reason_str}"
+                    await council.submit_message(
+                        epoch=current_epoch,
+                        agent_id=agent_id,
+                        role=MessageRole.INSIGHT,  # 使用 INSIGHT 角色表示实时交易
+                        content=trade_content
+                    )
                 
                 await websocket.send_json({
                     "type": "order_result",
