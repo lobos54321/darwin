@@ -1022,9 +1022,11 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
                 side = OrderSide.BUY if side_str == "BUY" else OrderSide.SELL
                 amount = float(data["amount"])
                 reason = data.get("reason", []) # 🏷️ Get tags
-                
+                chain = data.get("chain", "unknown")  # 🔗 Get chain
+                contract_address = data.get("contract_address", "")  # 📝 Get contract address
+
                 success, msg, fill_price = await engine.execute_order(
-                    agent_id, symbol, side, amount, reason
+                    agent_id, symbol, side, amount, reason, chain, contract_address
                 )
                 
                 if success:

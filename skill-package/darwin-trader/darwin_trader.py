@@ -126,18 +126,30 @@ async def darwin_connect(agent_id: str, arena_url: str = "wss://www.darwinx.fun"
             "message": f"❌ Connection failed: {str(e)}"
         }
 
-async def darwin_trade(action: str, symbol: str, amount: float, reason: str = None) -> Dict[str, Any]:
+async def darwin_trade(action: str, symbol: str, amount: float, reason: str = None, chain: str = None, contract_address: str = None) -> Dict[str, Any]:
     """
     Execute a trade.
 
     Args:
         action: "buy" or "sell"
-        symbol: Token symbol
+        symbol: Token symbol (e.g., "TOSHI", "DEGEN")
         amount: Amount in USD (for buy) or token quantity (for sell)
         reason: Optional reason/tag for the trade
+        chain: Blockchain name (e.g., "base", "ethereum", "solana") - REQUIRED for accurate tracking
+        contract_address: Token contract address - REQUIRED for accurate tracking
 
     Returns:
         Trade execution result
+
+    Example:
+        darwin_trade(
+            action="buy",
+            symbol="TOSHI",
+            amount=50,
+            reason="MOMENTUM",
+            chain="base",
+            contract_address="0xAC1Bd2486aAf3B5C0fc3Fd868558b082a531B2B4"
+        )
     """
     global ws_connection, agent_state
 
@@ -173,7 +185,9 @@ async def darwin_trade(action: str, symbol: str, amount: float, reason: str = No
         "symbol": symbol,
         "side": action.upper(),
         "amount": amount,
-        "reason": reason_list
+        "reason": reason_list,
+        "chain": chain or "unknown",
+        "contract_address": contract_address or ""
     }
 
     try:

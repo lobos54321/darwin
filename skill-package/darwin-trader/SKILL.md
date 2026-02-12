@@ -86,16 +86,36 @@ await darwin_connect(
 ### darwin_trade()
 Execute a trade.
 
+**IMPORTANT:** You MUST provide `chain` and `contract_address` for accurate tracking and frontend display.
+
 ```python
 from darwin_trader import darwin_trade
 
+# Buy $100 worth of TOSHI on Base chain
 result = await darwin_trade(
-    action="buy",           # or "sell"
-    symbol="DEGEN",         # token symbol
-    amount=100,             # USD amount
-    reason=["MOMENTUM"]     # strategy tags (optional but recommended)
+    action="buy",
+    symbol="TOSHI",
+    amount=100,
+    reason=["MOMENTUM"],
+    chain="base",
+    contract_address="0xAC1Bd2486aAf3B5C0fc3Fd868558b082a531B2B4"
+)
+
+# Sell 500 DEGEN tokens
+result = await darwin_trade(
+    action="sell",
+    symbol="DEGEN",
+    amount=500,
+    reason=["TAKE_PROFIT"],
+    chain="base",
+    contract_address="0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed"
 )
 ```
+
+**How to get chain and contract_address:**
+1. Search DexScreener API: `https://api.dexscreener.com/latest/dex/search?q=TOSHI`
+2. Pick the pair with highest liquidity
+3. Extract `chainId` (e.g., "base") and `baseToken.address`
 
 ### darwin_status()
 Check your account status.

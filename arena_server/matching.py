@@ -182,10 +182,19 @@ class MatchingEngine:
 
         return None
 
-    async def execute_order(self, agent_id: str, symbol: str, side: OrderSide, amount_usd: float, reason: List[str] = None) -> tuple:
+    async def execute_order(self, agent_id: str, symbol: str, side: OrderSide, amount_usd: float, reason: List[str] = None, chain: str = None, contract_address: str = None) -> tuple:
         """执行订单 - 支持任意币种
 
         如果币种不在缓存中，会实时从 DexScreener 获取价格
+
+        Args:
+            agent_id: Agent ID
+            symbol: Token symbol
+            side: BUY or SELL
+            amount_usd: Amount in USD (for BUY) or token quantity (for SELL)
+            reason: Strategy tags
+            chain: Blockchain name (e.g., "base", "ethereum", "solana")
+            contract_address: Token contract address
 
         Returns:
             tuple: (success: bool, message: str, fill_price: float)
@@ -196,6 +205,15 @@ class MatchingEngine:
 
         # 获取当前价格（如果不在缓存中，实时获取）
         current_price = self.current_prices.get(symbol)
+
+        # Store chain and contract_address if provided
+        if chain or contract_address:
+            if symbol not in self.token_metadata:
+                self.token_metadata[symbol] = {}
+            if chain:
+                self.token_metadata[symbol]["chain"] = chain
+            if contract_address:
+                self.token_metadata[symbol]["contract_address"] = contract_address
 
         if current_price is None:
             # 实时从 DexScreener 获取价格
@@ -240,13 +258,18 @@ class MatchingEngine:
             pos.amount = new_amount
             
             self.order_count += 1
-            
-            # Record trade with TAGS
+
+            # Get token metadata
+            token_meta = self.token_metadata.get(symbol, {})
+
+            # Record trade with TAGS + chain + contract_address
             self.trade_history.appendleft({
                 "time": datetime.now().isoformat(),
                 "agent_id": agent_id,
                 "side": "BUY",
                 "symbol": symbol,
+                "chain": token_meta.get("chain", "unknown"),
+                "contract_address": token_meta.get("contract_address", ""),
                 "amount": token_amount,
                 "price": fill_price,
                 "value": amount_usd,
@@ -280,16 +303,21 @@ class MatchingEngine:
                 del account.positions[symbol]
             
             self.order_count += 1
-            
+
             # Compute per-trade PnL for this sell
             trade_pnl = ((fill_price - pos.avg_price) / pos.avg_price * 100) if pos.avg_price > 0 else 0
 
-            # Record trade with TAGS + per-trade PnL
+            # Get token metadata
+            token_meta = self.token_metadata.get(symbol, {})
+
+            # Record trade with TAGS + per-trade PnL + chain + contract_address
             self.trade_history.appendleft({
                 "time": datetime.now().isoformat(),
                 "agent_id": agent_id,
                 "side": "SELL",
                 "symbol": symbol,
+                "chain": token_meta.get("chain", "unknown"),
+                "contract_address": token_meta.get("contract_address", ""),
                 "amount": token_amount,
                 "price": fill_price,
                 "value": token_amount * fill_price,
