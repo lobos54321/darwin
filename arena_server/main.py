@@ -257,6 +257,22 @@ async def lifespan(app: FastAPI):
 
     attribution_task = asyncio.create_task(attribution_loop())
 
+    # 💰 Price refresh loop: Update all position prices for accurate PnL calculation
+    async def price_refresh_loop():
+        """每 60 秒刷新所有持仓代币的价格（用于准确的 PnL 计算）"""
+        while True:
+            await asyncio.sleep(60)  # 60秒 > DexScreener缓存30秒
+            try:
+                total_symbols = 0
+                for group_id, group in group_manager.groups.items():
+                    await group.engine.refresh_all_position_prices()
+                    total_symbols += len(group.engine.current_prices)
+                logger.info(f"💰 Refreshed prices for {total_symbols} symbols across {len(group_manager.groups)} groups")
+            except Exception as e:
+                logger.error(f"Price refresh loop error: {e}")
+
+    price_refresh_task = asyncio.create_task(price_refresh_loop())
+
     # 📡 REMOVED: Price broadcasting (Pure Execution Layer)
     # Darwin Arena is a pure execution layer - agents fetch their own market data.
     # This enables true agent autonomy:

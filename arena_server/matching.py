@@ -101,6 +101,7 @@ class MatchingEngine:
         self.accounts: Dict[str, AgentAccount] = {}
         self.agents = self.accounts  # Alias for compatibility
         self.current_prices: Dict[str, float] = {}
+        self.token_metadata: Dict[str, dict] = {}  # Store chain and contract_address
         self.order_count = 0
         self.trade_history: deque = deque(maxlen=500) # Rolling history for Hive Mind attribution
     
@@ -333,6 +334,49 @@ class MatchingEngine:
     def last_prices(self) -> Dict[str, float]:
         """Alias for current_prices (compatibility)"""
         return self.current_prices
+
+    async def refresh_all_position_prices(self):
+        """刷新所有持仓代币的价格（用于准确的 PnL 计算）"""
+        # 收集所有持仓代币
+        all_symbols = set()
+        for account in self.accounts.values():
+            all_symbols.update(account.positions.keys())
+
+        # 批量获取价格
+        for symbol in all_symbols:
+            if symbol not in self.current_prices:
+                try:
+                    price = await self._fetch_price_realtime(symbol)
+                    if price:
+                        self.current_prices[symbol] = price
+                except Exception as e:
+                    logger.error(f"Failed to refresh price for {symbol}: {e}")
+
+    async def refresh_all_position_prices(self) -> int:
+        """刷新所有持仓代币的价格（用于准确的 PnL 计算）
+
+        Returns:
+            int: 成功更新的代币数量
+        """
+        # 收集所有持仓代币
+        symbols = set()
+        for account in self.accounts.values():
+            symbols.update(account.positions.keys())
+
+        if not symbols:
+            return 0
+
+        updated = 0
+        for symbol in symbols:
+            try:
+                price = await self._fetch_price_realtime(symbol)
+                if price and price > 0:
+                    self.current_prices[symbol] = price
+                    updated += 1
+            except Exception as e:
+                print(f"Failed to refresh price for {symbol}: {e}")
+
+        return updated
 
     def get_leaderboard(self) -> List[tuple]:
         """获取排行榜 (使用当前市场价计算，不修改 avg_price)"""
