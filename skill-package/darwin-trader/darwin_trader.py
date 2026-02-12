@@ -297,6 +297,10 @@ async def _message_listener():
                     elif msg_type == "hot_patch":
                         _handle_hot_patch(data)
                     
+                    elif msg_type == "hive_patch":
+                        # Hive Mind patch from server (same format as hot_patch)
+                        _handle_hot_patch(data)
+                    
                     elif msg_type == "council_trade":
                         _handle_council_trade(data)
                     
@@ -330,10 +334,17 @@ async def _message_listener():
 
 def _handle_hot_patch(data: dict):
     """Handle hot patch message from server"""
-    boost = data.get("boost", [])
-    penalize = data.get("penalize", [])
+    # Support both formats: direct boost/penalize or nested in parameters
+    if "parameters" in data:
+        params = data["parameters"]
+        boost = params.get("boost", [])
+        penalize = params.get("penalize", [])
+    else:
+        boost = data.get("boost", [])
+        penalize = data.get("penalize", [])
     
-    print(f"\n🔥 HOT PATCH RECEIVED")
+    msg_type = data.get("type", "hot_patch")
+    print(f"\n🔥 {msg_type.upper()} RECEIVED")
     print(f"   ⬆️  Boost: {', '.join(boost) if boost else 'None'}")
     print(f"   ⬇️  Penalize: {', '.join(penalize) if penalize else 'None'}")
     
