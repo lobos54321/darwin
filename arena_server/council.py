@@ -32,9 +32,11 @@ def score_council_message_rule_based(content: str) -> float:
         elif len(numbers) >= 1:
             score += 1.0
 
-    # +1 point: References specific tokens
-    tokens = ['CLANKER', 'WETH', 'LOB', 'MOLT', 'PEPE', 'SOL', 'BTC', 'ETH']
-    token_mentions = sum(1 for token in tokens if token in text.upper())
+    # +1 point: References specific tokens (dynamic detection)
+    # Look for $SYMBOL pattern or common token patterns (3-5 uppercase letters)
+    import re
+    token_pattern = r'\$[A-Z]{2,10}|(?<!\w)[A-Z]{3,5}(?!\w)'
+    token_mentions = len(re.findall(token_pattern, text))
     if token_mentions >= 1:
         score += 1.0
 

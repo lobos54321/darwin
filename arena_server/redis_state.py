@@ -95,7 +95,16 @@ class RedisStateManager:
             return self.redis.hget(KEY_API_KEYS, api_key)
         except:
             return None
-    
+
+    def delete_api_key(self, api_key: str):
+        """删除API Key"""
+        if not self.enabled:
+            return
+        try:
+            self.redis.hdel(KEY_API_KEYS, api_key)
+        except Exception as e:
+            logger.error(f"Redis delete_api_key error: {e}")
+
     # === Agent Accounts ===
     
     def save_agent(self, agent_id: str, account_data: dict):

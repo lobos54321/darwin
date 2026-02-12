@@ -220,7 +220,7 @@ def create_sample_tournament():
             "4-10th": 200,
             "11-50th": 20
         },
-        tokens=["CLANKER", "MOLT", "LOB", "WETH"]
+        tokens=["CLANKER", "MOLT", "LOB", "WETH"]  # Example only - actual tournaments support ANY token
     )
     sample.save()
     return sample

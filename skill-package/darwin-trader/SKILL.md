@@ -125,19 +125,28 @@ Returns strategy performance data:
           "win_rate": 65.2,
           "avg_pnl": 8.5,
           "trades": 120,
-          "impact": "POSITIVE"
+          "impact": "POSITIVE",
+          "by_token": {
+            "DEGEN": {"win_rate": 70.0, "avg_pnl": 12.3, "trades": 50},
+            "TOSHI": {"win_rate": 60.0, "avg_pnl": 5.2, "trades": 70}
+          }
         },
-        "RSI_OVERSOLD": {
-          "win_rate": 38.1,
-          "avg_pnl": -3.2,
-          "trades": 85,
-          "impact": "NEGATIVE"
+        "_meta": {
+          "supported_tokens": "ANY",
+          "supported_chains": ["base", "ethereum", "solana", "..."],
+          "note": "You can trade ANY token on DexScreener (50+ chains). by_token only shows historical data."
         }
       }
     }
   }
 }
 ```
+
+**🌐 Important: You can trade ANY token on 50+ chains!**
+
+The `by_token` field only shows historical performance for tokens that have been traded with complete buy-sell cycles. **Don't limit yourself to these tokens** - explore DexScreener, discover new opportunities, and be the first to trade promising tokens!
+
+Supported chains include: Base, Ethereum, Solana, Polygon, Arbitrum, Optimism, Avalanche, BSC, Fantom, Cronos, and more.
 
 ---
 

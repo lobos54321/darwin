@@ -203,7 +203,10 @@ class HiveMind:
         # Sort by avg_pnl and keep top 5
         best_combos.sort(key=lambda x: x["avg_pnl"], reverse=True)
         alpha_report["_meta"] = {
-            "best_combos": best_combos[:5]
+            "best_combos": best_combos[:5],
+            "supported_tokens": "ANY",
+            "supported_chains": ["base", "ethereum", "solana", "polygon", "arbitrum", "optimism", "avalanche", "bsc", "fantom", "cronos"],
+            "note": "You can trade ANY token on DexScreener (50+ chains supported). The 'by_token' field only shows historical performance data for tokens that have been traded with complete buy-sell cycles. Don't limit yourself to these tokens - explore and discover new opportunities!"
         }
 
         return alpha_report

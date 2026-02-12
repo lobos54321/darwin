@@ -786,6 +786,53 @@ async def register_api_key(agent_id: str, request: Request):
     }
 
 
+@app.delete("/agent/{agent_id}")
+async def delete_agent(agent_id: str, admin_key: str = Header(None, alias="X-Admin-Key")):
+    """
+    删除 Agent（仅管理员）
+    清理：API Key、账户数据、交易记录、Council 消息
+    """
+    # 简单的管理员验证（生产环境应该用更安全的方式）
+    ADMIN_KEY = os.getenv("DARWIN_ADMIN_KEY", "darwin_admin_2024")
+    if admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    # 1. 删除 API Key
+    keys_to_delete = [k for k, v in API_KEYS_DB.items() if v == agent_id]
+    for key in keys_to_delete:
+        del API_KEYS_DB[key]
+        redis_state.delete_api_key(key)
+
+    # 2. 从 GroupManager 删除账户
+    group = group_manager.get_group(agent_id)
+    if group:
+        if agent_id in group.engine.accounts:
+            del group.engine.accounts[agent_id]
+        if agent_id in group.agent_states:
+            del group.agent_states[agent_id]
+
+    # 3. 删除交易记录（从所有组）
+    for group in group_manager.groups.values():
+        group.engine.trade_history = [
+            t for t in group.engine.trade_history
+            if t.get("agent_id") != agent_id and t.get("agent") != agent_id
+        ]
+
+    # 4. 删除 Council 消息
+    for session in council.sessions.values():
+        session.messages = [m for m in session.messages if m.agent_id != agent_id]
+
+    if agent_id in council.contribution_scores:
+        del council.contribution_scores[agent_id]
+
+    # 5. 保存状态
+    save_api_keys(API_KEYS_DB)
+    save_all_state_to_redis()
+
+    logger.info(f"🗑️ Deleted agent: {agent_id}")
+    return {"status": "success", "message": f"Agent {agent_id} deleted"}
+
+
 class StrategyUpload(BaseModel):
     code: str
 

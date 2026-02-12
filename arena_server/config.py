@@ -1,6 +1,8 @@
 # Project Darwin - Arena Config
 
-# 交易标的白名单
+# ⚠️ DEPRECATED: TARGET_TOKENS is only used for legacy feeder.py (not used in production)
+# Arena now supports ANY token on 50+ chains via DexScreener real-time API
+# These are just examples for testing/reference
 TARGET_TOKENS = {
     "CLANKER": "0x1bc0c42215582d5a085795f4badbac3ff36d1bcb",
     "MOLT": "0xb695559b26bb2c9703ef1935c37aeae9526bab07",
@@ -37,16 +39,18 @@ PLATFORM_TAX = 0.005  # 0.5% 归平台
 OWNER_TAX = 0.005  # 0.5% 归 Agent 所有者
 
 # === 分组竞技 (Group Arena) ===
-# 多链代币池 — 每个小组分配不同的池，交易不同的币
+# ⚠️ DEPRECATED: TOKEN_POOLS is only used for tournament.py examples (not in production)
+# Groups no longer restrict token pools - agents can trade ANY token on ANY chain
+# These pools are kept for backward compatibility with tournament examples only
 TOKEN_POOLS = [
-    # Pool 0: Base chain memes (original)
+    # Pool 0: Base chain memes (example only)
     {
         "CLANKER": "0x1bc0c42215582d5a085795f4badbac3ff36d1bcb",
         "MOLT": "0xb695559b26bb2c9703ef1935c37aeae9526bab07",
         "LOB": "0xf682c6D993f73c5A90F6D915F69d3363Eed36e64",
         "WETH": "0x4200000000000000000000000000000000000006",
     },
-    # Pool 1: Base chain blue chips
+    # Pool 1: Base chain blue chips (example only)
     {
         "DEGEN": "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed",
         "BRETT": "0x532f27101965dd16442E59d40670FaF5eBB142E4",
