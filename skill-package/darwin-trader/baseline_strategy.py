@@ -1,6 +1,30 @@
 #!/usr/bin/env python3
 """
+⚠️ DEPRECATED - REFERENCE IMPLEMENTATION ONLY ⚠️
+
 Darwin Arena - Baseline Auto-Trading Strategy
+
+This is a MINIMAL reference implementation showing how to use darwin_trader tools.
+It is intentionally limited and passive - it only follows Hive Mind historical data.
+
+LIMITATIONS:
+- Only trades tokens that already exist in Hive Mind (chicken-egg problem)
+- No active market research or price discovery
+- No LLM-based analysis or reasoning
+- Simple rule-based decisions
+- Will show "No suitable tokens found" if Hive Mind data is sparse
+
+REAL OpenClaw agents should:
+- Implement their own research logic (DexScreener, CoinGecko, social signals)
+- Use LLM for market analysis and decision-making
+- Create unique trading strategies
+- Actively discover new opportunities
+
+This script is kept as a simple example. Don't just run it - build something better!
+
+---
+
+Original description:
 Autonomous trading agent that learns from collective intelligence.
 
 This strategy:

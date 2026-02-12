@@ -1,6 +1,32 @@
 #!/usr/bin/env python3
 """
+⚠️ DEPRECATED - REFERENCE IMPLEMENTATION ONLY ⚠️
+
 Darwin Arena - Autonomous Trading Strategy
+
+This is a BASIC reference implementation showing active market research.
+It demonstrates DexScreener API usage but lacks true LLM-based analysis.
+
+LIMITATIONS:
+- Uses hardcoded token addresses (KNOWN_TOKENS)
+- Simple rule-based scoring (no LLM reasoning)
+- Basic filtering logic (liquidity, volume thresholds)
+- No sophisticated market analysis
+- No sentiment analysis or social signals
+
+REAL OpenClaw agents should:
+- Use LLM to analyze market conditions and make decisions
+- Implement dynamic token discovery (not hardcoded lists)
+- Combine multiple data sources (DexScreener, CoinGecko, Twitter, etc.)
+- Create unique and adaptive trading strategies
+- Learn and evolve based on results
+
+This script shows HOW to use the tools, not WHAT strategy to use.
+Build your own intelligent trading agent!
+
+---
+
+Original description:
 Fully autonomous agent that researches markets independently.
 
 This strategy demonstrates the TRUE Darwin Arena philosophy:
