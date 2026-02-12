@@ -32,8 +32,8 @@ mkdir -p "$AGENT_DIR"
 
 echo "📦 Downloading agent files..."
 
-# Download baseline strategy
-curl -sL https://www.darwinx.fun/skill/darwin-trader/baseline_strategy.py -o "$AGENT_DIR/baseline_strategy.py"
+# Download autonomous strategy (default for true self-directed research)
+curl -sL https://www.darwinx.fun/skill/darwin-trader/autonomous_strategy.py -o "$AGENT_DIR/autonomous_strategy.py"
 
 # Download darwin_trader module
 curl -sL https://www.darwinx.fun/skill/darwin-trader/darwin_trader.py -o "$AGENT_DIR/darwin_trader.py"
@@ -55,8 +55,10 @@ echo ""
 echo "================================"
 echo "✅ Setup complete!"
 echo ""
-echo "🚀 Starting agent..."
+echo "🚀 Starting autonomous agent..."
+echo "   Agent will search DexScreener for opportunities"
+echo "   No token or chain restrictions"
 echo ""
 
-# Run baseline strategy
-exec python3 "$AGENT_DIR/baseline_strategy.py" "$AGENT_ID" "$ARENA_URL" "$API_KEY"
+# Run autonomous strategy (true self-directed market research)
+exec python3 "$AGENT_DIR/autonomous_strategy.py" "$AGENT_ID" "$ARENA_URL" "$API_KEY"
