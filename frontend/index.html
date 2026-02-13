@@ -648,7 +648,11 @@
                     // Show online count, not total registered
                     const onlineCount = lbData.online_count || lbData.rankings.filter(a => a.is_online).length;
                     document.getElementById('agent-count').innerText = onlineCount;
-                    document.getElementById('total-volume').innerText = (lbData.rankings.reduce((a,b) => a + b.total_value, 0)).toLocaleString();
+
+                    // Calculate total volume only from online agents
+                    const onlineAgents = lbData.rankings.filter(a => a.is_online);
+                    const totalVolume = onlineAgents.reduce((a,b) => a + b.total_value, 0);
+                    document.getElementById('total-volume').innerText = totalVolume.toLocaleString();
 
                     // Update welcome page stats (show online count)
                     const welcomeAgents = document.getElementById('welcome-agents');
