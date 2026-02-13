@@ -1038,16 +1038,16 @@
         }
 
         async function fetchCouncilLogs() {
-            if (!currentEpoch) return;
             try {
-                const res = await fetch(`/council/${currentEpoch}`);
+                // Fetch all council logs (last 50 messages across all epochs)
+                const res = await fetch('/council-logs');
                 if (!res.ok) return;
 
-                const data = await res.json();
-                if (!data.messages || data.messages.length === 0) return;
+                const messages = await res.json();
+                if (!messages || messages.length === 0) return;
 
-                data.messages.forEach(msg => {
-                    const msgKey = `${msg.agent_id}-${msg.timestamp}`;
+                messages.forEach(msg => {
+                    const msgKey = `${msg.id}`;
 
                     if (!lastProcessedMessageIds.has(msgKey)) {
                         lastProcessedMessageIds.add(msgKey);
@@ -1065,7 +1065,7 @@
                         } catch(e) {}
 
                         const scoreDisplay = msg.score ? ` [Score: ${msg.score}]` : '';
-                        logToConsole(`${roleIcon} [E${data.epoch}] [${msg.agent_id}]${scoreDisplay} ${msg.content}`, colorClass, localTime);
+                        logToConsole(`${roleIcon} [E${msg.epoch}] [${msg.agent_id}]${scoreDisplay} ${msg.content}`, colorClass, localTime);
                     }
                 });
 

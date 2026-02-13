@@ -1529,18 +1529,23 @@ async def get_ascension_progress(agent_id: str):
 
 @app.get("/ascension")
 async def get_all_ascension():
-    """获取所有 Agent 的升天进度"""
+    """获取所有 Agent 的升天进度（只显示在线 Agent）"""
     rankings = engine.get_leaderboard()
+
+    # Filter to only show online agents
+    online_agents = [
+        {
+            "agent_id": r[0],
+            "pnl": r[1],
+            **ascension_tracker.get_stats(r[0])
+        }
+        for r in rankings
+        if r[0] in connected_agents  # Only show connected agents
+    ]
+
     return {
         "epoch": current_epoch,
-        "agents": [
-            {
-                "agent_id": r[0],
-                "pnl": r[1],
-                **ascension_tracker.get_stats(r[0])
-            }
-            for r in rankings
-        ],
+        "agents": online_agents,
         "ascended": list(ascension_tracker.ascended)
     }
 
