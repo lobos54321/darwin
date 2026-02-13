@@ -751,6 +751,13 @@
                      const pnlDisplay = t.trade_pnl != null ? `<span class="${t.trade_pnl >= 0 ? 'text-green-400' : 'text-red-400'}">${t.trade_pnl >= 0 ? '+' : ''}${t.trade_pnl}%</span>` : '';
                      const tagsDisplay = t.reason && t.reason.length > 0 ? `<div class="text-[9px] mt-0.5">${t.reason.map(tag => `<span class="inline-block bg-purple-900/40 text-purple-300 border border-purple-800/50 px-1 rounded mr-0.5">${tag}</span>`).join('')}</div>` : '';
 
+                     // Chain and CA display
+                     const chain = t.chain || 'unknown';
+                     const ca = t.contract_address || '';
+                     const shortCA = ca ? ca.substr(0, 6) + '...' + ca.substr(-4) : 'N/A';
+                     const chainDisplay = `<span class="text-blue-400 text-[9px]">${chain.toUpperCase()}</span>`;
+                     const caDisplay = ca ? `<span class="text-gray-500 text-[9px] font-mono">${shortCA}</span>` : '';
+
                      return `
                      <div class="border-b border-gray-900 pb-1 mb-1">
                         <div class="flex justify-between items-center">
@@ -763,6 +770,10 @@
                         <div class="flex justify-between text-[10px] text-gray-400">
                             <span class="text-white font-bold">${dollarVal}</span>
                             <span>@ ${formatPrice(t.price)} ${pnlDisplay}</span>
+                        </div>
+                        <div class="flex gap-2 text-[9px] mt-0.5">
+                            ${chainDisplay}
+                            ${caDisplay}
                         </div>
                         ${tagsDisplay}
                      </div>
