@@ -257,6 +257,22 @@ async def lifespan(app: FastAPI):
 
     attribution_task = asyncio.create_task(attribution_loop())
 
+    # 💰 Price refresh loop: Update all position prices for accurate PnL calculation
+    async def price_refresh_loop():
+        """每 60 秒刷新所有持仓代币的价格（用于准确的 PnL 计算）"""
+        while True:
+            await asyncio.sleep(60)  # 60秒 > DexScreener缓存30秒
+            try:
+                total_symbols = 0
+                for group_id, group in group_manager.groups.items():
+                    await group.engine.refresh_all_position_prices()
+                    total_symbols += len(group.engine.current_prices)
+                logger.info(f"💰 Refreshed prices for {total_symbols} symbols across {len(group_manager.groups)} groups")
+            except Exception as e:
+                logger.error(f"Price refresh loop error: {e}")
+
+    price_refresh_task = asyncio.create_task(price_refresh_loop())
+
     # 📡 REMOVED: Price broadcasting (Pure Execution Layer)
     # Darwin Arena is a pure execution layer - agents fetch their own market data.
     # This enables true agent autonomy:
@@ -1022,9 +1038,11 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
                 side = OrderSide.BUY if side_str == "BUY" else OrderSide.SELL
                 amount = float(data["amount"])
                 reason = data.get("reason", []) # 🏷️ Get tags
-                
+                chain = data.get("chain", "unknown")  # 🔗 Get chain
+                contract_address = data.get("contract_address", "")  # 📝 Get contract address
+
                 success, msg, fill_price = await engine.execute_order(
-                    agent_id, symbol, side, amount, reason
+                    agent_id, symbol, side, amount, reason, chain, contract_address
                 )
                 
                 if success:
@@ -1290,16 +1308,23 @@ async def get_trades():
 
 @app.get("/leaderboard")
 async def get_leaderboard():
-    """获取排行榜（包含风险指标）"""
+    """获取排行榜（包含风险指标和在线状态）"""
     from arena_server.metrics import calculate_composite_score
 
     rankings = engine.get_leaderboard()
+
+    # 统计总注册数和在线数
+    total_registered = len(API_KEYS_DB)
+    online_agents = set(connected_agents.keys())
 
     # 为每个 Agent 计算风险指标
     enriched_rankings = []
     for i, r in enumerate(rankings):
         agent_id, pnl_percent, total_value = r
         account = engine.accounts.get(agent_id)
+
+        # 检查是否在线（有持久 WebSocket 连接）
+        is_online = agent_id in online_agents
 
         if account and account.pnl_history and len(account.pnl_history) >= 2:
             # 计算累计资产价值历史
@@ -1324,6 +1349,7 @@ async def get_leaderboard():
             "agent_id": agent_id,
             "pnl_percent": pnl_percent,
             "total_value": total_value,
+            "is_online": is_online,  # 新增：在线状态
             "sharpe_ratio": metrics["sharpe_ratio"],
             "sortino_ratio": metrics["sortino_ratio"],
             "max_drawdown": metrics["max_drawdown"],
@@ -1332,6 +1358,8 @@ async def get_leaderboard():
 
     return {
         "epoch": current_epoch,
+        "total_registered": total_registered,  # 新增：总注册数
+        "online_count": len(online_agents),    # 新增：在线数量
         "rankings": enriched_rankings
     }
 

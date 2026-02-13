@@ -101,6 +101,7 @@ class MatchingEngine:
         self.accounts: Dict[str, AgentAccount] = {}
         self.agents = self.accounts  # Alias for compatibility
         self.current_prices: Dict[str, float] = {}
+        self.token_metadata: Dict[str, dict] = {}  # Store chain and contract_address
         self.order_count = 0
         self.trade_history: deque = deque(maxlen=500) # Rolling history for Hive Mind attribution
     
@@ -182,10 +183,19 @@ class MatchingEngine:
 
         return None
 
-    async def execute_order(self, agent_id: str, symbol: str, side: OrderSide, amount_usd: float, reason: List[str] = None) -> tuple:
+    async def execute_order(self, agent_id: str, symbol: str, side: OrderSide, amount_usd: float, reason: List[str] = None, chain: str = None, contract_address: str = None) -> tuple:
         """执行订单 - 支持任意币种
 
         如果币种不在缓存中，会实时从 DexScreener 获取价格
+
+        Args:
+            agent_id: Agent ID
+            symbol: Token symbol
+            side: BUY or SELL
+            amount_usd: Amount in USD (for BUY) or token quantity (for SELL)
+            reason: Strategy tags
+            chain: Blockchain name (e.g., "base", "ethereum", "solana")
+            contract_address: Token contract address
 
         Returns:
             tuple: (success: bool, message: str, fill_price: float)
@@ -196,6 +206,15 @@ class MatchingEngine:
 
         # 获取当前价格（如果不在缓存中，实时获取）
         current_price = self.current_prices.get(symbol)
+
+        # Store chain and contract_address if provided
+        if chain or contract_address:
+            if symbol not in self.token_metadata:
+                self.token_metadata[symbol] = {}
+            if chain:
+                self.token_metadata[symbol]["chain"] = chain
+            if contract_address:
+                self.token_metadata[symbol]["contract_address"] = contract_address
 
         if current_price is None:
             # 实时从 DexScreener 获取价格
@@ -240,13 +259,18 @@ class MatchingEngine:
             pos.amount = new_amount
             
             self.order_count += 1
-            
-            # Record trade with TAGS
+
+            # Get token metadata
+            token_meta = self.token_metadata.get(symbol, {})
+
+            # Record trade with TAGS + chain + contract_address
             self.trade_history.appendleft({
                 "time": datetime.now().isoformat(),
                 "agent_id": agent_id,
                 "side": "BUY",
                 "symbol": symbol,
+                "chain": token_meta.get("chain", "unknown"),
+                "contract_address": token_meta.get("contract_address", ""),
                 "amount": token_amount,
                 "price": fill_price,
                 "value": amount_usd,
@@ -280,16 +304,21 @@ class MatchingEngine:
                 del account.positions[symbol]
             
             self.order_count += 1
-            
+
             # Compute per-trade PnL for this sell
             trade_pnl = ((fill_price - pos.avg_price) / pos.avg_price * 100) if pos.avg_price > 0 else 0
 
-            # Record trade with TAGS + per-trade PnL
+            # Get token metadata
+            token_meta = self.token_metadata.get(symbol, {})
+
+            # Record trade with TAGS + per-trade PnL + chain + contract_address
             self.trade_history.appendleft({
                 "time": datetime.now().isoformat(),
                 "agent_id": agent_id,
                 "side": "SELL",
                 "symbol": symbol,
+                "chain": token_meta.get("chain", "unknown"),
+                "contract_address": token_meta.get("contract_address", ""),
                 "amount": token_amount,
                 "price": fill_price,
                 "value": token_amount * fill_price,
@@ -305,6 +334,49 @@ class MatchingEngine:
     def last_prices(self) -> Dict[str, float]:
         """Alias for current_prices (compatibility)"""
         return self.current_prices
+
+    async def refresh_all_position_prices(self):
+        """刷新所有持仓代币的价格（用于准确的 PnL 计算）"""
+        # 收集所有持仓代币
+        all_symbols = set()
+        for account in self.accounts.values():
+            all_symbols.update(account.positions.keys())
+
+        # 批量获取价格
+        for symbol in all_symbols:
+            if symbol not in self.current_prices:
+                try:
+                    price = await self._fetch_price_realtime(symbol)
+                    if price:
+                        self.current_prices[symbol] = price
+                except Exception as e:
+                    logger.error(f"Failed to refresh price for {symbol}: {e}")
+
+    async def refresh_all_position_prices(self) -> int:
+        """刷新所有持仓代币的价格（用于准确的 PnL 计算）
+
+        Returns:
+            int: 成功更新的代币数量
+        """
+        # 收集所有持仓代币
+        symbols = set()
+        for account in self.accounts.values():
+            symbols.update(account.positions.keys())
+
+        if not symbols:
+            return 0
+
+        updated = 0
+        for symbol in symbols:
+            try:
+                price = await self._fetch_price_realtime(symbol)
+                if price and price > 0:
+                    self.current_prices[symbol] = price
+                    updated += 1
+            except Exception as e:
+                print(f"Failed to refresh price for {symbol}: {e}")
+
+        return updated
 
     def get_leaderboard(self) -> List[tuple]:
         """获取排行榜 (使用当前市场价计算，不修改 avg_price)"""
