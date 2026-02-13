@@ -1260,9 +1260,11 @@
 
         function renderAscension(data) {
             const container = document.getElementById('ascension-container');
-            const agents = data.agents || [];
-            
-            // Show ALL agents (not just winners)
+            const allAgents = data.agents || [];
+
+            // Filter to only show online agents
+            const agents = allAgents.filter(a => a.is_online);
+
             if (agents.length === 0) {
                 container.innerHTML = `
                     <div class="h-full flex flex-col items-center justify-center text-gray-600 opacity-50">
