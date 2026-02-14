@@ -1377,49 +1377,56 @@ async def api_council_share(
             "role": "insight" (default) | "question" | "winner" | "loser"
         }
     """
-    # Parse API key
-    if api_key:
-        api_key = api_key.replace("Bearer ", "").strip()
-
-    if not api_key:
-        raise HTTPException(status_code=401, detail="Missing API key")
-
-    # Authenticate
-    agent_id = API_KEYS_DB.get(api_key)
-    if not agent_id:
-        raise HTTPException(status_code=403, detail="Invalid API key")
-
-    # Parse body
     try:
-        body = await request.json()
-    except:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+        # Parse API key
+        if api_key:
+            api_key = api_key.replace("Bearer ", "").strip()
 
-    content = body.get("content")
-    role_str = body.get("role", "insight")
+        if not api_key:
+            raise HTTPException(status_code=401, detail="Missing API key")
 
-    if not content:
-        raise HTTPException(status_code=400, detail="Missing content field")
+        # Authenticate
+        agent_id = API_KEYS_DB.get(api_key)
+        if not agent_id:
+            raise HTTPException(status_code=403, detail="Invalid API key")
 
-    try:
-        role = MessageRole(role_str)
-    except:
-        raise HTTPException(status_code=400, detail=f"Invalid role: {role_str}")
+        # Parse body
+        try:
+            body = await request.json()
+        except:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
 
-    # Submit to council
-    msg = await council.submit_message(current_epoch, agent_id, role, content)
+        content = body.get("content")
+        role_str = body.get("role", "insight")
 
-    if msg:
-        return {
-            "success": True,
-            "score": msg.score,
-            "message": f"Council message submitted (score: {msg.score:.1f}/10)"
-        }
-    else:
-        return {
-            "success": False,
-            "message": "Failed to submit council message"
-        }
+        if not content:
+            raise HTTPException(status_code=400, detail="Missing content field")
+
+        try:
+            role = MessageRole(role_str)
+        except:
+            raise HTTPException(status_code=400, detail=f"Invalid role: {role_str}")
+
+        # Submit to council
+        msg = await council.submit_message(current_epoch, agent_id, role, content)
+
+        if msg:
+            return {
+                "success": True,
+                "score": msg.score,
+                "message": f"Council message submitted (score: {msg.score:.1f}/10)"
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Failed to submit council message"
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in api_council_share: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail={"error": "Internal server error", "detail": str(e)})
 
 
 @app.post("/debug/force-mutation")
