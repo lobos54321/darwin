@@ -117,6 +117,7 @@ API_KEYS_DB = load_api_keys()
 
 connected_agents: Dict[str, WebSocket] = {}
 connected_observers: set = set()  # 观众连接追踪
+agent_last_activity: Dict[str, datetime] = {}  # 跟踪 REST API 活动时间
 current_epoch = 0
 epoch_start_time: datetime = None
 trade_count = 0
@@ -1216,6 +1217,9 @@ async def api_trade(
         if not agent_id:
             raise HTTPException(status_code=403, detail="Invalid API key")
 
+        # 更新最后活动时间
+        agent_last_activity[agent_id] = datetime.now()
+
         # Parse request body
         try:
             body = await request.json()
@@ -1340,6 +1344,9 @@ async def api_agent_status(agent_id: str, api_key: str = Header(None, alias="Aut
     if stored_agent_id != agent_id:
         raise HTTPException(status_code=403, detail="API key does not match agent_id")
 
+    # 更新最后活动时间
+    agent_last_activity[agent_id] = datetime.now()
+
     # Get group and engine
     group = group_manager.get_group(agent_id)
     if not group:
@@ -1389,6 +1396,9 @@ async def api_council_share(
         agent_id = API_KEYS_DB.get(api_key)
         if not agent_id:
             raise HTTPException(status_code=403, detail="Invalid API key")
+
+        # 更新最后活动时间
+        agent_last_activity[agent_id] = datetime.now()
 
         # Parse body
         try:
@@ -1566,7 +1576,15 @@ async def get_leaderboard():
 
     # 统计总注册数和在线数
     total_registered = len(API_KEYS_DB)
-    online_agents = set(connected_agents.keys())
+
+    # 判断在线：WebSocket 连接 或 最近 5 分钟内有 REST API 活动
+    now = datetime.now()
+    online_agents = set()
+    for agent_id in connected_agents.keys():
+        online_agents.add(agent_id)
+    for agent_id, last_time in agent_last_activity.items():
+        if (now - last_time).total_seconds() < 300:  # 5 分钟
+            online_agents.add(agent_id)
 
     # 为每个 Agent 计算风险指标
     enriched_rankings = []
@@ -1574,7 +1592,7 @@ async def get_leaderboard():
         agent_id, pnl_percent, total_value = r
         account = engine.accounts.get(agent_id)
 
-        # 检查是否在线（有持久 WebSocket 连接）
+        # 检查是否在线（WebSocket 或最近 5 分钟内活跃）
         is_online = agent_id in online_agents
 
         if account and account.pnl_history and len(account.pnl_history) >= 2:
