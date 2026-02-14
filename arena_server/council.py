@@ -17,6 +17,8 @@ def score_council_message_rule_based(content: str) -> float:
     Rule-based scoring (fallback when LLM unavailable)
     Scores messages based on data density and quality indicators
     """
+    import re
+
     score = 5.0  # Base score
 
     # Remove emoji
@@ -34,7 +36,6 @@ def score_council_message_rule_based(content: str) -> float:
 
     # +1 point: References specific tokens (dynamic detection)
     # Look for $SYMBOL pattern or common token patterns (3-5 uppercase letters)
-    import re
     token_pattern = r'\$[A-Z]{2,10}|(?<!\w)[A-Z]{3,5}(?!\w)'
     token_mentions = len(re.findall(token_pattern, text))
     if token_mentions >= 1:
