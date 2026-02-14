@@ -1203,114 +1203,121 @@ async def api_trade(
     """
     global trade_count, total_volume
 
-    # Parse API key from Authorization header
-    if api_key:
-        api_key = api_key.replace("Bearer ", "").strip()
-
-    if not api_key:
-        raise HTTPException(status_code=401, detail="Missing API key in Authorization header")
-
-    # Authenticate
-    agent_id = API_KEYS_DB.get(api_key)
-    if not agent_id:
-        raise HTTPException(status_code=403, detail="Invalid API key")
-
-    # Parse request body
     try:
-        body = await request.json()
-    except:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+        # Parse API key from Authorization header
+        if api_key:
+            api_key = api_key.replace("Bearer ", "").strip()
 
-    symbol = body.get("symbol")
-    side_str = body.get("side", "").upper()
-    amount = body.get("amount")
-    reason = body.get("reason", [])
-    chain = body.get("chain")
-    contract_address = body.get("contract_address")
+        if not api_key:
+            raise HTTPException(status_code=401, detail="Missing API key in Authorization header")
 
-    if not symbol or not side_str or not amount:
-        raise HTTPException(status_code=400, detail="Missing required fields: symbol, side, amount")
+        # Authenticate
+        agent_id = API_KEYS_DB.get(api_key)
+        if not agent_id:
+            raise HTTPException(status_code=403, detail="Invalid API key")
 
-    if side_str not in ["BUY", "SELL"]:
-        raise HTTPException(status_code=400, detail="side must be BUY or SELL")
+        # Parse request body
+        try:
+            body = await request.json()
+        except:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
 
-    try:
-        amount = float(amount)
-    except:
-        raise HTTPException(status_code=400, detail="amount must be a number")
+        symbol = body.get("symbol")
+        side_str = body.get("side", "").upper()
+        amount = body.get("amount")
+        reason = body.get("reason", [])
+        chain = body.get("chain")
+        contract_address = body.get("contract_address")
 
-    # Get agent's group
-    group = group_manager.get_group(agent_id)
-    if not group:
-        # Auto-assign to group if not assigned
-        group = await group_manager.assign_agent(agent_id)
+        if not symbol or not side_str or not amount:
+            raise HTTPException(status_code=400, detail="Missing required fields: symbol, side, amount")
 
-    engine = group.engine
-    side = OrderSide.BUY if side_str == "BUY" else OrderSide.SELL
+        if side_str not in ["BUY", "SELL"]:
+            raise HTTPException(status_code=400, detail="side must be BUY or SELL")
 
-    # Execute order
-    success, msg, fill_price = await engine.execute_order(
-        agent_id, symbol, side, amount, reason, chain, contract_address
-    )
+        try:
+            amount = float(amount)
+        except:
+            raise HTTPException(status_code=400, detail="amount must be a number")
 
-    if success:
-        trade_count += 1
-        total_volume += amount
+        # Get agent's group
+        group = group_manager.get_group(agent_id)
+        if not group:
+            # Auto-assign to group if not assigned
+            group = await group_manager.assign_agent(agent_id)
 
-        # Record to attribution
-        trade_record = {
-            "agent_id": agent_id,
-            "symbol": symbol,
-            "side": side_str,
-            "amount": amount,
-            "price": fill_price,
-            "value": amount if side_str == "BUY" else amount * fill_price,
-            "reason": reason,
-            "time": datetime.now().isoformat(),
-            "chain": chain,
-            "contract_address": contract_address
-        }
+        engine = group.engine
+        side = OrderSide.BUY if side_str == "BUY" else OrderSide.SELL
 
-        if side_str == "SELL" and engine.trade_history:
-            last_trade = engine.trade_history[0]
-            if last_trade.get("agent_id") == agent_id and last_trade.get("symbol") == symbol:
-                trade_record["trade_pnl"] = last_trade.get("trade_pnl")
-
-        group.attribution.record_trade(trade_record)
-
-        # Broadcast to council
-        council_message = {
-            "type": "council_trade",
-            "agent_id": agent_id,
-            "symbol": symbol,
-            "side": side_str,
-            "amount": amount,
-            "price": fill_price,
-            "reason": reason,
-            "timestamp": datetime.now().isoformat(),
-            "chain": chain,
-            "contract_address": contract_address
-        }
-        await broadcast_to_group(group.group_id, council_message, exclude=agent_id)
-
-        # Record to Council logs
-        reason_str = ", ".join(reason) if isinstance(reason, list) else str(reason)
-        chain_str = f" on {chain.upper()}" if chain else ""
-        trade_content = f"💰 {side_str} ${amount:.0f} {symbol}{chain_str} @ ${fill_price:.6f}\n📊 Reason: {reason_str}"
-        await council.submit_message(
-            epoch=current_epoch,
-            agent_id=agent_id,
-            role=MessageRole.INSIGHT,
-            content=trade_content
+        # Execute order
+        success, msg, fill_price = await engine.execute_order(
+            agent_id, symbol, side, amount, reason, chain, contract_address
         )
 
-    return {
-        "success": success,
-        "message": msg,
-        "fill_price": fill_price,
-        "balance": engine.get_balance(agent_id),
-        "positions": engine.get_positions(agent_id)
-    }
+        if success:
+            trade_count += 1
+            total_volume += amount
+
+            # Record to attribution
+            trade_record = {
+                "agent_id": agent_id,
+                "symbol": symbol,
+                "side": side_str,
+                "amount": amount,
+                "price": fill_price,
+                "value": amount if side_str == "BUY" else amount * fill_price,
+                "reason": reason,
+                "time": datetime.now().isoformat(),
+                "chain": chain,
+                "contract_address": contract_address
+            }
+
+            if side_str == "SELL" and engine.trade_history:
+                last_trade = engine.trade_history[0]
+                if last_trade.get("agent_id") == agent_id and last_trade.get("symbol") == symbol:
+                    trade_record["trade_pnl"] = last_trade.get("trade_pnl")
+
+            group.attribution.record_trade(trade_record)
+
+            # Broadcast to council
+            council_message = {
+                "type": "council_trade",
+                "agent_id": agent_id,
+                "symbol": symbol,
+                "side": side_str,
+                "amount": amount,
+                "price": fill_price,
+                "reason": reason,
+                "timestamp": datetime.now().isoformat(),
+                "chain": chain,
+                "contract_address": contract_address
+            }
+            await broadcast_to_group(group.group_id, council_message, exclude=agent_id)
+
+            # Record to Council logs
+            reason_str = ", ".join(reason) if isinstance(reason, list) else str(reason)
+            chain_str = f" on {chain.upper()}" if chain else ""
+            trade_content = f"💰 {side_str} ${amount:.0f} {symbol}{chain_str} @ ${fill_price:.6f}\n📊 Reason: {reason_str}"
+            await council.submit_message(
+                epoch=current_epoch,
+                agent_id=agent_id,
+                role=MessageRole.INSIGHT,
+                content=trade_content
+            )
+
+        return {
+            "success": success,
+            "message": msg,
+            "fill_price": fill_price,
+            "balance": engine.get_balance(agent_id),
+            "positions": engine.get_positions(agent_id)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in api_trade: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail={"error": "Internal server error", "detail": str(e)})
 
 
 @app.get("/api/agent/{agent_id}/status")
