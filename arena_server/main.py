@@ -1178,6 +1178,243 @@ async def api_status():
     }
 
 
+# ========== REST API for OpenClaw Agents ==========
+
+@app.post("/api/trade")
+async def api_trade(
+    request: Request,
+    api_key: str = Header(None, alias="Authorization")
+):
+    """
+    REST API for executing trades (OpenClaw-friendly)
+
+    Headers:
+        Authorization: Bearer <api_key> or just <api_key>
+
+    Body:
+        {
+            "symbol": "TOSHI",
+            "side": "BUY" or "SELL",
+            "amount": 100,
+            "reason": ["MOMENTUM", "HIGH_LIQUIDITY"],
+            "chain": "base" (optional),
+            "contract_address": "0x..." (optional)
+        }
+    """
+    global trade_count, total_volume
+
+    # Parse API key from Authorization header
+    if api_key:
+        api_key = api_key.replace("Bearer ", "").strip()
+
+    if not api_key:
+        raise HTTPException(status_code=401, detail="Missing API key in Authorization header")
+
+    # Authenticate
+    agent_id = API_KEYS_DB.get(api_key)
+    if not agent_id:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    # Parse request body
+    try:
+        body = await request.json()
+    except:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    symbol = body.get("symbol")
+    side_str = body.get("side", "").upper()
+    amount = body.get("amount")
+    reason = body.get("reason", [])
+    chain = body.get("chain")
+    contract_address = body.get("contract_address")
+
+    if not symbol or not side_str or not amount:
+        raise HTTPException(status_code=400, detail="Missing required fields: symbol, side, amount")
+
+    if side_str not in ["BUY", "SELL"]:
+        raise HTTPException(status_code=400, detail="side must be BUY or SELL")
+
+    try:
+        amount = float(amount)
+    except:
+        raise HTTPException(status_code=400, detail="amount must be a number")
+
+    # Get agent's group
+    group = group_manager.get_group(agent_id)
+    if not group:
+        # Auto-assign to group if not assigned
+        group = await group_manager.assign_agent(agent_id)
+
+    engine = group.engine
+    side = OrderSide.BUY if side_str == "BUY" else OrderSide.SELL
+
+    # Execute order
+    success, msg, fill_price = await engine.execute_order(
+        agent_id, symbol, side, amount, reason, chain, contract_address
+    )
+
+    if success:
+        trade_count += 1
+        total_volume += amount
+
+        # Record to attribution
+        trade_record = {
+            "agent_id": agent_id,
+            "symbol": symbol,
+            "side": side_str,
+            "amount": amount,
+            "price": fill_price,
+            "value": amount if side_str == "BUY" else amount * fill_price,
+            "reason": reason,
+            "time": datetime.now().isoformat(),
+            "chain": chain,
+            "contract_address": contract_address
+        }
+
+        if side_str == "SELL" and engine.trade_history:
+            last_trade = engine.trade_history[0]
+            if last_trade.get("agent_id") == agent_id and last_trade.get("symbol") == symbol:
+                trade_record["trade_pnl"] = last_trade.get("trade_pnl")
+
+        group.attribution.record_trade(trade_record)
+
+        # Broadcast to council
+        council_message = {
+            "type": "council_trade",
+            "agent_id": agent_id,
+            "symbol": symbol,
+            "side": side_str,
+            "amount": amount,
+            "price": fill_price,
+            "reason": reason,
+            "timestamp": datetime.now().isoformat(),
+            "chain": chain,
+            "contract_address": contract_address
+        }
+        await broadcast_to_group(group.group_id, council_message, exclude=agent_id)
+
+        # Record to Council logs
+        reason_str = ", ".join(reason) if isinstance(reason, list) else str(reason)
+        chain_str = f" on {chain.upper()}" if chain else ""
+        trade_content = f"💰 {side_str} ${amount:.0f} {symbol}{chain_str} @ ${fill_price:.6f}\n📊 Reason: {reason_str}"
+        await council.submit_message(
+            epoch=current_epoch,
+            agent_id=agent_id,
+            role=MessageRole.INSIGHT,
+            content=trade_content
+        )
+
+    return {
+        "success": success,
+        "message": msg,
+        "fill_price": fill_price,
+        "balance": engine.get_balance(agent_id),
+        "positions": engine.get_positions(agent_id)
+    }
+
+
+@app.get("/api/agent/{agent_id}/status")
+async def api_agent_status(agent_id: str, api_key: str = Header(None, alias="Authorization")):
+    """
+    Get agent status via REST API
+
+    Headers:
+        Authorization: Bearer <api_key> or just <api_key>
+    """
+    # Parse API key
+    if api_key:
+        api_key = api_key.replace("Bearer ", "").strip()
+
+    if not api_key:
+        raise HTTPException(status_code=401, detail="Missing API key")
+
+    # Authenticate
+    stored_agent_id = API_KEYS_DB.get(api_key)
+    if stored_agent_id != agent_id:
+        raise HTTPException(status_code=403, detail="API key does not match agent_id")
+
+    # Get group and engine
+    group = group_manager.get_group(agent_id)
+    if not group:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    engine = group.engine
+    balance = engine.get_balance(agent_id)
+    positions = engine.get_positions(agent_id)
+    pnl = engine.calculate_pnl(agent_id)
+
+    return {
+        "agent_id": agent_id,
+        "balance": balance,
+        "positions": positions,
+        "pnl": pnl,
+        "group_id": group.group_id,
+        "epoch": current_epoch
+    }
+
+
+@app.post("/api/council/share")
+async def api_council_share(
+    request: Request,
+    api_key: str = Header(None, alias="Authorization")
+):
+    """
+    Share thoughts to Council via REST API
+
+    Headers:
+        Authorization: Bearer <api_key> or just <api_key>
+
+    Body:
+        {
+            "content": "Your analysis or insight",
+            "role": "insight" (default) | "question" | "winner" | "loser"
+        }
+    """
+    # Parse API key
+    if api_key:
+        api_key = api_key.replace("Bearer ", "").strip()
+
+    if not api_key:
+        raise HTTPException(status_code=401, detail="Missing API key")
+
+    # Authenticate
+    agent_id = API_KEYS_DB.get(api_key)
+    if not agent_id:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    # Parse body
+    try:
+        body = await request.json()
+    except:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    content = body.get("content")
+    role_str = body.get("role", "insight")
+
+    if not content:
+        raise HTTPException(status_code=400, detail="Missing content field")
+
+    try:
+        role = MessageRole(role_str)
+    except:
+        raise HTTPException(status_code=400, detail=f"Invalid role: {role_str}")
+
+    # Submit to council
+    msg = await council.submit_message(current_epoch, agent_id, role, content)
+
+    if msg:
+        return {
+            "success": True,
+            "score": msg.score,
+            "message": f"Council message submitted (score: {msg.score:.1f}/10)"
+        }
+    else:
+        return {
+            "success": False,
+            "message": "Failed to submit council message"
+        }
+
+
 @app.post("/debug/force-mutation")
 async def force_mutation():
     """Debug: Force full council + evolution cycle for losers (per-group)"""
