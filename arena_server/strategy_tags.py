@@ -12,6 +12,7 @@ ENTRY_TAGS = {
     "BREAKOUT": "价格突破 (突破阻力位)",
     "MEAN_REVERSION": "均值回归 (价格偏离均线)",
     "LIQUIDITY_HIGH": "高流动性 (流动性 > $100k)",
+    "HIGH_LIQUIDITY": "高流动性 (流动性 > $100k)",  # Alias
     "LIQUIDITY_LOW": "低流动性 (流动性 < $50k)",
     "SOCIAL_BUZZ": "社交媒体热度",
     "WHALE_ACTIVITY": "巨鲸活动",
@@ -20,6 +21,15 @@ ENTRY_TAGS = {
     "SUPPORT_BOUNCE": "支撑位反弹",
     "FOMO": "FOMO追涨",
     "DEGEN_PLAY": "高风险投机",
+    "HIVE_MIND": "集体智慧 (基于历史归因分析)",
+    "DIP_BUY": "逢低买入",
+    "BOT": "机器人策略",
+    "RANDOM_TEST": "随机测试",
+    "contrarian_signal": "逆向信号",
+    "fade_consensus": "反共识",
+    "mean_reversion": "均值回归",
+    "OPENCLAW_AUTONOMOUS": "OpenClaw自主交易",
+    "MOMENTUM_BULLISH": "看涨动量",
 }
 
 # 出场策略标签 (Exit Strategy Tags)
@@ -41,10 +51,13 @@ ALL_TAGS = {**ENTRY_TAGS, **EXIT_TAGS}
 
 # 标签分类
 TAG_CATEGORIES = {
-    "technical": ["VOL_SPIKE", "MOMENTUM", "RSI_OVERSOLD", "RSI_OVERBOUGHT", "BREAKOUT", "MEAN_REVERSION"],
-    "fundamental": ["LIQUIDITY_HIGH", "LIQUIDITY_LOW", "NEW_LISTING"],
+    "technical": ["VOL_SPIKE", "MOMENTUM", "RSI_OVERSOLD", "RSI_OVERBOUGHT", "BREAKOUT", "MEAN_REVERSION", "mean_reversion", "MOMENTUM_BULLISH"],
+    "fundamental": ["LIQUIDITY_HIGH", "HIGH_LIQUIDITY", "LIQUIDITY_LOW", "NEW_LISTING"],
     "sentiment": ["SOCIAL_BUZZ", "WHALE_ACTIVITY", "FOMO"],
     "risk_management": ["TAKE_PROFIT", "STOP_LOSS", "TRAILING_STOP", "RISK_MANAGEMENT"],
+    "hive_mind": ["HIVE_MIND", "contrarian_signal", "fade_consensus"],
+    "autonomous": ["OPENCLAW_AUTONOMOUS", "BOT", "RANDOM_TEST"],
+    "value": ["DIP_BUY", "SUPPORT_BOUNCE"],
 }
 
 
@@ -172,6 +185,9 @@ PROVEN_COMBOS = [
     ["BREAKOUT", "VOL_SPIKE"],
     ["LIQUIDITY_HIGH", "MOMENTUM"],
     ["WHALE_ACTIVITY", "VOL_SPIKE"],
+    ["HIVE_MIND", "MOMENTUM", "HIGH_LIQUIDITY"],  # Darwin_Main 成功组合
+    ["contrarian_signal", "fade_consensus", "mean_reversion"],  # Darwin_Agent_2 逆向策略
+    ["MOMENTUM", "HIGH_LIQUIDITY", "OPENCLAW_AUTONOMOUS"],  # OpenClaw 自主交易
 ]
 
 

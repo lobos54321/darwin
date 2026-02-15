@@ -151,7 +151,7 @@ class MatchingEngine:
         try:
             url = f"{DEXSCREENER_BASE_URL}/search?q={symbol}"
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         pairs = data.get("pairs", [])
