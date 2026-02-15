@@ -744,12 +744,18 @@
                      const color = isBuy ? 'text-green-400' : 'text-red-400';
                      const agentDisplay = myAgentId ? '' : `<span class="text-gray-600 ml-1">[${t.agent_id}]</span>`;
                      const dollarVal = t.value ? `$${Number(t.value).toFixed(2)}` : '';
-                     // Convert ISO time to local timezone display
+                     // Convert ISO time to Sydney timezone display
                      let localTime = t.time || '';
                      try {
                          const d = new Date(t.time);
                          if (!isNaN(d.getTime())) {
-                             localTime = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+                             localTime = d.toLocaleTimeString('en-AU', {
+                                 timeZone: 'Australia/Sydney',
+                                 hour:'2-digit',
+                                 minute:'2-digit',
+                                 second:'2-digit',
+                                 hour12: false
+                             });
                          }
                      } catch(e) {}
                      const pnlDisplay = t.trade_pnl != null ? `<span class="${t.trade_pnl >= 0 ? 'text-green-400' : 'text-red-400'}">${t.trade_pnl >= 0 ? '+' : ''}${t.trade_pnl}%</span>` : '';
@@ -1082,12 +1088,18 @@
                         const roleIcon = msg.role === 'winner' ? '👑' : msg.role === 'question' ? '❓' : '💬';
                         const colorClass = msg.role === 'winner' ? 'text-yellow-400' : 'text-gray-300';
 
-                        // Convert timestamp to local time
+                        // Convert timestamp to Sydney time (AEDT/AEST)
                         let localTime = '';
                         try {
                             const d = new Date(msg.timestamp);
                             if (!isNaN(d.getTime())) {
-                                localTime = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+                                localTime = d.toLocaleTimeString('en-AU', {
+                                    timeZone: 'Australia/Sydney',
+                                    hour:'2-digit',
+                                    minute:'2-digit',
+                                    second:'2-digit',
+                                    hour12: false
+                                });
                             }
                         } catch(e) {}
 
