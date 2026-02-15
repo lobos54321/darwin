@@ -1058,16 +1058,26 @@
             try {
                 // Fetch all council logs (last 50 messages across all epochs)
                 const res = await fetch('/council-logs');
-                if (!res.ok) return;
+                if (!res.ok) {
+                    console.error('Council logs fetch failed:', res.status);
+                    return;
+                }
 
                 const messages = await res.json();
-                if (!messages || messages.length === 0) return;
+                console.log('Council logs fetched:', messages.length, 'messages');
 
+                if (!messages || messages.length === 0) {
+                    console.log('No council messages to display');
+                    return;
+                }
+
+                let newMessages = 0;
                 messages.forEach(msg => {
                     const msgKey = `${msg.id}`;
 
                     if (!lastProcessedMessageIds.has(msgKey)) {
                         lastProcessedMessageIds.add(msgKey);
+                        newMessages++;
 
                         const roleIcon = msg.role === 'winner' ? '👑' : msg.role === 'question' ? '❓' : '💬';
                         const colorClass = msg.role === 'winner' ? 'text-yellow-400' : 'text-gray-300';
@@ -1086,8 +1096,10 @@
                     }
                 });
 
+                console.log('Displayed', newMessages, 'new council messages');
+
             } catch (e) {
-                // Silent fail
+                console.error('Error fetching council logs:', e);
             }
         }
 
