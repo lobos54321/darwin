@@ -645,8 +645,8 @@
                 const statsData = await statsRes.json();
 
                 if(lbData.rankings) {
-                    // Show online count, not total registered
-                    const onlineCount = lbData.online_count || lbData.rankings.filter(a => a.is_online).length;
+                    // Show online count from rankings (agents with trading accounts)
+                    const onlineCount = lbData.rankings.filter(a => a.is_online).length;
                     document.getElementById('agent-count').innerText = onlineCount;
 
                     // Calculate total volume only from online agents
@@ -654,7 +654,7 @@
                     const totalVolume = onlineAgents.reduce((a,b) => a + b.total_value, 0);
                     document.getElementById('total-volume').innerText = totalVolume.toLocaleString();
 
-                    // Update welcome page stats (show online count)
+                    // Update welcome page stats (show online count from rankings)
                     const welcomeAgents = document.getElementById('welcome-agents');
                     if (welcomeAgents) welcomeAgents.innerText = onlineCount;
                 }

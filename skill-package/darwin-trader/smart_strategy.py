@@ -295,7 +295,24 @@ class SmartStrategy:
 
         # Get Hive Mind data
         hive = self.client.get_hive_mind()
-        hive_data = hive.get("groups", {}).get("0", {}).get("alpha_report", {})
+        alpha_report = hive.get("groups", {}).get("0", {}).get("alpha_report", {})
+
+        # Extract by_token data from all strategies
+        hive_data = {"by_token": {}}
+        for strategy_name, strategy_data in alpha_report.items():
+            if "by_token" in strategy_data:
+                for token, token_data in strategy_data["by_token"].items():
+                    if token not in hive_data["by_token"]:
+                        hive_data["by_token"][token] = token_data
+                    else:
+                        # Merge data (average win_rate, avg_pnl)
+                        existing = hive_data["by_token"][token]
+                        total_trades = existing["trades"] + token_data["trades"]
+                        hive_data["by_token"][token] = {
+                            "win_rate": (existing["win_rate"] * existing["trades"] + token_data["win_rate"] * token_data["trades"]) / total_trades,
+                            "avg_pnl": (existing["avg_pnl"] * existing["trades"] + token_data["avg_pnl"] * token_data["trades"]) / total_trades,
+                            "trades": total_trades
+                        }
 
         # Get current status
         status = self.client.get_status()
