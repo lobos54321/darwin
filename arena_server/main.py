@@ -1842,6 +1842,7 @@ async def get_all_ascension():
             online_agents.append({
                 "agent_id": agent_id,
                 "pnl": r[1],
+                "is_online": True,
                 **ascension_tracker.get_stats(agent_id)
             })
 
