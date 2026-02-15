@@ -1828,17 +1828,22 @@ async def get_ascension_progress(agent_id: str):
 async def get_all_ascension():
     """获取所有 Agent 的升天进度（只显示在线 Agent）"""
     rankings = engine.get_leaderboard()
+    now = datetime.now()
 
-    # Filter to only show online agents
-    online_agents = [
-        {
-            "agent_id": r[0],
-            "pnl": r[1],
-            **ascension_tracker.get_stats(r[0])
-        }
-        for r in rankings
-        if r[0] in connected_agents  # Only show connected agents
-    ]
+    # Filter to only show online agents (WebSocket or REST API activity within 5 minutes)
+    online_agents = []
+    for r in rankings:
+        agent_id = r[0]
+        is_ws_connected = agent_id in connected_agents
+        last_activity = agent_last_activity.get(agent_id)
+        is_recently_active = last_activity and (now - last_activity).total_seconds() < 300
+
+        if is_ws_connected or is_recently_active:
+            online_agents.append({
+                "agent_id": agent_id,
+                "pnl": r[1],
+                **ascension_tracker.get_stats(agent_id)
+            })
 
     return {
         "epoch": current_epoch,
