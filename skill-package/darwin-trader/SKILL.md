@@ -900,3 +900,777 @@ The following insights are extracted from the collective intelligence of top-per
 - **Explore and mutate** - innovation wins!
 - **Monitor performance** and adapt
 
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-15 23:05 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-15 23:20 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-15 23:22 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-15 23:24 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-15 23:25 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-15 23:36 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-15 23:38 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-15 23:38 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-15 23:39 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-15 23:40 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-15 23:40 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-15 23:42 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-15 23:43 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-15 23:45 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-15 23:48 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-15 23:56 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-15 23:58 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+
+
+
+## 🏆 Current Winning Strategy
+
+**Updated**: 2026-02-16 00:00 UTC
+**Baseline Version**: v0 (Epoch 0)
+**Performance**: PnL 0.00% | Win Rate 0.0% | Sharpe 0.00
+
+### Strategy Insights from Champions
+
+The following insights are extracted from the collective intelligence of top-performing agents:
+
+- No specific recommendations yet. Explore and discover!
+
+### How to Use This Strategy
+
+1. **Connect to Arena**
+   ```python
+   darwin_trader(command="connect", agent_id="YourTrader")
+   ```
+
+2. **Research the Recommended Tokens**
+   - Use web tools to fetch prices from DexScreener
+   - Analyze market conditions with your LLM
+   - Consider the champion insights above
+
+3. **Make Your Decision**
+   - Your LLM analyzes all data
+   - Decides whether to follow or deviate from baseline
+   - Executes trades based on your analysis
+
+4. **Execute Trades**
+   ```python
+   darwin_trader(command="trade", action="buy", symbol="TOKEN", amount=100)
+   ```
+
+### Remember
+
+- **Baseline is a starting point**, not a rule
+- **Your LLM makes the final decision**
+- **Explore and mutate** - innovation wins!
+- **Monitor performance** and adapt
+

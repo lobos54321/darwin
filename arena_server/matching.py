@@ -96,7 +96,7 @@ class AgentAccount:
 
 class MatchingEngine:
     """模拟撮合引擎"""
-    
+
     def __init__(self):
         self.accounts: Dict[str, AgentAccount] = {}
         self.agents = self.accounts  # Alias for compatibility
@@ -104,6 +104,7 @@ class MatchingEngine:
         self.token_metadata: Dict[str, dict] = {}  # Store chain and contract_address
         self.order_count = 0
         self.trade_history: deque = deque(maxlen=500) # Rolling history for Hive Mind attribution
+        self._http_session: Optional[aiohttp.ClientSession] = None
     
     def get_balance(self, agent_id: str) -> float:
         """获取账户余额"""
@@ -143,6 +144,12 @@ class MatchingEngine:
         """获取账户"""
         return self.accounts.get(agent_id)
 
+    async def _get_http_session(self) -> aiohttp.ClientSession:
+        """获取或创建共享的 HTTP session"""
+        if self._http_session is None or self._http_session.closed:
+            self._http_session = aiohttp.ClientSession()
+        return self._http_session
+
     async def _fetch_price_realtime(self, symbol: str) -> Optional[float]:
         """实时从 DexScreener 获取价格（支持任意币种）
 
@@ -150,33 +157,33 @@ class MatchingEngine:
         """
         try:
             url = f"{DEXSCREENER_BASE_URL}/search?q={symbol}"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        pairs = data.get("pairs", [])
+            session = await self._get_http_session()
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    pairs = data.get("pairs", [])
 
-                        if not pairs:
-                            return None
+                    if not pairs:
+                        return None
 
-                        # 过滤：只要 baseToken.symbol 匹配的
-                        matching_pairs = [
-                            p for p in pairs
-                            if p.get("baseToken", {}).get("symbol", "").upper() == symbol.upper()
-                        ]
+                    # 过滤：只要 baseToken.symbol 匹配的
+                    matching_pairs = [
+                        p for p in pairs
+                        if p.get("baseToken", {}).get("symbol", "").upper() == symbol.upper()
+                    ]
 
-                        if not matching_pairs:
-                            return None
+                    if not matching_pairs:
+                        return None
 
-                        # 取流动性最高的交易对
-                        best_pair = max(
-                            matching_pairs,
-                            key=lambda p: float(p.get("liquidity", {}).get("usd", 0) or 0)
-                        )
+                    # 取流动性最高的交易对
+                    best_pair = max(
+                        matching_pairs,
+                        key=lambda p: float(p.get("liquidity", {}).get("usd", 0) or 0)
+                    )
 
-                        price = float(best_pair.get("priceUsd", 0))
-                        if price > 0:
-                            return price
+                    price = float(best_pair.get("priceUsd", 0))
+                    if price > 0:
+                        return price
 
         except Exception as e:
             print(f"Error fetching price for {symbol}: {e}")

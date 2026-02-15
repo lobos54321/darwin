@@ -1006,6 +1006,7 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str, api_key: str =
 
     # 分配到组 (GroupManager 自动分配代币池)
     group = await group_manager.assign_agent(agent_id)
+    engine = group.engine  # 使用该组的 MatchingEngine
 
     logger.info(f"🤖 Agent connected: {agent_id} → Group {group.group_id} ({group.token_symbols}) (Total: {len(connected_agents)})")
 
